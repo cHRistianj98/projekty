@@ -16,13 +16,16 @@ import { Dashboard } from "./pages/Dashboard";
 import { Finances } from "./pages/Finances";
 import { Investments } from "./pages/Investments";
 import { Goals } from "./pages/Goals";
+import { Liabilities } from "./pages/Liabilities";
 
 import { initialMonthlyBudget } from "./data/monthlyBudget";
 import { initialPortfolio } from "./data/portfolio";
 import { initialNetWorthHistory } from "./data/netWorthHistory";
 import { initialGoals } from "./data/goals";
+import { initialLiabilities } from "./data/liabilities";
 
 import { calculateNetWorth } from "./utils/portfolio";
+import { calculateTotalLiabilities } from "./utils/liabilities";
 
 import type {
   Expense,
@@ -32,6 +35,7 @@ import type {
 
 import type { Asset } from "./types/Asset";
 import type { Goal } from "./types/Goal";
+import type { Liability } from "./types/Liability";
 import type { NetWorthSnapshot } from "./types/NetWorthHistory";
 
 function App() {
@@ -41,11 +45,8 @@ function App() {
    * =========================
    */
 
-  const [
-    portfolio,
-    setPortfolio,
-  ] = useState<Asset[]>(
-    () => {
+  const [portfolio, setPortfolio] =
+    useState<Asset[]>(() => {
       const saved =
         localStorage.getItem(
           "freedom-portfolio"
@@ -54,60 +55,122 @@ function App() {
       return saved
         ? JSON.parse(saved)
         : initialPortfolio;
-    }
-  );
+    });
 
   useEffect(() => {
     localStorage.setItem(
       "freedom-portfolio",
-      JSON.stringify(
-        portfolio
-      )
+      JSON.stringify(portfolio)
     );
   }, [portfolio]);
 
-  const netWorth =
-    calculateNetWorth(
-      portfolio
-    );
+  const totalAssets =
+    calculateNetWorth(portfolio);
 
   function handleAddAsset(
     asset: Asset
   ) {
-    setPortfolio(
-      (current) => [
-        ...current,
-        asset,
-      ]
-    );
+    setPortfolio((current) => [
+      ...current,
+      asset,
+    ]);
   }
 
   function handleUpdateAsset(
     updatedAsset: Asset
   ) {
-    setPortfolio(
-      (current) =>
-        current.map(
-          (asset) =>
-            asset.id ===
-            updatedAsset.id
-              ? updatedAsset
-              : asset
-        )
+    setPortfolio((current) =>
+      current.map((asset) =>
+        asset.id === updatedAsset.id
+          ? updatedAsset
+          : asset
+      )
     );
   }
 
   function handleDeleteAsset(
     id: number
   ) {
-    setPortfolio(
-      (current) =>
-        current.filter(
-          (asset) =>
-            asset.id !== id
-        )
+    setPortfolio((current) =>
+      current.filter(
+        (asset) => asset.id !== id
+      )
     );
   }
+
+  /*
+   * =========================
+   * LIABILITIES
+   * =========================
+   */
+
+  const [
+    liabilities,
+    setLiabilities,
+  ] = useState<Liability[]>(() => {
+    const saved =
+      localStorage.getItem(
+        "freedom-liabilities"
+      );
+
+    return saved
+      ? JSON.parse(saved)
+      : initialLiabilities;
+  });
+
+  useEffect(() => {
+    localStorage.setItem(
+      "freedom-liabilities",
+      JSON.stringify(liabilities)
+    );
+  }, [liabilities]);
+
+  function handleAddLiability(
+    liability: Liability
+  ) {
+    setLiabilities((current) => [
+      ...current,
+      liability,
+    ]);
+  }
+
+  function handleUpdateLiability(
+    updatedLiability: Liability
+  ) {
+    setLiabilities((current) =>
+      current.map((liability) =>
+        liability.id ===
+        updatedLiability.id
+          ? updatedLiability
+          : liability
+      )
+    );
+  }
+
+  function handleDeleteLiability(
+    id: number
+  ) {
+    setLiabilities((current) =>
+      current.filter(
+        (liability) =>
+          liability.id !== id
+      )
+    );
+  }
+
+  const totalLiabilities =
+    calculateTotalLiabilities(
+      liabilities
+    );
+
+  /*
+   * TO JEST TERAZ PRAWDZIWY
+   * MAJĄTEK NETTO
+   */
+
+  const netWorth =
+    totalAssets -
+    totalLiabilities;
 
   /*
    * =========================
@@ -115,11 +178,8 @@ function App() {
    * =========================
    */
 
-  const [
-    goals,
-    setGoals,
-  ] = useState<Goal[]>(
-    () => {
+  const [goals, setGoals] =
+    useState<Goal[]>(() => {
       const saved =
         localStorage.getItem(
           "freedom-goals"
@@ -128,8 +188,7 @@ function App() {
       return saved
         ? JSON.parse(saved)
         : initialGoals;
-    }
-  );
+    });
 
   useEffect(() => {
     localStorage.setItem(
@@ -141,38 +200,31 @@ function App() {
   function handleAddGoal(
     goal: Goal
   ) {
-    setGoals(
-      (current) => [
-        ...current,
-        goal,
-      ]
-    );
+    setGoals((current) => [
+      ...current,
+      goal,
+    ]);
   }
 
   function handleUpdateGoal(
     updatedGoal: Goal
   ) {
-    setGoals(
-      (current) =>
-        current.map(
-          (goal) =>
-            goal.id ===
-            updatedGoal.id
-              ? updatedGoal
-              : goal
-        )
+    setGoals((current) =>
+      current.map((goal) =>
+        goal.id === updatedGoal.id
+          ? updatedGoal
+          : goal
+      )
     );
   }
 
   function handleDeleteGoal(
     id: number
   ) {
-    setGoals(
-      (current) =>
-        current.filter(
-          (goal) =>
-            goal.id !== id
-        )
+    setGoals((current) =>
+      current.filter(
+        (goal) => goal.id !== id
+      )
     );
   }
 
@@ -185,18 +237,18 @@ function App() {
   const [
     netWorthHistory,
     setNetWorthHistory,
-  ] = useState<
-    NetWorthSnapshot[]
-  >(() => {
-    const saved =
-      localStorage.getItem(
-        "freedom-net-worth-history"
-      );
+  ] = useState<NetWorthSnapshot[]>(
+    () => {
+      const saved =
+        localStorage.getItem(
+          "freedom-net-worth-history"
+        );
 
-    return saved
-      ? JSON.parse(saved)
-      : initialNetWorthHistory;
-  });
+      return saved
+        ? JSON.parse(saved)
+        : initialNetWorthHistory;
+    }
+  );
 
   useEffect(() => {
     const today =
@@ -209,19 +261,16 @@ function App() {
         const existing =
           currentHistory.find(
             (snapshot) =>
-              snapshot.date ===
-              today
+              snapshot.date === today
           );
 
         if (existing) {
           return currentHistory.map(
             (snapshot) =>
-              snapshot.date ===
-              today
+              snapshot.date === today
                 ? {
                     ...snapshot,
-                    value:
-                      netWorth,
+                    value: netWorth,
                   }
                 : snapshot
           );
@@ -242,9 +291,7 @@ function App() {
   useEffect(() => {
     localStorage.setItem(
       "freedom-net-worth-history",
-      JSON.stringify(
-        netWorthHistory
-      )
+      JSON.stringify(netWorthHistory)
     );
   }, [netWorthHistory]);
 
@@ -257,102 +304,88 @@ function App() {
   const [
     monthlyBudget,
     setMonthlyBudget,
-  ] = useState<MonthlyBudget>(
-    () => {
-      const saved =
-        localStorage.getItem(
-          "freedom-budget"
-        );
+  ] = useState<MonthlyBudget>(() => {
+    const saved =
+      localStorage.getItem(
+        "freedom-budget"
+      );
 
-      return saved
-        ? JSON.parse(saved)
-        : initialMonthlyBudget;
-    }
-  );
+    return saved
+      ? JSON.parse(saved)
+      : initialMonthlyBudget;
+  });
 
   useEffect(() => {
     localStorage.setItem(
       "freedom-budget",
-      JSON.stringify(
-        monthlyBudget
-      )
+      JSON.stringify(monthlyBudget)
     );
   }, [monthlyBudget]);
 
   function handleAddExpense(
     expense: Expense
   ) {
-    setMonthlyBudget(
-      (current) => ({
-        ...current,
-        expenses: [
-          ...current.expenses,
-          expense,
-        ],
-      })
-    );
+    setMonthlyBudget((current) => ({
+      ...current,
+      expenses: [
+        ...current.expenses,
+        expense,
+      ],
+    }));
   }
 
   function handleDeleteExpense(
     id: number
   ) {
-    setMonthlyBudget(
-      (current) => ({
-        ...current,
-        expenses:
-          current.expenses.filter(
-            (expense) =>
-              expense.id !== id
-          ),
-      })
-    );
+    setMonthlyBudget((current) => ({
+      ...current,
+      expenses:
+        current.expenses.filter(
+          (expense) =>
+            expense.id !== id
+        ),
+    }));
   }
 
   function handleUpdateExpense(
     updatedExpense: Expense
   ) {
-    setMonthlyBudget(
-      (current) => ({
-        ...current,
-        expenses:
-          current.expenses.map(
-            (expense) =>
-              expense.id ===
-              updatedExpense.id
-                ? updatedExpense
-                : expense
-          ),
-      })
-    );
+    setMonthlyBudget((current) => ({
+      ...current,
+      expenses:
+        current.expenses.map(
+          (expense) =>
+            expense.id ===
+            updatedExpense.id
+              ? updatedExpense
+              : expense
+        ),
+    }));
   }
 
   function handleAddIncome(
     income: Income
   ) {
-    setMonthlyBudget(
-      (current) => ({
-        ...current,
-        incomes: [
-          ...current.incomes,
-          income,
-        ],
-      })
-    );
+    setMonthlyBudget((current) => ({
+      ...current,
+      incomes: [
+        ...current.incomes,
+        income,
+      ],
+    }));
   }
 
   function handleDeleteIncome(
     id: number
   ) {
-    setMonthlyBudget(
-      (current) => ({
-        ...current,
-        incomes:
-          current.incomes.filter(
-            (income) =>
-              income.id !== id
-          ),
-      })
-    );
+    setMonthlyBudget((current) => ({
+      ...current,
+      incomes:
+        current.incomes.filter(
+          (income) =>
+            income.id !== id
+        ),
+    }));
   }
 
   /*
@@ -365,9 +398,7 @@ function App() {
     <BrowserRouter>
       <div className="min-h-screen bg-[#050b16] text-white">
         <Sidebar
-          netWorth={
-            netWorth
-          }
+          netWorth={netWorth}
         />
 
         <div className="ml-64">
@@ -376,14 +407,11 @@ function App() {
               path="/"
               element={
                 <Dashboard
-                  netWorth={
-                    netWorth
-                  }
-                  portfolio={
-                    portfolio
-                  }
-                  goals={
-                    goals
+                  netWorth={netWorth}
+                  portfolio={portfolio}
+                  goals={goals}
+                  liabilities={
+                    liabilities
                   }
                   netWorthHistory={
                     netWorthHistory
@@ -394,7 +422,7 @@ function App() {
                   onAddExpense={
                     handleAddExpense
                   }
-                />
+/>
               }
             />
 
@@ -457,6 +485,26 @@ function App() {
                   }
                   onDeleteGoal={
                     handleDeleteGoal
+                  }
+                />
+              }
+            />
+
+            <Route
+              path="/liabilities"
+              element={
+                <Liabilities
+                  liabilities={
+                    liabilities
+                  }
+                  onAddLiability={
+                    handleAddLiability
+                  }
+                  onUpdateLiability={
+                    handleUpdateLiability
+                  }
+                  onDeleteLiability={
+                    handleDeleteLiability
                   }
                 />
               }

@@ -11,6 +11,7 @@ import { Header } from "../components/layout/Header";
 import { MetricCard } from "../components/dashboard/MetricCard";
 import { GoalsSection } from "../components/dashboard/GoalsSection";
 import { InvestmentSection } from "../components/dashboard/InvestmentSection";
+import { LiabilitiesSection } from "../components/dashboard/LiabilitiesSection";
 import { CashflowSection } from "../components/dashboard/CashflowSection";
 import { AddExpenseModal } from "../components/dashboard/AddExpenseModal";
 
@@ -28,12 +29,14 @@ import type {
 
 import type { Asset } from "../types/Asset";
 import type { Goal } from "../types/Goal";
+import type { Liability } from "../types/Liability";
 import type { NetWorthSnapshot } from "../types/NetWorthHistory";
 
 type DashboardProps = {
   netWorth: number;
   portfolio: Asset[];
   goals: Goal[];
+  liabilities: Liability[];
   netWorthHistory: NetWorthSnapshot[];
   monthlyBudget: MonthlyBudget;
   onAddExpense: (
@@ -45,6 +48,7 @@ export function Dashboard({
   netWorth,
   portfolio,
   goals,
+  liabilities,
   netWorthHistory,
   monthlyBudget,
   onAddExpense,
@@ -55,7 +59,9 @@ export function Dashboard({
   ] = useState(false);
 
   const levelProgress =
-    calculateLevelProgress(netWorth);
+    calculateLevelProgress(
+      netWorth
+    );
 
   const freedomTarget =
     3_000_000;
@@ -65,7 +71,8 @@ export function Dashboard({
       monthlyBudget.incomes
     );
 
-  const incomeTarget = 25_000;
+  const incomeTarget =
+    25_000;
 
   const savingsRate =
     calculateSavingsRate(
@@ -90,23 +97,14 @@ export function Dashboard({
       />
 
       <p className="mt-5 text-sm italic text-slate-500">
-        „Wielkie cele składają się
-        z małych, powtarzalnych
-        decyzji.”
+        „Wielkie cele składają
+        się z małych,
+        powtarzalnych decyzji.”
       </p>
 
       {/* METRICS */}
 
-      <section
-        className="
-          mt-6
-          grid
-          grid-cols-1
-          gap-4
-          md:grid-cols-2
-          xl:grid-cols-4
-        "
-      >
+      <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           title="Majątek netto"
           value={`${netWorth.toLocaleString(
@@ -185,6 +183,14 @@ export function Dashboard({
         portfolio={portfolio}
         history={
           netWorthHistory
+        }
+      />
+
+      {/* LIABILITIES */}
+
+      <LiabilitiesSection
+        liabilities={
+          liabilities
         }
       />
 
