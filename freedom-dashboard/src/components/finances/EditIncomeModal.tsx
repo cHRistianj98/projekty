@@ -1,4 +1,6 @@
-import { useState } from "react";
+import {
+  useState,
+} from "react";
 
 import {
   AlertCircle,
@@ -9,32 +11,40 @@ import type {
   Income,
 } from "../../types/Cashflow";
 
-type AddIncomeModalProps = {
+type EditIncomeModalProps = {
+  income: Income;
+
   onClose: () => void;
 
-  onAdd: (
+  onSave: (
     income: Income
   ) => void;
 };
 
-export function AddIncomeModal({
+export function EditIncomeModal({
+  income,
   onClose,
-  onAdd,
-}: AddIncomeModalProps) {
+  onSave,
+}: EditIncomeModalProps) {
   const [name, setName] =
-    useState("");
+    useState(income.name);
 
   const [amount, setAmount] =
-    useState("");
+    useState(
+      String(income.amount)
+    );
 
   const [
     recurring,
     setRecurring,
-  ] = useState(true);
+  ] = useState(
+    income.recurring
+  );
 
   const [date, setDate] =
     useState(
-      getTodayDate()
+      income.date ||
+        getTodayDate()
     );
 
   const [error, setError] =
@@ -79,11 +89,10 @@ export function AddIncomeModal({
       return;
     }
 
-    onAdd({
-      id: Date.now(),
+    onSave({
+      ...income,
 
-      name:
-        name.trim(),
+      name: name.trim(),
 
       amount:
         numericAmount,
@@ -92,23 +101,23 @@ export function AddIncomeModal({
 
       date,
     });
-
-    onClose();
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
 
+        {/* HEADER */}
+
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold">
-              Dodaj przychód
+              Edytuj przychód
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Dodaj nowe źródło
-              dochodu.
+              Zmień dane
+              przychodu.
             </p>
           </div>
 
@@ -120,6 +129,8 @@ export function AddIncomeModal({
             <X size={20} />
           </button>
         </div>
+
+        {/* FORM */}
 
         <form
           onSubmit={handleSubmit}
@@ -136,6 +147,8 @@ export function AddIncomeModal({
             </div>
           )}
 
+          {/* NAME */}
+
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-300">
               Nazwa
@@ -148,11 +161,11 @@ export function AddIncomeModal({
                   event.target.value
                 )
               }
-              placeholder="np. Wynagrodzenie"
-              autoFocus
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none placeholder:text-slate-600 focus:border-emerald-500"
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-emerald-500"
             />
           </div>
+
+          {/* AMOUNT */}
 
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-300">
@@ -170,8 +183,7 @@ export function AddIncomeModal({
                     event.target.value
                   )
                 }
-                placeholder="15000"
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 pr-12 outline-none placeholder:text-slate-600 focus:border-emerald-500"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 pr-12 outline-none focus:border-emerald-500"
               />
 
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-500">
@@ -180,10 +192,11 @@ export function AddIncomeModal({
             </div>
           </div>
 
+          {/* DATE */}
+
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-300">
-              Data pierwszego
-              przychodu
+              Data
             </label>
 
             <input
@@ -198,17 +211,20 @@ export function AddIncomeModal({
             />
 
             <p className="mt-1 text-xs text-slate-600">
-              Przy transakcji
-              cyklicznej ta data
-              określa również dzień
-              comiesięcznej reguły.
+              Zmiana daty może
+              przenieść przychód
+              do innego miesiąca.
             </p>
           </div>
+
+          {/* RECURRING */}
 
           <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
             <input
               type="checkbox"
-              checked={recurring}
+              checked={
+                recurring
+              }
               onChange={(event) =>
                 setRecurring(
                   event.target.checked
@@ -218,15 +234,19 @@ export function AddIncomeModal({
 
             <div>
               <div className="text-sm font-medium">
-                Powtarzaj co miesiąc
+                Powtarzaj co
+                miesiąc
               </div>
 
-              <div className="text-xs text-slate-500">
-                Utworzy regułę
-                cykliczną.
+              <div className="mt-1 text-xs text-slate-500">
+                Oznacz jako
+                przychód
+                cykliczny
               </div>
             </div>
           </label>
+
+          {/* ACTIONS */}
 
           <div className="flex justify-end gap-3 pt-2">
             <button
@@ -241,7 +261,7 @@ export function AddIncomeModal({
               type="submit"
               className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold hover:bg-emerald-500"
             >
-              Dodaj przychód
+              Zapisz zmiany
             </button>
           </div>
         </form>
@@ -251,8 +271,7 @@ export function AddIncomeModal({
 }
 
 function getTodayDate() {
-  return new Date()
-    .toLocaleDateString(
-      "sv-SE"
-    );
+  return new Date().toLocaleDateString(
+    "sv-SE"
+  );
 }

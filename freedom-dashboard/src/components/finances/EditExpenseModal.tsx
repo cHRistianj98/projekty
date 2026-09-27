@@ -2,7 +2,10 @@ import {
   useState,
 } from "react";
 
-import { X } from "lucide-react";
+import {
+  AlertCircle,
+  X,
+} from "lucide-react";
 
 import type {
   Expense,
@@ -11,8 +14,12 @@ import type {
 
 type EditExpenseModalProps = {
   expense: Expense;
+
   onClose: () => void;
-  onSave: (expense: Expense) => void;
+
+  onSave: (
+    expense: Expense
+  ) => void;
 };
 
 export function EditExpenseModal({
@@ -20,188 +27,211 @@ export function EditExpenseModal({
   onClose,
   onSave,
 }: EditExpenseModalProps) {
-
   const [name, setName] =
     useState(expense.name);
 
   const [amount, setAmount] =
-    useState(String(expense.amount));
+    useState(
+      String(expense.amount)
+    );
 
-  const [category, setCategory] =
+  const [
+    category,
+    setCategory,
+  ] =
     useState<ExpenseCategory>(
       expense.category
     );
 
-  const [recurring, setRecurring] =
-    useState(expense.recurring);
+  const [
+    recurring,
+    setRecurring,
+  ] = useState(
+    expense.recurring
+  );
+
+  const [date, setDate] =
+    useState(
+      expense.date ||
+        getTodayDate()
+    );
+
+  const [error, setError] =
+    useState("");
 
   function handleSubmit(
     event: React.FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
-    const numericAmount = Number(amount);
+    setError("");
+
+    const numericAmount =
+      Number(amount);
+
+    if (!name.trim()) {
+      setError(
+        "Podaj nazwę wydatku."
+      );
+
+      return;
+    }
 
     if (
-      !name.trim() ||
+      !Number.isFinite(
+        numericAmount
+      ) ||
       numericAmount <= 0
     ) {
+      setError(
+        "Kwota musi być większa od 0."
+      );
+
+      return;
+    }
+
+    if (!date) {
+      setError(
+        "Wybierz datę wydatku."
+      );
+
       return;
     }
 
     onSave({
       ...expense,
+
       name: name.trim(),
-      amount: numericAmount,
+
+      amount:
+        numericAmount,
+
       category,
+
       recurring,
+
+      date,
     });
   }
 
   return (
-    <div
-      className="
-        fixed inset-0 z-50
-        flex items-center justify-center
-        bg-black/70
-        backdrop-blur-sm
-      "
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
 
-      <div
-        className="
-          w-full max-w-md
-          rounded-2xl
-          border border-slate-700
-          bg-slate-900
-          p-6
-          shadow-2xl
-        "
-      >
+        {/* HEADER */}
 
-        <div className="
-          flex
-          items-center
-          justify-between
-        ">
-
+        <div className="flex items-center justify-between">
           <div>
-
             <h2 className="text-xl font-bold">
               Edytuj wydatek
             </h2>
 
-            <p className="
-              mt-1
-              text-sm
-              text-slate-500
-            ">
-              Zmień dane pozycji.
+            <p className="mt-1 text-sm text-slate-500">
+              Zmień dane
+              transakcji.
             </p>
-
           </div>
 
           <button
+            type="button"
             onClick={onClose}
-            className="
-              rounded-lg
-              p-2
-              text-slate-400
-              hover:bg-slate-800
-              hover:text-white
-            "
+            className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white"
           >
             <X size={20} />
           </button>
-
         </div>
+
+        {/* FORM */}
 
         <form
           onSubmit={handleSubmit}
           className="mt-6 space-y-5"
         >
+          {error && (
+            <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
+              <AlertCircle
+                size={18}
+                className="mt-0.5 shrink-0"
+              />
+
+              {error}
+            </div>
+          )}
+
+          {/* NAME */}
 
           <div>
-
-            <label className="
-              mb-2 block
-              text-sm font-medium
-              text-slate-300
-            ">
+            <label className="mb-2 block text-sm font-medium text-slate-300">
               Nazwa
             </label>
 
             <input
               value={name}
               onChange={(event) =>
-                setName(event.target.value)
+                setName(
+                  event.target.value
+                )
               }
-              className="
-                w-full
-                rounded-xl
-                border border-slate-700
-                bg-slate-950
-                px-4 py-3
-                outline-none
-                focus:border-blue-500
-              "
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
             />
-
           </div>
 
-          <div>
+          {/* AMOUNT */}
 
-            <label className="
-              mb-2 block
-              text-sm font-medium
-              text-slate-300
-            ">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-300">
               Kwota
             </label>
 
             <div className="relative">
-
               <input
                 type="number"
                 min="0"
                 step="0.01"
                 value={amount}
                 onChange={(event) =>
-                  setAmount(event.target.value)
+                  setAmount(
+                    event.target.value
+                  )
                 }
-                className="
-                  w-full
-                  rounded-xl
-                  border border-slate-700
-                  bg-slate-950
-                  px-4 py-3
-                  pr-12
-                  outline-none
-                  focus:border-blue-500
-                "
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 pr-12 outline-none focus:border-blue-500"
               />
 
-              <span className="
-                absolute
-                right-4 top-1/2
-                -translate-y-1/2
-                text-sm
-                text-slate-500
-              ">
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-500">
                 zł
               </span>
-
             </div>
-
           </div>
 
-          <div>
+          {/* DATE */}
 
-            <label className="
-              mb-2 block
-              text-sm font-medium
-              text-slate-300
-            ">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-300">
+              Data
+            </label>
+
+            <input
+              type="date"
+              value={date}
+              onChange={(event) =>
+                setDate(
+                  event.target.value
+                )
+              }
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
+            />
+
+            <p className="mt-1 text-xs text-slate-600">
+              Zmiana daty może
+              przenieść wydatek do
+              innego miesiąca.
+            </p>
+          </div>
+
+          {/* CATEGORY */}
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-300">
               Kategoria
             </label>
 
@@ -213,15 +243,7 @@ export function EditExpenseModal({
                     .value as ExpenseCategory
                 )
               }
-              className="
-                w-full
-                rounded-xl
-                border border-slate-700
-                bg-slate-950
-                px-4 py-3
-                outline-none
-                focus:border-blue-500
-              "
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
             >
               <option value="fixed">
                 Koszt stały
@@ -239,23 +261,16 @@ export function EditExpenseModal({
                 Cel
               </option>
             </select>
-
           </div>
 
-          <label
-            className="
-              flex cursor-pointer
-              items-center gap-3
-              rounded-xl
-              border border-slate-800
-              bg-slate-950/50
-              p-4
-            "
-          >
+          {/* RECURRING */}
 
+          <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
             <input
               type="checkbox"
-              checked={recurring}
+              checked={
+                recurring
+              }
               onChange={(event) =>
                 setRecurring(
                   event.target.checked
@@ -263,53 +278,46 @@ export function EditExpenseModal({
               }
             />
 
-            <span className="text-sm">
-              Powtarzaj co miesiąc
-            </span>
+            <div>
+              <div className="text-sm font-medium">
+                Powtarzaj co
+                miesiąc
+              </div>
 
+              <div className="mt-1 text-xs text-slate-500">
+                Oznacz jako
+                transakcję
+                cykliczną
+              </div>
+            </div>
           </label>
 
-          <div className="
-            flex
-            justify-end
-            gap-3
-            pt-2
-          ">
+          {/* ACTIONS */}
 
+          <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
               onClick={onClose}
-              className="
-                rounded-xl
-                px-5 py-3
-                text-sm font-semibold
-                text-slate-400
-                hover:bg-slate-800
-                hover:text-white
-              "
+              className="rounded-xl px-5 py-3 text-sm font-semibold text-slate-400 hover:bg-slate-800 hover:text-white"
             >
               Anuluj
             </button>
 
             <button
               type="submit"
-              className="
-                rounded-xl
-                bg-blue-600
-                px-5 py-3
-                text-sm font-semibold
-                hover:bg-blue-500
-              "
+              className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold hover:bg-blue-500"
             >
               Zapisz zmiany
             </button>
-
           </div>
-
         </form>
-
       </div>
-
     </div>
+  );
+}
+
+function getTodayDate() {
+  return new Date().toLocaleDateString(
+    "sv-SE"
   );
 }

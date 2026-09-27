@@ -1,4 +1,5 @@
 import {
+  CalendarDays,
   Pencil,
   Repeat2,
   Trash2,
@@ -32,11 +33,8 @@ export function ExpenseRow({
         hover:bg-slate-800/40
       "
     >
-
       <div>
-
         <div className="flex items-center gap-2">
-
           <span className="font-medium">
             {expense.name}
           </span>
@@ -47,19 +45,28 @@ export function ExpenseRow({
               className="text-slate-500"
             />
           )}
-
         </div>
 
-        <div className="mt-1 text-xs text-slate-600">
-          {expense.recurring
-            ? "Powtarzalny"
-            : "Jednorazowy"}
-        </div>
+        <div className="mt-1 flex items-center gap-2 text-xs text-slate-600">
+          <CalendarDays size={13} />
 
+          <span>
+            {expense.date
+              ? formatDate(expense.date)
+              : "Brak daty"}
+          </span>
+
+          <span>•</span>
+
+          <span>
+            {expense.recurring
+              ? "Powtarzalny"
+              : "Jednorazowy"}
+          </span>
+        </div>
       </div>
 
       <div className="flex items-center gap-5">
-
         <span className="font-semibold">
           {expense.amount.toLocaleString(
             "pl-PL"
@@ -68,8 +75,8 @@ export function ExpenseRow({
         </span>
 
         <div className="flex items-center gap-1">
-
           <button
+            type="button"
             onClick={onEdit}
             title="Edytuj"
             className="
@@ -85,6 +92,7 @@ export function ExpenseRow({
           </button>
 
           <button
+            type="button"
             onClick={onDelete}
             title="Usuń"
             className="
@@ -98,11 +106,17 @@ export function ExpenseRow({
           >
             <Trash2 size={17} />
           </button>
-
         </div>
-
       </div>
-
     </div>
   );
+}
+
+function formatDate(
+  date: string
+) {
+  const [year, month, day] =
+    date.split("-");
+
+  return `${day}.${month}.${year}`;
 }

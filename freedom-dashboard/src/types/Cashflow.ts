@@ -10,6 +10,13 @@ export type Expense = {
   amount: number;
   category: ExpenseCategory;
   recurring: boolean;
+  date: string;
+
+  /*
+   * Jeżeli transakcja pochodzi z reguły cyklicznej,
+   * przechowujemy tutaj ID tej reguły.
+   */
+  recurringRuleId?: number;
 };
 
 export type Income = {
@@ -17,6 +24,9 @@ export type Income = {
   name: string;
   amount: number;
   recurring: boolean;
+  date: string;
+
+  recurringRuleId?: number;
 };
 
 export type MonthlyBudget = {
