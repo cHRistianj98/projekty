@@ -245,11 +245,24 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
+  const [routerMode, setRouterMode] =
+    useState<"MONTHLY" | "EXTRA">("MONTHLY");
+
   const [routerAmount, setRouterAmount] =
     useState(10_000);
 
+  const monthlyRouterAmount = Math.max(
+    Math.round(engine.averageSurplus),
+    0
+  );
+
+  const activeRouterAmount =
+    routerMode === "MONTHLY"
+      ? monthlyRouterAmount
+      : routerAmount;
+
   const moneyPlan = routeMoney({
-    amount: routerAmount,
+    amount: activeRouterAmount,
     ...props,
   });
 
@@ -1173,47 +1186,140 @@ export function FreedomEngine(props: FreedomEngineProps) {
             <div className="flex items-center gap-2">
               <BrainCircuit size={20} className="text-violet-400" />
               <p className="text-xs font-black uppercase tracking-[0.2em] text-violet-400">
-                Freedom Intelligence 2.1
+                Freedom Intelligence 3.2
               </p>
             </div>
             <h2 className="mt-2 text-2xl font-black">Money Router</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-              Wpisz nową nadwyżkę. Router rozdzieli ją deterministycznie:
-              najpierw Safety Shield, potem Debt Attack, następnie cele HIGH → MEDIUM → LOW, a resztę skieruje na wzrost majątku.
+              Wybierz tryb miesięczny oparty o rolling cashflow albo zasymuluj jednorazową nadwyżkę.
+              Router najpierw zabezpiecza fundamenty, potem konkretne długi i miesięczne minimum celów z deadline'em.
             </p>
           </div>
 
-          <div className="w-full max-w-sm">
-            <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">
-              Mam dodatkowo
-            </label>
-            <div className="mt-2 flex items-center rounded-xl border border-slate-700 bg-[#08111f] px-4">
-              <input
-                type="number"
-                min={0}
-                step={500}
-                value={routerAmount}
-                onChange={(event) =>
-                  setRouterAmount(Math.max(Number(event.target.value) || 0, 0))
-                }
-                className="min-w-0 flex-1 bg-transparent py-3 text-lg font-black text-white outline-none"
-              />
-              <span className="text-sm font-black text-slate-500">zł</span>
+          <div className="w-full max-w-md">
+            <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-800 bg-[#08111f] p-1.5">
+              <button
+                type="button"
+                onClick={() => setRouterMode("MONTHLY")}
+                className={`rounded-lg px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.12em] transition ${
+                  routerMode === "MONTHLY"
+                    ? "bg-cyan-500/15 text-cyan-300 ring-1 ring-cyan-500/30"
+                    : "text-slate-500 hover:text-slate-300"
+                }`}
+              >
+                Monthly Plan
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setRouterMode("EXTRA")}
+                className={`rounded-lg px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.12em] transition ${
+                  routerMode === "EXTRA"
+                    ? "bg-violet-500/15 text-violet-300 ring-1 ring-violet-500/30"
+                    : "text-slate-500 hover:text-slate-300"
+                }`}
+              >
+                Extra Cash
+              </button>
             </div>
 
-            <div className="mt-2 flex flex-wrap gap-2">
-              {[5_000, 10_000, 25_000, 50_000].map((amount) => (
-                <button
-                  key={amount}
-                  type="button"
-                  onClick={() => setRouterAmount(amount)}
-                  className="rounded-lg border border-slate-800 bg-slate-900/50 px-2.5 py-1.5 text-[10px] font-black text-slate-400 transition hover:border-violet-500/30 hover:text-violet-300"
-                >
-                  {formatMoney(amount)}
-                </button>
-              ))}
-            </div>
+            {routerMode === "MONTHLY" ? (
+              <div className="mt-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-400">
+                  Rolling cashflow {engine.rollingMonths}M
+                </p>
+
+                <div className="mt-1 flex items-end justify-between gap-4">
+                  <div>
+                    <p className="text-2xl font-black text-white">
+                      {formatMoney(monthlyRouterAmount)}
+                      <span className="ml-1 text-sm text-slate-500">/ mies.</span>
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Pobierane automatycznie z aktualnych danych finansowych.
+                    </p>
+                  </div>
+
+                  <span className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-400">
+                    Live
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <>
+                <label className="mt-3 block text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">
+                  Mam dodatkowo
+                </label>
+
+                <div className="mt-2 flex items-center rounded-xl border border-slate-700 bg-[#08111f] px-4">
+                  <input
+                    type="number"
+                    min={0}
+                    step={500}
+                    value={routerAmount}
+                    onChange={(event) =>
+                      setRouterAmount(
+                        Math.max(Number(event.target.value) || 0, 0)
+                      )
+                    }
+                    className="min-w-0 flex-1 bg-transparent py-3 text-lg font-black text-white outline-none"
+                  />
+                  <span className="text-sm font-black text-slate-500">zł</span>
+                </div>
+
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {[5_000, 10_000, 25_000, 50_000].map((amount) => (
+                    <button
+                      key={amount}
+                      type="button"
+                      onClick={() => setRouterAmount(amount)}
+                      className="rounded-lg border border-slate-800 bg-slate-900/50 px-2.5 py-1.5 text-[10px] font-black text-slate-400 transition hover:border-violet-500/30 hover:text-violet-300"
+                    >
+                      {formatMoney(amount)}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
+        </div>
+
+        <div
+          className={`mt-6 flex flex-col justify-between gap-3 rounded-2xl border px-5 py-4 lg:flex-row lg:items-center ${
+            routerMode === "MONTHLY"
+              ? "border-cyan-500/20 bg-cyan-500/5"
+              : "border-violet-500/20 bg-violet-500/5"
+          }`}
+        >
+          <div>
+            <p
+              className={`text-[10px] font-black uppercase tracking-[0.16em] ${
+                routerMode === "MONTHLY"
+                  ? "text-cyan-400"
+                  : "text-violet-400"
+              }`}
+            >
+              {routerMode === "MONTHLY"
+                ? "Monthly Operating Mode"
+                : "One-Off Simulation"}
+            </p>
+
+            <p className="mt-1 font-black">
+              {routerMode === "MONTHLY"
+                ? `Rozdzielam aktualną miesięczną nadwyżkę ${formatMoney(
+                    monthlyRouterAmount
+                  )}.`
+                : `Symuluję jednorazowe rozdysponowanie ${formatMoney(
+                    routerAmount
+                  )}.`}
+            </p>
+          </div>
+
+          {routerMode === "MONTHLY" && (
+            <div className="text-xs text-slate-500">
+              Źródło: rolling cashflow {engine.rollingMonths}M
+            </div>
+          )}
         </div>
 
         <div className="mt-7 grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -1227,18 +1333,66 @@ export function FreedomEngine(props: FreedomEngineProps) {
             ))
           ) : (
             <div className="xl:col-span-3 rounded-2xl border border-dashed border-slate-700 bg-slate-900/20 p-6 text-center">
-              <p className="font-black text-slate-300">Wpisz kwotę większą od 0 zł.</p>
+              <p className="font-black text-slate-300">Brak dodatniej nadwyżki do rozdysponowania.</p>
               <p className="mt-1 text-sm text-slate-600">
-                Router pokaże kolejność wykorzystania następnej nadwyżki.
+                W trybie MONTHLY PLAN potrzebny jest dodatni rolling cashflow; w EXTRA CASH możesz wpisać własną kwotę.
               </p>
             </div>
           )}
         </div>
 
+        {moneyPlan.deadlineSummary.requiredMonthly > 0 && (
+          <div
+            className={`mt-6 rounded-2xl border p-5 ${
+              moneyPlan.deadlineSummary.onTrack
+                ? "border-emerald-500/20 bg-emerald-500/5"
+                : "border-rose-500/20 bg-rose-500/5"
+            }`}
+          >
+            <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+              <div>
+                <p
+                  className={`text-[10px] font-black uppercase tracking-[0.16em] ${
+                    moneyPlan.deadlineSummary.onTrack
+                      ? "text-emerald-400"
+                      : "text-rose-400"
+                  }`}
+                >
+                  Deadline Intelligence
+                </p>
+                <p className="mt-1 font-black">
+                  {moneyPlan.deadlineSummary.onTrack
+                    ? "Miesięczne minimum deadline'ów zabezpieczone"
+                    : `Brakuje ${formatMoney(
+                        moneyPlan.deadlineSummary.shortfall
+                      )} do miesięcznego minimum`}
+                </p>
+              </div>
+
+              <div className="text-sm text-slate-400">
+                Wymagane{" "}
+                <span className="font-black text-white">
+                  {formatMoney(
+                    moneyPlan.deadlineSummary.requiredMonthly
+                  )}
+                </span>
+                {" • "}przydzielone{" "}
+                <span className="font-black text-white">
+                  {formatMoney(
+                    moneyPlan.deadlineSummary.allocatedMonthly
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {moneyPlan.routes.length > 0 && (
           <div className="mt-6 rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-5">
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-400">
-              Plan dla {formatMoney(moneyPlan.amount)}
+              {routerMode === "MONTHLY" ? "Miesięczny plan" : "Plan dla"}{" "}
+              {formatMoney(moneyPlan.amount)}
+              {routerMode === "MONTHLY" ? " / mies." : ""}
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-sm font-black">
               {moneyPlan.routes.map((route, index) => (
@@ -1253,8 +1407,8 @@ export function FreedomEngine(props: FreedomEngineProps) {
         )}
 
         <p className="mt-4 text-xs leading-5 text-slate-600">
-          To reguła gry FREEDOM, nie indywidualna rekomendacja inwestycyjna.
-          Cele są sortowane według priorytetu, a przy tym samym priorytecie wcześniejszy deadline wygrywa. Router nadal nie uwzględnia oprocentowania poszczególnych długów.
+          MONTHLY PLAN korzysta z aktualnego rolling cashflow i pokazuje operacyjny podział nadwyżki na ten miesiąc.
+          EXTRA CASH pozostaje symulatorem jednorazowej kwoty. Cele z deadline'em dostają miesięczne minimum; przy niedoborze priorytet HIGH → MEDIUM → LOW rozstrzyga kolejność, a konkretne długi wybiera Debt Intelligence.
         </p>
       </section>
 
@@ -1763,6 +1917,22 @@ function MoneyRouteCard({
         {route.kind === "goal" && route.priority && (
           <span className="rounded-full border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-violet-400">
             {route.priority}
+          </span>
+        )}
+        {route.kind === "goal" && route.requiredMonthly !== undefined && (
+          <span
+            className={`rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${
+              route.fundingStatus === "FUNDED"
+                ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                : "border-rose-500/20 bg-rose-500/10 text-rose-400"
+            }`}
+          >
+            {route.fundingStatus === "FUNDED" ? "ON TRACK" : "SHORTFALL"}
+          </span>
+        )}
+        {route.kind === "debt" && route.interestRate !== undefined && (
+          <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-amber-400">
+            {route.interestRate.toLocaleString("pl-PL")}% • {route.debtAction}
           </span>
         )}
       </div>

@@ -3,6 +3,10 @@ import type { Goal, GoalPriority } from "../../types/Goal";
 import type { Liability } from "../../types/Liability";
 import type { MonthlyBudget } from "../../types/Cashflow";
 import { calculateFreedomEngine } from "../freedom/freedomEngine";
+import {
+  analyzeDebts,
+  type DebtAction,
+} from "./debtIntelligence";
 
 export type MoneyRouteKind =
   | "shield"
@@ -17,6 +21,12 @@ export type MoneyRoute = {
   reason: string;
   priority?: GoalPriority;
   goalId?: number;
+  liabilityId?: number;
+  interestRate?: number;
+  debtAction?: DebtAction;
+  requiredMonthly?: number;
+  fundingStatus?: "FUNDED" | "PARTIAL" | "NO_DEADLINE";
+  deadline?: string;
 };
 
 export type MoneyRouterInput = {
@@ -42,10 +52,9 @@ export function routeMoney(
   const engine =
     calculateFreedomEngine(input);
 
-  // 1. Safety Shield / Emergency Fund.
-  // Jeśli użytkownik ma aktywny cel typu EMERGENCY_FUND,
-  // to on staje się kanoniczną poduszką i NIE finansujemy
-  // osobno systemowego Safety Shield.
+  // 1. EMERGENCY FUND / SAFETY SHIELD
+  // Typed emergency goal is canonical, so we never finance
+  // the same safety buffer twice.
   const emergencyGoal = input.goals
     .filter(
       (goal) =>
@@ -103,7 +112,9 @@ export function routeMoney(
     remaining -= allocation;
   }
 
-  // 2. Debt Attack — zejście poniżej 10% aktywów brutto.
+  // 2. DEBT INTELLIGENCE
+  // Instead of one abstract Debt Attack bucket, allocate the
+  // debt budget to concrete liabilities in intelligence order.
   const totalDebt =
     input.liabilities.reduce(
       (sum, liability) =>
@@ -128,36 +139,160 @@ export function routeMoney(
     0
   );
 
-  if (remaining > 0 && debtGap > 0) {
+  let debtBudget = Math.min(
+    remaining,
+    debtGap
+  );
+
+  const debtInsights =
+    analyzeDebts(input.liabilities);
+
+  // 0% / low-cost KEEP debt is intentionally excluded from
+  // accelerated repayment. The router will not burn surplus
+  // merely to satisfy the old global 10% ratio.
+  const attackableDebts =
+    debtInsights.filter(
+      (insight) =>
+        insight.action !== "KEEP"
+    );
+
+  for (const insight of attackableDebts) {
+    if (
+      remaining <= 0 ||
+      debtBudget <= 0
+    ) {
+      break;
+    }
+
+    const liability =
+      insight.liability;
+
+    const outstanding =
+      Math.max(
+        liability.remainingAmount,
+        0
+      );
+
+    if (outstanding <= 0) {
+      continue;
+    }
+
     const allocation = Math.min(
       remaining,
-      debtGap
+      debtBudget,
+      outstanding
     );
 
     routes.push({
       kind: "debt",
-      title: "Debt Attack",
+      title: liability.name,
       amount: allocation,
-      reason: `Zejdź z zobowiązaniami do maks. 10% aktywów brutto. Do redukcji było ${formatMoney(
+      liabilityId: liability.id,
+      interestRate:
+        liability.interestRate,
+      debtAction: insight.action,
+      reason: buildDebtReason(
+        liability,
+        insight.action,
         debtGap
-      )}.`,
+      ),
     });
 
     remaining -= allocation;
+    debtBudget -= allocation;
   }
 
-  // 3. Goals — HIGH -> MEDIUM -> LOW.
-  // W ramach tego samego priorytetu wcześniejszy deadline wygrywa.
+  // 3. GOAL DEADLINE INTELLIGENCE
+  // Router 3.1 treats the entered amount as this month's available surplus.
+  // For goals with a deadline, it first reserves the monthly amount required
+  // to stay on schedule. If cash is insufficient, priority decides who gets
+  // funded first; within the same priority, earlier deadline wins.
   const activeGoals = input.goals
     .filter(
       (goal) =>
         goal.type !== "EMERGENCY_FUND" &&
         goal.targetAmount >
-        goal.currentAmount
-    )
+          goal.currentAmount
+    );
+
+  const deadlineGoals = activeGoals
+    .filter((goal) => Boolean(goal.targetDate))
+    .map((goal) => ({
+      goal,
+      requiredMonthly:
+        calculateRequiredMonthly(goal),
+    }))
+    .sort((a, b) =>
+      compareGoals(a.goal, b.goal)
+    );
+
+  let totalRequiredMonthly = 0;
+  let totalDeadlineAllocated = 0;
+
+  for (const item of deadlineGoals) {
+    if (remaining <= 0) break;
+
+    const goal = item.goal;
+    const gap = Math.max(
+      goal.targetAmount -
+        goal.currentAmount,
+      0
+    );
+
+    const requiredMonthly = Math.min(
+      item.requiredMonthly,
+      gap
+    );
+
+    if (requiredMonthly <= 0) {
+      continue;
+    }
+
+    totalRequiredMonthly +=
+      requiredMonthly;
+
+    const allocation = Math.min(
+      remaining,
+      requiredMonthly,
+      gap
+    );
+
+    const priority =
+      goal.priority ?? "MEDIUM";
+
+    routes.push({
+      kind: "goal",
+      title: goal.name,
+      amount: allocation,
+      priority,
+      goalId: goal.id,
+      requiredMonthly,
+      fundingStatus:
+        allocation >= requiredMonthly
+          ? "FUNDED"
+          : "PARTIAL",
+      deadline: goal.targetDate,
+      reason: buildDeadlineGoalReason(
+        goal,
+        priority,
+        gap,
+        requiredMonthly,
+        allocation
+      ),
+    });
+
+    remaining -= allocation;
+    totalDeadlineAllocated +=
+      allocation;
+  }
+
+  // Goals without a deadline still participate, but only after
+  // deadline obligations have been funded for this month.
+  const flexibleGoals = activeGoals
+    .filter((goal) => !goal.targetDate)
     .sort(compareGoals);
 
-  for (const goal of activeGoals) {
+  for (const goal of flexibleGoals) {
     if (remaining <= 0) break;
 
     const gap = Math.max(
@@ -182,6 +317,7 @@ export function routeMoney(
       amount: allocation,
       priority,
       goalId: goal.id,
+      fundingStatus: "NO_DEADLINE",
       reason: buildGoalReason(
         goal,
         priority,
@@ -192,24 +328,40 @@ export function routeMoney(
     remaining -= allocation;
   }
 
-  // 4. Reszta pracuje na Road To FREE.
+  // 4. ROAD TO FREE
   if (remaining > 0) {
     routes.push({
       kind: "invest",
       title: "Invest / Road To FREE",
       amount: remaining,
       reason:
-        "Poduszka, limit długu i aktywne cele zostały pokryte w tej symulacji — reszta może pracować na wzrost majątku.",
+        "Poduszka, kosztowne zobowiązania i aktywne cele zostały obsłużone w tej symulacji — reszta może pracować na wzrost majątku.",
     });
 
     remaining = 0;
   }
+
+  const deadlineShortfall = Math.max(
+    totalRequiredMonthly -
+      totalDeadlineAllocated,
+    0
+  );
 
   return {
     amount,
     routes,
     allocated: amount - remaining,
     unallocated: remaining,
+    deadlineSummary: {
+      requiredMonthly:
+        totalRequiredMonthly,
+      allocatedMonthly:
+        totalDeadlineAllocated,
+      shortfall:
+        deadlineShortfall,
+      onTrack:
+        deadlineShortfall <= 0,
+    },
   };
 }
 
@@ -277,6 +429,111 @@ function dateWeight(
     : Number.MAX_SAFE_INTEGER;
 }
 
+function buildDebtReason(
+  liability: Liability,
+  action: DebtAction,
+  totalDebtGap: number
+) {
+  const actionText = {
+    ATTACK: "AGGRESSIVE PAYDOWN",
+    CONSIDER: "CONSIDER OVERPAYMENT",
+    NORMAL: "NORMAL PAYDOWN",
+    KEEP: "LOW-COST DEBT",
+  }[action];
+
+  return `${actionText} • ${formatRate(
+    liability.interestRate
+  )}. Debt Intelligence wskazuje ten dług przed tańszymi zobowiązaniami. Globalnie do zejścia poniżej 10% aktywów było ${formatMoney(
+    totalDebtGap
+  )}.`;
+}
+
+function calculateRequiredMonthly(
+  goal: Goal
+) {
+  if (!goal.targetDate) {
+    return 0;
+  }
+
+  const gap = Math.max(
+    goal.targetAmount -
+      goal.currentAmount,
+    0
+  );
+
+  if (gap <= 0) {
+    return 0;
+  }
+
+  const months =
+    calculateMonthsToDeadline(
+      goal.targetDate
+    );
+
+  return Math.ceil(
+    gap / months
+  );
+}
+
+function calculateMonthsToDeadline(
+  targetDate: string
+) {
+  const target = new Date(
+    `${targetDate}T12:00:00`
+  );
+
+  const now = new Date();
+
+  if (
+    !Number.isFinite(
+      target.getTime()
+    )
+  ) {
+    return 1;
+  }
+
+  return Math.max(
+    1,
+    (target.getFullYear() -
+      now.getFullYear()) *
+      12 +
+      target.getMonth() -
+      now.getMonth()
+  );
+}
+
+function buildDeadlineGoalReason(
+  goal: Goal,
+  priority: GoalPriority,
+  gap: number,
+  requiredMonthly: number,
+  allocation: number
+) {
+  const deadline = new Date(
+    `${goal.targetDate}T12:00:00`
+  ).toLocaleDateString(
+    "pl-PL",
+    {
+      month: "long",
+      year: "numeric",
+    }
+  );
+
+  const status =
+    allocation >= requiredMonthly
+      ? "Tempo na ten miesiąc zabezpieczone."
+      : `Brakuje ${formatMoney(
+          requiredMonthly -
+            allocation
+        )} do miesięcznego minimum.`;
+
+  return `${priority} • deadline ${deadline} • wymagane ${formatMoney(
+    requiredMonthly
+  )}/mies. ${status} Do całego celu brakuje ${formatMoney(
+    gap
+  )}.`;
+}
+
 function buildGoalReason(
   goal: Goal,
   priority: GoalPriority,
@@ -301,6 +558,15 @@ function buildGoalReason(
   }. Do celu brakuje ${formatMoney(
     gap
   )}.`;
+}
+
+function formatRate(value: number) {
+  return `${value.toLocaleString(
+    "pl-PL",
+    {
+      maximumFractionDigits: 2,
+    }
+  )}%`;
 }
 
 function formatMoney(value: number) {

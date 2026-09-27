@@ -21,6 +21,7 @@ import { Budget } from "./pages/Budget";
 import { Analytics } from "./pages/Analytics";
 import { Achievements } from "./pages/Achievements";
 import { FreedomEngine } from "./pages/FreedomEngine";
+import { MonthlyReview } from "./pages/MonthlyReview";
 import { AchievementUnlockManager } from "./features/achievements/AchievementUnlockManager";
 
 import { initialMonthlyBudget } from "./data/monthlyBudget";
@@ -1129,6 +1130,20 @@ function App() {
       netWorth={
         netWorth
       }
+    />
+  }
+/>
+
+<Route
+  path="/review"
+  element={
+    <MonthlyReview
+      netWorth={netWorth}
+      portfolio={portfolio}
+      goals={goals}
+      liabilities={liabilities}
+      monthlyBudget={monthlyBudget}
+      netWorthHistory={netWorthHistory}
     />
   }
 />

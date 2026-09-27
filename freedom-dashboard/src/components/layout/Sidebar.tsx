@@ -9,6 +9,7 @@ import {
   Calculator,
   Trophy,
   BrainCircuit,
+  ClipboardCheck,
   Mountain,
 } from "lucide-react";
 
@@ -64,6 +65,11 @@ const menuItems = [
     name: "Analizy",
     icon: ChartPie,
     path: "/analytics",
+  },
+  {
+    name: "Review",
+    icon: ClipboardCheck,
+    path: "/review",
   },
   {
     name: "Symulator",
