@@ -22,6 +22,8 @@ export type Goal = {
   priority?: GoalPriority;
   type?: GoalType;
   color: string;
+  imageUrl?: string;
+  imagePosition?: "center" | "top" | "bottom";
 };
 
 export type GoalDisplay = Goal & {

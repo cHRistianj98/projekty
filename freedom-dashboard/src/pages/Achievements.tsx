@@ -288,10 +288,11 @@ export function Achievements(props: AchievementsProps) {
         <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-7">
           {achievements
             .filter((item) => item.category === "wealth")
-            .map((achievement) => (
+            .map((achievement, index) => (
               <WealthMilestone
                 key={achievement.id}
                 achievement={achievement}
+                artworkIndex={index}
               />
             ))}
         </div>
@@ -448,31 +449,64 @@ function AchievementCard({
 
 function WealthMilestone({
   achievement,
+  artworkIndex,
 }: {
   achievement: Achievement;
+  artworkIndex: number;
 }) {
   return (
-    <div className="text-center">
+    <div
+      className={`group relative min-h-[150px] overflow-hidden rounded-2xl border transition duration-300 hover:-translate-y-1 hover:shadow-xl ${
+        achievement.unlocked
+          ? "border-blue-400/40 shadow-blue-500/10"
+          : "border-slate-800"
+      }`}
+    >
       <div
-        className={`mx-auto flex h-14 w-14 items-center justify-center rounded-full border ${
-          achievement.unlocked
-            ? "border-blue-400 bg-blue-500/15 text-blue-400 shadow-lg shadow-blue-500/10"
-            : "border-slate-700 bg-slate-900 text-slate-600"
-        }`}
-      >
-        {achievement.unlocked ? (
-          <Check size={22} />
-        ) : (
-          <LockKeyhole size={18} />
-        )}
-      </div>
+        className="absolute inset-0 bg-no-repeat transition-transform duration-500 group-hover:scale-105"
+        style={{
+          backgroundImage: "url('/levels/levels.png')",
+          backgroundSize: "700% 100%",
+          backgroundPosition: `${(artworkIndex / 6) * 100}% center`,
+        }}
+      />
 
-      <p className="mt-3 text-sm font-black">
-        {formatCompactMoney(achievement.target)}
-      </p>
-      <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-600">
-        {achievement.name}
-      </p>
+      <div
+        className={`absolute inset-0 ${
+          achievement.unlocked
+            ? "bg-gradient-to-t from-[#06101f] via-[#06101f]/55 to-transparent"
+            : "bg-gradient-to-t from-[#050b16] via-[#050b16]/80 to-[#050b16]/45 grayscale-[55%]"
+        }`}
+      />
+
+      <div className="relative flex min-h-[150px] flex-col items-center justify-between p-3 text-center">
+        <div className="flex w-full justify-end">
+          <div
+            className={`flex h-8 w-8 items-center justify-center rounded-full border backdrop-blur-md ${
+              achievement.unlocked
+                ? "border-blue-400/40 bg-blue-500/20 text-blue-300"
+                : "border-slate-600/50 bg-black/35 text-slate-400"
+            }`}
+          >
+            {achievement.unlocked ? (
+              <Check size={16} />
+            ) : (
+              <LockKeyhole size={14} />
+            )}
+          </div>
+        </div>
+
+        <div className="w-full rounded-xl border border-white/10 bg-black/30 px-2 py-2 backdrop-blur-sm">
+          <p className="text-sm font-black text-white drop-shadow-lg">
+            {formatCompactMoney(achievement.target)}
+          </p>
+          <p className={`mt-1 text-[9px] font-black uppercase tracking-wider ${
+            achievement.unlocked ? "text-blue-300" : "text-slate-400"
+          }`}>
+            {achievement.name}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

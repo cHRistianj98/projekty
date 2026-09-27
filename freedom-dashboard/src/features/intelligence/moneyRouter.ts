@@ -27,6 +27,9 @@ export type MoneyRoute = {
   requiredMonthly?: number;
   fundingStatus?: "FUNDED" | "PARTIAL" | "NO_DEADLINE";
   deadline?: string;
+  deadlineShortfall?: number;
+  suggestedTarget?: number;
+  suggestedDeadline?: string;
 };
 
 export type MoneyRouterInput = {
@@ -226,7 +229,21 @@ export function routeMoney(
       compareGoals(a.goal, b.goal)
     );
 
-  let totalRequiredMonthly = 0;
+  // Router 3.3: requirement is calculated for ALL deadline goals before
+  // allocation starts. This fixes the old bug where requiredMonthly could be
+  // understated when cash ran out before the loop reached later goals.
+  const totalRequiredMonthly = deadlineGoals.reduce(
+    (sum, item) => {
+      const gap = Math.max(
+        item.goal.targetAmount - item.goal.currentAmount,
+        0
+      );
+
+      return sum + Math.min(item.requiredMonthly, gap);
+    },
+    0
+  );
+
   let totalDeadlineAllocated = 0;
 
   for (const item of deadlineGoals) {
@@ -247,9 +264,6 @@ export function routeMoney(
     if (requiredMonthly <= 0) {
       continue;
     }
-
-    totalRequiredMonthly +=
-      requiredMonthly;
 
     const allocation = Math.min(
       remaining,
@@ -272,6 +286,15 @@ export function routeMoney(
           ? "FUNDED"
           : "PARTIAL",
       deadline: goal.targetDate,
+      deadlineShortfall: Math.max(requiredMonthly - allocation, 0),
+      suggestedTarget:
+        allocation < requiredMonthly
+          ? calculateAffordableTarget(goal, allocation)
+          : undefined,
+      suggestedDeadline:
+        allocation < requiredMonthly
+          ? calculateAffordableDeadline(goal, allocation)
+          : undefined,
       reason: buildDeadlineGoalReason(
         goal,
         priority,
@@ -347,6 +370,45 @@ export function routeMoney(
     0
   );
 
+  const deadlineAdvisor = deadlineGoals.map((item) => {
+    const goal = item.goal;
+    const requiredMonthly = Math.min(
+      item.requiredMonthly,
+      Math.max(goal.targetAmount - goal.currentAmount, 0)
+    );
+
+    const route = routes.find(
+      (candidate) =>
+        candidate.kind === "goal" &&
+        candidate.goalId === goal.id
+    );
+
+    const allocatedMonthly = route?.amount ?? 0;
+    const shortfall = Math.max(
+      requiredMonthly - allocatedMonthly,
+      0
+    );
+
+    return {
+      goalId: goal.id,
+      goalName: goal.name,
+      priority: goal.priority ?? "MEDIUM",
+      deadline: goal.targetDate!,
+      requiredMonthly,
+      allocatedMonthly,
+      shortfall,
+      onTrack: shortfall <= 0,
+      suggestedTarget:
+        shortfall > 0
+          ? calculateAffordableTarget(goal, allocatedMonthly)
+          : undefined,
+      suggestedDeadline:
+        shortfall > 0
+          ? calculateAffordableDeadline(goal, allocatedMonthly)
+          : undefined,
+    };
+  });
+
   return {
     amount,
     routes,
@@ -362,6 +424,7 @@ export function routeMoney(
       onTrack:
         deadlineShortfall <= 0,
     },
+    deadlineAdvisor,
   };
 }
 
@@ -500,6 +563,50 @@ function calculateMonthsToDeadline(
       target.getMonth() -
       now.getMonth()
   );
+}
+
+function calculateAffordableTarget(
+  goal: Goal,
+  monthlyAllocation: number
+) {
+  const months = calculateMonthsToDeadline(
+    goal.targetDate!
+  );
+
+  return Math.min(
+    goal.targetAmount,
+    Math.round(
+      goal.currentAmount +
+        Math.max(monthlyAllocation, 0) * months
+    )
+  );
+}
+
+function calculateAffordableDeadline(
+  goal: Goal,
+  monthlyAllocation: number
+) {
+  if (monthlyAllocation <= 0) {
+    return undefined;
+  }
+
+  const gap = Math.max(
+    goal.targetAmount - goal.currentAmount,
+    0
+  );
+
+  const monthsNeeded = Math.max(
+    1,
+    Math.ceil(gap / monthlyAllocation)
+  );
+
+  const date = new Date();
+  date.setDate(1);
+  date.setMonth(date.getMonth() + monthsNeeded);
+
+  return `${date.getFullYear()}-${String(
+    date.getMonth() + 1
+  ).padStart(2, "0")}-01`;
 }
 
 function buildDeadlineGoalReason(

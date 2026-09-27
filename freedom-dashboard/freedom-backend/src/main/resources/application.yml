@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: freedom-backend
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/freedom
+    username: freedom
+    password: freedom
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+
+server:
+  port: 8080
+
+app:
+  jwt:
+    secret: "freedom-dev-secret-key-change-me-before-production-2026-super-secret"
+    expiration-minutes: 60

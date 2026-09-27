@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: freedom-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: freedom
+      POSTGRES_USER: freedom
+      POSTGRES_PASSWORD: freedom
+
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - freedom-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  freedom-postgres-data:

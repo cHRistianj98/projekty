@@ -1186,7 +1186,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
             <div className="flex items-center gap-2">
               <BrainCircuit size={20} className="text-violet-400" />
               <p className="text-xs font-black uppercase tracking-[0.2em] text-violet-400">
-                Freedom Intelligence 3.2
+                Freedom Intelligence 3.3
               </p>
             </div>
             <h2 className="mt-2 text-2xl font-black">Money Router</h2>
@@ -1384,6 +1384,134 @@ export function FreedomEngine(props: FreedomEngineProps) {
                 </span>
               </div>
             </div>
+          </div>
+        )}
+
+        {moneyPlan.deadlineSummary.requiredMonthly > 0 && (
+          <div
+            className={`mt-5 rounded-2xl border p-5 ${
+              moneyPlan.deadlineSummary.onTrack
+                ? "border-emerald-500/20 bg-emerald-500/5"
+                : "border-amber-500/20 bg-amber-500/5"
+            }`}
+          >
+            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+              <div>
+                <p
+                  className={`text-[10px] font-black uppercase tracking-[0.16em] ${
+                    moneyPlan.deadlineSummary.onTrack
+                      ? "text-emerald-400"
+                      : "text-amber-400"
+                  }`}
+                >
+                  Scenario Advisor
+                </p>
+                <p className="mt-1 text-lg font-black">
+                  {moneyPlan.deadlineSummary.onTrack
+                    ? "Plan deadline'ów jest wykonalny"
+                    : "Plan wymaga korekty"}
+                </p>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+                  {moneyPlan.deadlineSummary.onTrack
+                    ? `Po zabezpieczeniu miesięcznego minimum wszystkich deadline'ów zostaje ${formatMoney(
+                        Math.max(
+                          moneyPlan.amount -
+                            moneyPlan.deadlineSummary.allocatedMonthly,
+                          0
+                        )
+                      )} w całym planie do obsługi pozostałych priorytetów.`
+                    : `Do utrzymania wszystkich obecnych deadline'ów brakuje ${formatMoney(
+                        moneyPlan.deadlineSummary.shortfall
+                      )} miesięcznie. Poniżej masz konkretne warianty dla niedofinansowanych celów.`}
+                </p>
+              </div>
+
+              <div
+                className={`shrink-0 rounded-xl border px-4 py-3 ${
+                  moneyPlan.deadlineSummary.onTrack
+                    ? "border-emerald-500/20 bg-emerald-500/10"
+                    : "border-rose-500/20 bg-rose-500/10"
+                }`}
+              >
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                  Monthly gap
+                </p>
+                <p
+                  className={`mt-1 text-xl font-black ${
+                    moneyPlan.deadlineSummary.onTrack
+                      ? "text-emerald-400"
+                      : "text-rose-400"
+                  }`}
+                >
+                  {moneyPlan.deadlineSummary.onTrack
+                    ? "0 zł"
+                    : `-${formatMoney(
+                        moneyPlan.deadlineSummary.shortfall
+                      )}`}
+                </p>
+              </div>
+            </div>
+
+            {!moneyPlan.deadlineSummary.onTrack && (
+              <div className="mt-5 grid grid-cols-1 gap-3 xl:grid-cols-2">
+                {moneyPlan.deadlineAdvisor
+                  .filter((item) => !item.onTrack)
+                  .map((item) => (
+                    <div
+                      key={item.goalId}
+                      className="rounded-xl border border-slate-800 bg-[#08111f] p-4"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-black">{item.goalName}</p>
+                            <span className="rounded-full border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[9px] font-black uppercase text-violet-400">
+                              {item.priority}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-slate-600">
+                            wymagane {formatMoney(item.requiredMonthly)} / mies. • przydzielone {formatMoney(item.allocatedMonthly)}
+                          </p>
+                        </div>
+
+                        <p className="shrink-0 font-black text-rose-400">
+                          -{formatMoney(item.shortfall)}
+                        </p>
+                      </div>
+
+                      <div className="mt-4 space-y-2 text-xs leading-5 text-slate-400">
+                        <p>
+                          <span className="font-black text-cyan-400">A.</span>{" "}
+                          Zwiększ miesięczną nadwyżkę o{" "}
+                          <span className="font-black text-white">
+                            {formatMoney(item.shortfall)}
+                          </span>.
+                        </p>
+
+                        {item.suggestedDeadline && (
+                          <p>
+                            <span className="font-black text-violet-400">B.</span>{" "}
+                            Przy obecnym przydziale przesuń deadline mniej więcej na{" "}
+                            <span className="font-black text-white">
+                              {formatRouterDeadline(item.suggestedDeadline)}
+                            </span>.
+                          </p>
+                        )}
+
+                        {item.suggestedTarget !== undefined && (
+                          <p>
+                            <span className="font-black text-amber-400">C.</span>{" "}
+                            Przy obecnym deadline ustaw cel około{" "}
+                            <span className="font-black text-white">
+                              {formatMoney(item.suggestedTarget)}
+                            </span>.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -1867,6 +1995,16 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
+
+function formatRouterDeadline(value: string) {
+  return new Date(`${value}T12:00:00`).toLocaleDateString(
+    "pl-PL",
+    {
+      month: "long",
+      year: "numeric",
+    }
+  );
+}
 
 function MoneyRouteCard({
   route,

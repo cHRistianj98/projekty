@@ -23,11 +23,11 @@ import { Achievements } from "./pages/Achievements";
 import { FreedomEngine } from "./pages/FreedomEngine";
 import { MonthlyReview } from "./pages/MonthlyReview";
 import { AchievementUnlockManager } from "./features/achievements/AchievementUnlockManager";
+import { upsertMonthlySnapshot } from "./features/review/monthlySnapshot";
 
 import { initialMonthlyBudget } from "./data/monthlyBudget";
 import { initialPortfolio } from "./data/portfolio";
 import { initialNetWorthHistory } from "./data/netWorthHistory";
-import { initialGoals } from "./data/goals";
 import { initialLiabilities } from "./data/liabilities";
 import { initialBudgetPlans } from "./data/budgetPlans";
 import { initialRecurringTransactions } from "./data/recurringTransactions";
@@ -43,9 +43,11 @@ import type {
 
 import type { Asset } from "./types/Asset";
 import type { Goal } from "./types/Goal";
+import { goalApi } from "./api/goalApi";
 import type { Liability } from "./types/Liability";
 import type { NetWorthSnapshot } from "./types/NetWorthHistory";
 import type { MonthlyBudgetPlan } from "./types/Budget";
+import type { MonthlySnapshot } from "./types/MonthlySnapshot";
 
 import type {
   RecurringTransaction,
@@ -195,60 +197,112 @@ function App() {
 
   /*
    * =========================================================
-   * GOALS
+   * GOALS — SPRING BOOT API
+   * =========================================================
+   */
+
+  const [goals, setGoals] = useState<Goal[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadGoals() {
+      try {
+        const loadedGoals = await goalApi.getAll();
+
+        if (!cancelled) {
+          setGoals(loadedGoals);
+        }
+      } catch (error) {
+        console.error("Nie udało się pobrać celów z backendu:", error);
+      }
+    }
+
+    void loadGoals();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleAddGoal(goal: Goal) {
+    try {
+      const createdGoal = await goalApi.create(goal);
+
+      setGoals((current) => [
+        ...current,
+        createdGoal,
+      ]);
+    } catch (error) {
+      console.error("Nie udało się dodać celu:", error);
+      window.alert("Nie udało się zapisać celu w backendzie.");
+    }
+  }
+
+  async function handleUpdateGoal(updatedGoal: Goal) {
+    try {
+      const savedGoal = await goalApi.update(
+        updatedGoal.id,
+        updatedGoal
+      );
+
+      setGoals((current) =>
+        current.map((goal) =>
+          goal.id === savedGoal.id
+            ? savedGoal
+            : goal
+        )
+      );
+    } catch (error) {
+      console.error("Nie udało się zaktualizować celu:", error);
+      window.alert("Nie udało się zaktualizować celu w backendzie.");
+    }
+  }
+
+  async function handleDeleteGoal(id: number) {
+    try {
+      await goalApi.remove(id);
+
+      setGoals((current) =>
+        current.filter((goal) => goal.id !== id)
+      );
+    } catch (error) {
+      console.error("Nie udało się usunąć celu:", error);
+      window.alert("Nie udało się usunąć celu z backendu.");
+    }
+  }
+
+  /*
+   * =========================================================
+   * MONTHLY REVIEW SNAPSHOTS
    * =========================================================
    */
 
   const [
-    goals,
-    setGoals,
-  ] = useState<Goal[]>(() => {
-    const saved =
-      localStorage.getItem(
-        "freedom-goals"
-      );
+    monthlySnapshots,
+    setMonthlySnapshots,
+  ] = useState<MonthlySnapshot[]>(() => {
+    const saved = localStorage.getItem(
+      "freedom-monthly-snapshots"
+    );
 
-    return saved
-      ? JSON.parse(saved)
-      : initialGoals;
+    return saved ? JSON.parse(saved) : [];
   });
 
   useEffect(() => {
     localStorage.setItem(
-      "freedom-goals",
-      JSON.stringify(goals)
+      "freedom-monthly-snapshots",
+      JSON.stringify(monthlySnapshots)
     );
-  }, [goals]);
+  }, [monthlySnapshots]);
 
-  function handleAddGoal(
-    goal: Goal
+  function handleCloseMonth(
+    snapshot: MonthlySnapshot
   ) {
-    setGoals((current) => [
-      ...current,
-      goal,
-    ]);
-  }
-
-  function handleUpdateGoal(
-    updatedGoal: Goal
-  ) {
-    setGoals((current) =>
-      current.map((goal) =>
-        goal.id ===
-        updatedGoal.id
-          ? updatedGoal
-          : goal
-      )
-    );
-  }
-
-  function handleDeleteGoal(
-    id: number
-  ) {
-    setGoals((current) =>
-      current.filter(
-        (goal) =>
-          goal.id !== id
+    setMonthlySnapshots((current) =>
+      upsertMonthlySnapshot(
+        current,
+        snapshot
       )
     );
   }
@@ -882,30 +936,42 @@ function App() {
    * =========================================================
    */
 
-  function handleLoadDemoData() {
+  async function handleLoadDemoData() {
     const shouldLoad = window.confirm(
-      "Załadować dane demo? Obecne dane finansowe w localStorage zostaną zastąpione."
+      "Załadować dane demo? Obecne dane finansowe zostaną zastąpione."
     );
 
     if (!shouldLoad) {
       return;
     }
 
-    setPortfolio(demoPortfolio);
-    setLiabilities(demoLiabilities);
-    setGoals(demoGoals);
-    setMonthlyBudget(demoMonthlyBudget);
-    setNetWorthHistory(demoNetWorthHistory);
-    setRecurringTransactions(demoRecurringTransactions);
-
-    // Budget plans zostawiamy puste w demo, żeby nie mieszać planu z realnym cashflow.
-    setBudgetPlans([]);
-
-    window.setTimeout(() => {
-      window.alert(
-        "Dane demo załadowane. FREEDOM ma teraz 6 miesięcy historii do testowania."
+    try {
+      await Promise.all(
+        goals.map((goal) => goalApi.remove(goal.id))
       );
-    }, 0);
+
+      const createdDemoGoals = await Promise.all(
+        demoGoals.map((goal) => goalApi.create(goal))
+      );
+
+      setPortfolio(demoPortfolio);
+      setLiabilities(demoLiabilities);
+      setGoals(createdDemoGoals);
+      setMonthlyBudget(demoMonthlyBudget);
+      setNetWorthHistory(demoNetWorthHistory);
+      setMonthlySnapshots([]);
+      setRecurringTransactions(demoRecurringTransactions);
+
+      // Budget plans zostawiamy puste w demo, żeby nie mieszać planu z realnym cashflow.
+      setBudgetPlans([]);
+
+      window.alert(
+        "Dane demo załadowane. Cele zostały zapisane w PostgreSQL."
+      );
+    } catch (error) {
+      console.error("Nie udało się załadować danych demo:", error);
+      window.alert("Nie udało się załadować danych demo.");
+    }
   }
 
   /*
@@ -984,6 +1050,9 @@ function App() {
                   }
                   monthlyBudget={
                     monthlyBudget
+                  }
+                  monthlySnapshots={
+                    monthlySnapshots
                   }
                   onAddExpense={
                     handleAddExpense
@@ -1144,6 +1213,8 @@ function App() {
       liabilities={liabilities}
       monthlyBudget={monthlyBudget}
       netWorthHistory={netWorthHistory}
+      monthlySnapshots={monthlySnapshots}
+      onCloseMonth={handleCloseMonth}
     />
   }
 />

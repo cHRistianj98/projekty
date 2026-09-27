@@ -9,6 +9,11 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
+  ClipboardCheck,
+  CheckCircle2,
+  Circle,
+  CalendarCheck,
+  LockKeyhole,
   Gem,
   Gauge,
   Rocket,
@@ -35,6 +40,7 @@ import {
 
 import { calculateFreedomEngine } from "../features/freedom/freedomEngine";
 import { getFreedomMissions } from "../features/missions/missionEngine";
+import { routeMoney } from "../features/intelligence/moneyRouter";
 
 import type {
   Expense,
@@ -46,6 +52,7 @@ import type { Asset } from "../types/Asset";
 import type { Goal } from "../types/Goal";
 import type { Liability } from "../types/Liability";
 import type { NetWorthSnapshot } from "../types/NetWorthHistory";
+import type { MonthlySnapshot } from "../types/MonthlySnapshot";
 
 type DashboardProps = {
   netWorth: number;
@@ -54,6 +61,7 @@ type DashboardProps = {
   liabilities: Liability[];
   netWorthHistory: NetWorthSnapshot[];
   monthlyBudget: MonthlyBudget;
+  monthlySnapshots: MonthlySnapshot[];
 
   onAddExpense: (
     expense: Expense
@@ -140,6 +148,7 @@ export function Dashboard({
   liabilities,
   netWorthHistory,
   monthlyBudget,
+  monthlySnapshots,
   onAddExpense,
 }: DashboardProps) {
   const [
@@ -456,6 +465,140 @@ export function Dashboard({
     ) ??
     null;
 
+  const monthlyRouterAmount = Math.max(Math.round(freedomEngine.averageSurplus), 0);
+
+  const moneyPlan = routeMoney({
+    amount: monthlyRouterAmount,
+    netWorth,
+    portfolio,
+    goals,
+    liabilities,
+    monthlyBudget,
+  });
+
+  const latestClosedSnapshot = [...monthlySnapshots]
+    .sort((a, b) => a.month.localeCompare(b.month))
+    .at(-1);
+
+  const previousClosedSnapshot = latestClosedSnapshot
+    ? [...monthlySnapshots]
+        .filter((snapshot) => snapshot.month < latestClosedSnapshot.month)
+        .sort((a, b) => a.month.localeCompare(b.month))
+        .at(-1)
+    : undefined;
+
+  const latestReviewNetWorthChange =
+    latestClosedSnapshot && previousClosedSnapshot
+      ? latestClosedSnapshot.wealth.netWorth - previousClosedSnapshot.wealth.netWorth
+      : null;
+
+  const latestReviewVerdict = latestClosedSnapshot
+    ? getReviewVerdict(
+        latestClosedSnapshot.cashflow.savingsRate,
+        latestClosedSnapshot.cashflow.surplus,
+        latestReviewNetWorthChange
+      )
+    : null;
+
+  const currentMonthSnapshot = monthlySnapshots.find(
+    (snapshot) => snapshot.month === currentMonth
+  );
+
+  const hasCurrentMonthTransactions =
+    selectedIncomes.length + selectedExpenses.length > 0;
+
+  const hasCurrentMonthIncome =
+    selectedIncomes.length > 0;
+
+  const hasCurrentNetWorthSnapshot =
+    netWorthHistory.some(
+      (snapshot) => snapshot.date.slice(0, 7) === currentMonth
+    );
+
+  const monthClosed = Boolean(currentMonthSnapshot);
+
+  const monthEnd = getMonthEnd(currentMonth);
+  const daysLeftInMonth = Math.max(
+    Math.ceil(
+      (monthEnd.getTime() - new Date().getTime()) /
+        (1000 * 60 * 60 * 24)
+    ),
+    0
+  );
+
+  const monthlyCycleSteps = [
+    {
+      label: "PLAN",
+      done: true,
+      active: false,
+    },
+    {
+      label: "TRACK",
+      done: hasCurrentMonthTransactions,
+      active:
+        !monthClosed &&
+        hasCurrentMonthTransactions,
+    },
+    {
+      label: "REVIEW",
+      done:
+        hasCurrentMonthIncome &&
+        hasCurrentNetWorthSnapshot,
+      active:
+        !monthClosed &&
+        hasCurrentMonthIncome &&
+        hasCurrentNetWorthSnapshot,
+    },
+    {
+      label: "CLOSE MONTH",
+      done: monthClosed,
+      active:
+        !monthClosed &&
+        hasCurrentMonthIncome &&
+        hasCurrentNetWorthSnapshot,
+    },
+    {
+      label: "ROUTE MONEY",
+      done: monthClosed,
+      active: monthClosed,
+    },
+  ];
+
+  const monthEndChecklist = [
+    {
+      label: "Transakcje zaksięgowane",
+      detail: `${selectedIncomes.length + selectedExpenses.length} transakcji w miesiącu`,
+      done: hasCurrentMonthTransactions,
+    },
+    {
+      label: "Dochód zaksięgowany",
+      detail: hasCurrentMonthIncome
+        ? formatMoney(income)
+        : "Brak przychodu w bieżącym miesiącu",
+      done: hasCurrentMonthIncome,
+    },
+    {
+      label: "Net Worth zaktualizowany",
+      detail: hasCurrentNetWorthSnapshot
+        ? formatMoney(netWorth)
+        : "Brak snapshotu Net Worth dla tego miesiąca",
+      done: hasCurrentNetWorthSnapshot,
+    },
+    {
+      label: "Monthly Review zamknięty",
+      detail: monthClosed
+        ? "Pełny snapshot miesiąca jest zamrożony"
+        : "Przejdź do Review i użyj CLOSE MONTH",
+      done: monthClosed,
+    },
+  ];
+
+  const readyToClose =
+    hasCurrentMonthTransactions &&
+    hasCurrentMonthIncome &&
+    hasCurrentNetWorthSnapshot &&
+    !monthClosed;
+
   const currentLevel =
     findFreedomLevel(
       effectiveNetWorth
@@ -592,132 +735,290 @@ export function Dashboard({
       </section>
 
       {/* =====================================
-          DASHBOARD 3.0 — COMMAND CENTER
+          DASHBOARD 4.0 — COMMAND CENTER
       ====================================== */}
 
       {isCurrentMonth && (
         <section className="mt-6 overflow-hidden rounded-3xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/5 via-[#0b1322] to-[#08111f] p-6">
-          <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-center">
+          <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
             <div>
               <div className="flex items-center gap-2">
-                <Gauge
-                  size={18}
-                  className="text-cyan-400"
-                />
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-400">
-                  Command Center 3.0
-                </p>
+                <Gauge size={18} className="text-cyan-400" />
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-400">Command Center 4.0</p>
               </div>
-
-              <h2 className="mt-2 text-2xl font-black">
-                Twój status FREEDOM
-              </h2>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Jedno miejsce: poziom gracza, kondycja finansowa, misja i obecna trajektoria.
-              </p>
+              <h2 className="mt-2 text-2xl font-black text-white">Stan → progres → następny ruch → trajektoria</h2>
+              <p className="mt-1 text-sm text-slate-500">Najważniejsze informacje z całego FREEDOM na jednym ekranie.</p>
             </div>
-
             <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-400">
-                Do celu FREE
-              </p>
-              <p className="mt-1 text-lg font-black text-white">
-                {formatMoney(
-                  Math.max(
-                    3_000_000 - netWorth,
-                    0
-                  )
-                )}
-              </p>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-400">Do FREE</p>
+              <p className="mt-1 text-lg font-black text-white">{formatMoney(Math.max(3_000_000 - netWorth, 0))}</p>
             </div>
           </div>
 
           <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <CommandCard
-              icon={<Target size={19} />}
-              label="Player Level"
-              value={`LVL ${playerLevel.level} · ${playerLevel.name}`}
+            <CommandCard icon={<Gem size={19} />} label="Net Worth" value={formatMoney(netWorth)}
+              detail={netWorthChange !== null ? `${formatSignedMoney(netWorthChange)} w tym miesiącu` : `${formatMoney(totalAssets)} aktywów · ${formatMoney(totalLiabilities)} długu`}
+              accent="cyan" progress={Math.min((netWorth / 3_000_000) * 100, 100)} />
+            <CommandCard icon={<Target size={19} />} label="Player Level" value={`LVL ${playerLevel.level} · ${playerLevel.name}`}
               detail={`${totalXp.toLocaleString("pl-PL")} XP · ${playerLevel.remainingXp.toLocaleString("pl-PL")} XP do następnego`}
-              accent="violet"
-              progress={playerLevel.progress}
-            />
+              accent="violet" progress={playerLevel.progress} />
+            <CommandCard icon={<ShieldCheck size={19} />} label="Primary Mission"
+              value={primaryMission ? primaryMission.title : "Brak aktywnej misji"}
+              detail={primaryMission ? `${primaryMission.progress.toFixed(0)}% · ${primaryMission.footer}` : "Freedom Engine nie wykrył aktywnego priorytetu."}
+              accent="amber" progress={primaryMission ? primaryMission.progress : 100} />
+            <CommandCard icon={<Rocket size={19} />} label="Current Trajectory"
+              value={freedomEngine.projectedFreedomDate ? freedomEngine.projectedFreedomDate : freedomEngine.yearsToFreedom !== null ? `${freedomEngine.yearsToFreedom.toFixed(1)} lat` : "Brak trajektorii"}
+              detail={`Rolling cashflow ${formatSignedMoney(freedomEngine.averageSurplus)} / mies. · Score ${freedomEngine.freedomScore}/100`}
+              accent="emerald" progress={Math.min((netWorth / 3_000_000) * 100, 100)} />
+          </div>
 
-            <CommandCard
-              icon={<Gauge size={19} />}
-              label="Freedom Score"
-              value={`${freedomEngine.freedomScore}/100`}
-              detail={`${freedomEngine.dataConfidence} data confidence`}
-              accent="cyan"
-              progress={freedomEngine.freedomScore}
-            />
+          <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_1fr]">
+            <div className="rounded-2xl border border-slate-800 bg-[#07101d] p-5">
+              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-400">Your Next Move</p>
+                  <h3 className="mt-1 text-lg font-black text-white">Money Router · {formatMoney(monthlyRouterAmount)} / mies.</h3>
+                  <p className="mt-1 text-xs text-slate-600">Na podstawie rolling cashflow z Freedom Engine.</p>
+                </div>
+                {moneyPlan.deadlineSummary.requiredMonthly > 0 && (
+                  <div className={`rounded-xl border px-3 py-2 text-right ${moneyPlan.deadlineSummary.onTrack ? "border-emerald-500/20 bg-emerald-500/10" : "border-rose-500/20 bg-rose-500/10"}`}>
+                    <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Deadline gap</p>
+                    <p className={`mt-0.5 font-black ${moneyPlan.deadlineSummary.onTrack ? "text-emerald-400" : "text-rose-400"}`}>
+                      {moneyPlan.deadlineSummary.onTrack ? "ON TRACK" : `-${formatMoney(moneyPlan.deadlineSummary.shortfall)} / mies.`}
+                    </p>
+                  </div>
+                )}
+              </div>
 
-            <CommandCard
-              icon={<Rocket size={19} />}
-              label="Current Trajectory"
-              value={
-                freedomEngine.projectedFreedomDate
-                  ? freedomEngine.projectedFreedomDate
-                  : freedomEngine.yearsToFreedom !== null
-                    ? `${freedomEngine.yearsToFreedom.toFixed(1)} lat`
-                    : "Brak trajektorii"
-              }
-              detail={`Rolling cashflow ${formatSignedMoney(
-                freedomEngine.averageSurplus
-              )} / mies.`}
-              accent="emerald"
-              progress={Math.min(
-                (netWorth / 3_000_000) * 100,
-                100
+              {moneyPlan.routes.length > 0 ? (
+                <div className="mt-4 space-y-2">
+                  {moneyPlan.routes.slice(0, 4).map((route, index) => (
+                    <div key={`${route.kind}-${route.goalId ?? route.liabilityId ?? index}`} className="flex items-center justify-between gap-4 rounded-xl border border-slate-800 bg-slate-900/40 px-4 py-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black text-slate-600">#{index + 1}</span>
+                          <p className="truncate text-sm font-black text-slate-300">{route.title}</p>
+                        </div>
+                        {route.fundingStatus === "PARTIAL" && <p className="mt-1 text-[10px] font-black uppercase tracking-[0.1em] text-rose-400">Shortfall</p>}
+                      </div>
+                      <p className="shrink-0 font-black text-cyan-400">{formatMoney(route.amount)}</p>
+                    </div>
+                  ))}
+                  {moneyPlan.routes.length > 4 && <p className="pt-1 text-xs text-slate-600">+ {moneyPlan.routes.length - 4} kolejnych pozycji w Freedom Engine</p>}
+                </div>
+              ) : (
+                <p className="mt-4 rounded-xl border border-dashed border-slate-800 p-4 text-sm text-slate-500">Brak dodatniej nadwyżki do rozdysponowania.</p>
               )}
-            />
+            </div>
 
-            <CommandCard
-              icon={<ShieldCheck size={19} />}
-              label="Primary Mission"
-              value={
-                primaryMission
-                  ? primaryMission.title
-                  : "Brak aktywnej misji"
-              }
-              detail={
-                primaryMission
-                  ? `${primaryMission.progress.toFixed(0)}% · ${primaryMission.footer}`
-                  : "Freedom Engine nie wykrył aktywnego priorytetu."
-              }
-              accent="amber"
-              progress={
-                primaryMission
-                  ? primaryMission.progress
-                  : 100
-              }
-            />
+            <div className="rounded-2xl border border-slate-800 bg-[#07101d] p-5">
+              <div className="flex items-center gap-2">
+                <ClipboardCheck size={17} className="text-violet-400" />
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-400">Last Review</p>
+              </div>
+              {latestClosedSnapshot ? (
+                <>
+                  <div className="mt-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                    <div>
+                      <p className="text-lg font-black capitalize text-white">{formatMonth(latestClosedSnapshot.month)}</p>
+                      <p className="mt-1 text-xs text-slate-600">Zamknięty snapshot · {latestClosedSnapshot.player.totalXp.toLocaleString("pl-PL")} XP</p>
+                    </div>
+                    {latestReviewVerdict && <span className={`rounded-lg border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.1em] ${latestReviewVerdict.className}`}>{latestReviewVerdict.label}</span>}
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <SmallCommandStat label="Net Worth" value={formatMoney(latestClosedSnapshot.wealth.netWorth)} />
+                    <SmallCommandStat label="Savings Rate" value={`${latestClosedSnapshot.cashflow.savingsRate.toFixed(1)}%`} />
+                    <SmallCommandStat label="Nadwyżka" value={formatSignedMoney(latestClosedSnapshot.cashflow.surplus)} />
+                    <SmallCommandStat label="Zmiana NW" value={latestReviewNetWorthChange !== null ? formatSignedMoney(latestReviewNetWorthChange) : "Pierwszy snapshot"} />
+                  </div>
+                </>
+              ) : (
+                <div className="mt-4 rounded-xl border border-dashed border-slate-800 p-5">
+                  <p className="font-black text-slate-300">Brak zamkniętego miesiąca.</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">Zamknij miesiąc w Review, a Dashboard zacznie pokazywać ostatni zamrożony wynik.</p>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="mt-5 flex items-center gap-3">
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400"
-                style={{
-                  width: `${Math.min(
-                    (netWorth /
-                      3_000_000) *
-                      100,
-                    100
-                  )}%`,
-                }}
-              />
+              <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400" style={{ width: `${Math.min((netWorth / 3_000_000) * 100, 100)}%` }} />
+            </div>
+            <span className="shrink-0 text-xs font-black text-cyan-400">{Math.min((netWorth / 3_000_000) * 100, 100).toFixed(1)}% FREE</span>
+          </div>
+        </section>
+      )}
+
+      {/* =====================================
+          MONTHLY CYCLE 1.0
+      ====================================== */}
+
+      {isCurrentMonth && (
+        <section className="mt-6 rounded-3xl border border-slate-800 bg-[#09111f] p-6">
+          <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
+            <div>
+              <div className="flex items-center gap-2 text-blue-400">
+                <CalendarCheck size={18} />
+                <p className="text-xs font-black uppercase tracking-[0.18em]">
+                  Monthly Cycle 1.0
+                </p>
+              </div>
+              <h2 className="mt-2 text-2xl font-black capitalize text-white">
+                {formatMonth(currentMonth)}
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Jeden proces: planuj → śledź → przejrzyj → zamknij → rozdysponuj.
+              </p>
             </div>
 
-            <span className="shrink-0 text-xs font-black text-cyan-400">
-              {Math.min(
-                (netWorth /
-                  3_000_000) *
-                  100,
-                100
-              ).toFixed(1)}
-              % FREE
-            </span>
+            <div className={`rounded-xl border px-4 py-3 ${
+              monthClosed
+                ? "border-emerald-500/20 bg-emerald-500/10"
+                : readyToClose
+                  ? "border-cyan-500/20 bg-cyan-500/10"
+                  : "border-slate-700 bg-slate-900/60"
+            }`}>
+              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                Status miesiąca
+              </p>
+              <p className={`mt-1 font-black ${
+                monthClosed
+                  ? "text-emerald-400"
+                  : readyToClose
+                    ? "text-cyan-400"
+                    : "text-slate-300"
+              }`}>
+                {monthClosed
+                  ? "CLOSED 🔒"
+                  : readyToClose
+                    ? "READY TO CLOSE"
+                    : `${daysLeftInMonth} dni do końca`}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-2 gap-2 md:grid-cols-5">
+            {monthlyCycleSteps.map((step, index) => (
+              <div
+                key={step.label}
+                className={`rounded-xl border p-3 ${
+                  step.done
+                    ? "border-emerald-500/20 bg-emerald-500/5"
+                    : step.active
+                      ? "border-cyan-500/30 bg-cyan-500/10"
+                      : "border-slate-800 bg-slate-900/30"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[9px] font-black text-slate-600">
+                    0{index + 1}
+                  </span>
+                  {step.done ? (
+                    <CheckCircle2 size={15} className="text-emerald-400" />
+                  ) : step.active ? (
+                    <Circle size={15} className="fill-cyan-400 text-cyan-400" />
+                  ) : (
+                    <Circle size={15} className="text-slate-700" />
+                  )}
+                </div>
+                <p className={`mt-2 text-[10px] font-black uppercase tracking-[0.1em] ${
+                  step.done
+                    ? "text-emerald-400"
+                    : step.active
+                      ? "text-cyan-400"
+                      : "text-slate-600"
+                }`}>
+                  {step.label}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-2xl border border-slate-800 bg-[#07101d] p-5">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                Month End Checklist
+              </p>
+
+              <div className="mt-4 space-y-2">
+                {monthEndChecklist.map((item) => (
+                  <div
+                    key={item.label}
+                    className="flex items-start gap-3 rounded-xl border border-slate-800 bg-slate-900/30 p-3"
+                  >
+                    {item.done ? (
+                      <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-emerald-400" />
+                    ) : (
+                      <Circle size={17} className="mt-0.5 shrink-0 text-slate-700" />
+                    )}
+                    <div>
+                      <p className={`text-sm font-black ${
+                        item.done ? "text-slate-200" : "text-slate-500"
+                      }`}>
+                        {item.label}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-slate-600">
+                        {item.detail}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className={`rounded-2xl border p-5 ${
+              monthClosed
+                ? "border-emerald-500/20 bg-emerald-500/5"
+                : readyToClose
+                  ? "border-cyan-500/20 bg-cyan-500/5"
+                  : "border-slate-800 bg-[#07101d]"
+            }`}>
+              <div className="flex items-center gap-2">
+                <LockKeyhole
+                  size={17}
+                  className={
+                    monthClosed
+                      ? "text-emerald-400"
+                      : readyToClose
+                        ? "text-cyan-400"
+                        : "text-slate-600"
+                  }
+                />
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                  Next Action
+                </p>
+              </div>
+
+              <p className="mt-3 text-xl font-black text-white">
+                {monthClosed
+                  ? "Miesiąc zamknięty"
+                  : readyToClose
+                    ? "Czas na Monthly Review"
+                    : "Uzupełniaj miesiąc"}
+              </p>
+
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                {monthClosed
+                  ? `Snapshot jest zamrożony. Money Router ma ${formatMoney(monthlyRouterAmount)} miesięcznej nadwyżki do rozdysponowania.`
+                  : readyToClose
+                    ? "Podstawowe dane są gotowe. Otwórz Review, sprawdź miesiąc i użyj CLOSE MONTH."
+                    : "Księguj transakcje i aktualizuj Net Worth. FREEDOM sam pokaże, kiedy miesiąc będzie gotowy do zamknięcia."}
+              </p>
+
+              {monthClosed && currentMonthSnapshot && (
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <SmallCommandStat
+                    label="Closed Surplus"
+                    value={formatSignedMoney(currentMonthSnapshot.cashflow.surplus)}
+                  />
+                  <SmallCommandStat
+                    label="Closed Savings"
+                    value={`${currentMonthSnapshot.cashflow.savingsRate.toFixed(1)}%`}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         </section>
       )}
@@ -1365,55 +1666,70 @@ export function Dashboard({
 
               return (
                 <div
-                  key={
-                    level.level
-                  }
-                  className={`rounded-xl border p-4 transition ${
+                  key={level.level}
+                  className={`group relative min-h-[190px] overflow-hidden rounded-xl border transition duration-300 hover:-translate-y-1 hover:shadow-2xl ${
                     active
-                      ? "border-blue-500/40 bg-blue-500/10"
+                      ? "border-blue-400/70 shadow-lg shadow-blue-500/10"
                       : completed
-                        ? "border-emerald-500/20 bg-emerald-500/5"
-                        : "border-slate-800 bg-slate-950/40"
+                        ? "border-emerald-500/30"
+                        : "border-slate-800"
                   }`}
                 >
                   <div
-                    className={`text-xs font-bold ${
+                    className="absolute inset-0 bg-no-repeat transition-transform duration-500 group-hover:scale-105"
+                    style={{
+                      backgroundImage: "url('/levels/levels.png')",
+                      backgroundSize: "700% 100%",
+                      backgroundPosition: `${((level.level - 1) / 6) * 100}% center`,
+                    }}
+                  />
+
+                  <div
+                    className={`absolute inset-0 ${
                       active
-                        ? "text-blue-400"
+                        ? "bg-gradient-to-t from-[#06101f] via-[#06101f]/45 to-blue-950/10"
                         : completed
-                          ? "text-emerald-400"
-                          : "text-slate-600"
+                          ? "bg-gradient-to-t from-[#06130f] via-[#06130f]/55 to-emerald-950/15"
+                          : "bg-gradient-to-t from-[#050b16] via-[#050b16]/70 to-[#050b16]/35 grayscale-[35%]"
                     }`}
-                  >
-                    LEVEL{" "}
-                    {level.level}
-                  </div>
+                  />
 
-                  <div className="mt-2 font-semibold">
-                    {level.name}
-                  </div>
-
-                  <div className="mt-1 text-xs text-slate-500">
-                    {level.level ===
-                    1
-                      ? "< 100k"
-                      : formatCompactMoney(
-                          level.min
-                        )}
-                  </div>
-
-                  {active && (
-                    <div className="mt-3 text-xs font-bold text-blue-400">
-                      ← YOU
-                    </div>
-                  )}
-
-                  {!active &&
-                    completed && (
-                      <div className="mt-3 text-xs font-bold text-emerald-400">
-                        ✓ DONE
+                  <div className="relative flex min-h-[190px] flex-col justify-between p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div
+                        className={`rounded-lg border bg-black/35 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] backdrop-blur-md ${
+                          active
+                            ? "border-blue-400/40 text-blue-300"
+                            : completed
+                              ? "border-emerald-400/30 text-emerald-300"
+                              : "border-white/10 text-slate-300"
+                        }`}
+                      >
+                        Level {level.level}
                       </div>
-                    )}
+
+                      {active && (
+                        <div className="rounded-lg border border-blue-400/40 bg-blue-500/20 px-2 py-1 text-[10px] font-black text-blue-200 backdrop-blur-md">
+                          YOU
+                        </div>
+                      )}
+
+                      {!active && completed && (
+                        <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/20 px-2 py-1 text-[10px] font-black text-emerald-200 backdrop-blur-md">
+                          ✓ DONE
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="text-base font-black text-white drop-shadow-lg">
+                        {level.name}
+                      </div>
+                      <div className="mt-1 text-xs font-semibold text-slate-300 drop-shadow-lg">
+                        {level.level === 1 ? "< 100k" : formatCompactMoney(level.min)}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               );
             }
@@ -1577,6 +1893,27 @@ function CommandCard({
       </div>
     </div>
   );
+}
+
+function getMonthEnd(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return new Date(year, monthNumber, 0, 23, 59, 59, 999);
+}
+
+function SmallCommandStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+      <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-600">{label}</p>
+      <p className="mt-1 text-sm font-black text-slate-200">{value}</p>
+    </div>
+  );
+}
+
+function getReviewVerdict(savingsRate: number, surplus: number, netWorthChange: number | null) {
+  if (surplus < 0 || savingsRate < 0) return { label: "Recovery", className: "border-rose-500/20 bg-rose-500/10 text-rose-400" };
+  if (savingsRate >= 50 && (netWorthChange === null || netWorthChange >= 0)) return { label: "Strong Month", className: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400" };
+  if (savingsRate >= 25) return { label: "Solid Month", className: "border-blue-500/20 bg-blue-500/10 text-blue-400" };
+  return { label: "Building", className: "border-amber-500/20 bg-amber-500/10 text-amber-400" };
 }
 
 function DashboardMetric({
