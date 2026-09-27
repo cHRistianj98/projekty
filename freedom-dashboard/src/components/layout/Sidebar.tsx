@@ -8,17 +8,32 @@ import {
   ChartPie,
   Calculator,
   Trophy,
+  BrainCircuit,
   Mountain,
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
-import { calculateLevelProgress } from "../../utils/levels";
+import {
+  calculatePlayerLevel,
+  calculateTotalAchievementXp,
+  getAchievements,
+} from "../../features/achievements/achievementEngine";
+
+import type { MonthlyBudget } from "../../types/Cashflow";
+import type { Asset } from "../../types/Asset";
+import type { Goal } from "../../types/Goal";
+import type { Liability } from "../../types/Liability";
 
 const menuItems = [
   {
     name: "Dashboard",
     icon: House,
     path: "/",
+  },
+  {
+    name: "Freedom Engine",
+    icon: BrainCircuit,
+    path: "/freedom",
   },
   {
     name: "Finanse",
@@ -64,13 +79,29 @@ const menuItems = [
 
 type SidebarProps = {
   netWorth: number;
+  portfolio: Asset[];
+  goals: Goal[];
+  liabilities: Liability[];
+  monthlyBudget: MonthlyBudget;
 };
 
 export function Sidebar({
   netWorth,
+  portfolio,
+  goals,
+  liabilities,
+  monthlyBudget,
 }: SidebarProps) {
-  const levelProgress =
-    calculateLevelProgress(netWorth);
+  const achievements = getAchievements({
+    netWorth,
+    portfolio,
+    goals,
+    liabilities,
+    monthlyBudget,
+  });
+
+  const totalXp = calculateTotalAchievementXp(achievements);
+  const playerLevel = calculatePlayerLevel(totalXp);
 
   return (
     <aside
@@ -141,7 +172,7 @@ export function Sidebar({
         })}
       </nav>
 
-      {/* LEVEL */}
+      {/* PLAYER LEVEL — XP IS THE SINGLE SOURCE OF TRUTH */}
 
       <div
         className="
@@ -152,25 +183,27 @@ export function Sidebar({
           p-4
         "
       >
-        {/* LEVEL NUMBER */}
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-xs text-slate-500">
+              PLAYER LEVEL {playerLevel.level}
+            </div>
 
-        <div className="text-xs text-slate-500">
-          LEVEL {levelProgress.currentLevel.level}
+            <div className="mt-1 font-semibold">
+              {playerLevel.name}
+            </div>
+          </div>
+
+          <div className="text-right">
+            <div className="text-xs font-semibold text-blue-400">
+              {playerLevel.progress.toFixed(0)}%
+            </div>
+
+            <div className="mt-1 text-[10px] text-slate-600">
+              {totalXp.toLocaleString("pl-PL")} XP total
+            </div>
+          </div>
         </div>
-
-        {/* LEVEL NAME */}
-
-        <div className="mt-1 flex items-center justify-between">
-          <span className="font-semibold">
-            {levelProgress.currentLevel.name}
-          </span>
-
-          <span className="text-xs font-semibold text-blue-400">
-            {levelProgress.progress.toFixed(0)}%
-          </span>
-        </div>
-
-        {/* PROGRESS BAR */}
 
         <div
           className="
@@ -185,43 +218,29 @@ export function Sidebar({
             className="
               h-full
               rounded-full
-              bg-blue-500
+              bg-gradient-to-r
+              from-blue-600
+              to-cyan-400
               transition-all
               duration-500
             "
             style={{
-              width: `${levelProgress.progress}%`,
+              width: `${playerLevel.progress}%`,
             }}
           />
         </div>
 
-        {/* CURRENT / TARGET */}
-
-        <div
-          className="
-            mt-2
-            flex
-            justify-between
-            text-xs
-            text-slate-500
-          "
-        >
+        <div className="mt-2 flex justify-between text-xs text-slate-500">
           <span>
-            {netWorth.toLocaleString("pl-PL")} zł
+            {playerLevel.currentXp.toLocaleString("pl-PL")} XP
           </span>
 
           <span>
-            {levelProgress.targetAmount !== null
-              ? `${levelProgress.targetAmount.toLocaleString(
-                  "pl-PL"
-                )} zł`
-              : "FREE"}
+            {playerLevel.requiredXp.toLocaleString("pl-PL")} XP
           </span>
         </div>
 
-        {/* NEXT LEVEL */}
-
-        {levelProgress.nextLevel && (
+        {playerLevel.remainingXp > 0 ? (
           <div
             className="
               mt-3
@@ -232,23 +251,12 @@ export function Sidebar({
               text-slate-500
             "
           >
-            Do{" "}
-            <span className="font-medium text-slate-300">
-              {levelProgress.nextLevel.name}
-            </span>
-            :{" "}
+            Do następnego poziomu:{" "}
             <span className="font-semibold text-blue-400">
-              {levelProgress.remainingAmount.toLocaleString(
-                "pl-PL"
-              )}{" "}
-              zł
+              {playerLevel.remainingXp.toLocaleString("pl-PL")} XP
             </span>
           </div>
-        )}
-
-        {/* FINAL LEVEL */}
-
-        {!levelProgress.nextLevel && (
+        ) : (
           <div
             className="
               mt-3
@@ -257,12 +265,27 @@ export function Sidebar({
               pt-3
               text-xs
               font-semibold
-              text-emerald-400
+              text-amber-400
             "
           >
-            🏆 Finansowa wolność osiągnięta
+            🏆 Maksymalny Player Level
           </div>
         )}
+
+        <div
+          className="
+            mt-3
+            border-t
+            border-slate-800
+            pt-3
+            text-[10px]
+            leading-4
+            text-slate-600
+          "
+        >
+          Level rośnie z XP za osiągnięcia. Majątek ma osobną ścieżkę
+          milestone&apos;ów.
+        </div>
       </div>
     </aside>
   );

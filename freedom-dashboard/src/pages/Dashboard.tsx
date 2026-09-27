@@ -10,6 +10,9 @@ import {
   ChevronRight,
   CircleDollarSign,
   Gem,
+  Gauge,
+  Rocket,
+  ShieldCheck,
   Minus,
   PiggyBank,
   Target,
@@ -24,7 +27,14 @@ import { LiabilitiesSection } from "../components/dashboard/LiabilitiesSection";
 import { CashflowSection } from "../components/dashboard/CashflowSection";
 import { AddExpenseModal } from "../components/dashboard/AddExpenseModal";
 
-import { calculateLevelProgress } from "../utils/levels";
+import {
+  calculatePlayerLevel,
+  calculateTotalAchievementXp,
+  getAchievements,
+} from "../features/achievements/achievementEngine";
+
+import { calculateFreedomEngine } from "../features/freedom/freedomEngine";
+import { getFreedomMissions } from "../features/missions/missionEngine";
 
 import type {
   Expense,
@@ -388,10 +398,63 @@ export function Dashboard({
    * =========================================
    */
 
-  const levelProgress =
-    calculateLevelProgress(
-      effectiveNetWorth
+  /*
+   * PLAYER LEVEL — XP is the single source of truth.
+   * Wealth milestones below remain a separate FREEDOM progression.
+   */
+  const achievements = getAchievements({
+    netWorth,
+    portfolio,
+    goals,
+    liabilities,
+    monthlyBudget,
+  });
+
+  const totalXp =
+    calculateTotalAchievementXp(
+      achievements
     );
+
+  const playerLevel =
+    calculatePlayerLevel(
+      totalXp
+    );
+
+  const freedomEngine =
+    calculateFreedomEngine({
+      netWorth,
+      portfolio,
+      liabilities,
+      monthlyBudget,
+    });
+
+  const missions =
+    getFreedomMissions({
+      netWorth,
+      portfolio,
+      liabilities,
+      monthlyBudget,
+    });
+
+  const storedFocusedMissionId =
+    typeof window !== "undefined"
+      ? localStorage.getItem(
+          "freedom-focused-mission"
+        )
+      : null;
+
+  const primaryMission =
+    missions.find(
+      (mission) =>
+        mission.id ===
+          storedFocusedMissionId &&
+        mission.status !== "COMPLETE"
+    ) ??
+    missions.find(
+      (mission) =>
+        mission.status === "ACTIVE"
+    ) ??
+    null;
 
   const currentLevel =
     findFreedomLevel(
@@ -435,14 +498,8 @@ export function Dashboard({
   return (
     <main className="min-h-screen bg-[#050b16] p-8">
       <Header
-        level={
-          levelProgress
-            .currentLevel.level
-        }
-        levelName={
-          levelProgress
-            .currentLevel.name
-        }
+        level={playerLevel.level}
+        levelName={playerLevel.name}
       />
 
       {/* =====================================
@@ -533,6 +590,137 @@ export function Dashboard({
           </div>
         </div>
       </section>
+
+      {/* =====================================
+          DASHBOARD 3.0 — COMMAND CENTER
+      ====================================== */}
+
+      {isCurrentMonth && (
+        <section className="mt-6 overflow-hidden rounded-3xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/5 via-[#0b1322] to-[#08111f] p-6">
+          <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-center">
+            <div>
+              <div className="flex items-center gap-2">
+                <Gauge
+                  size={18}
+                  className="text-cyan-400"
+                />
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-400">
+                  Command Center 3.0
+                </p>
+              </div>
+
+              <h2 className="mt-2 text-2xl font-black">
+                Twój status FREEDOM
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Jedno miejsce: poziom gracza, kondycja finansowa, misja i obecna trajektoria.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-400">
+                Do celu FREE
+              </p>
+              <p className="mt-1 text-lg font-black text-white">
+                {formatMoney(
+                  Math.max(
+                    3_000_000 - netWorth,
+                    0
+                  )
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <CommandCard
+              icon={<Target size={19} />}
+              label="Player Level"
+              value={`LVL ${playerLevel.level} · ${playerLevel.name}`}
+              detail={`${totalXp.toLocaleString("pl-PL")} XP · ${playerLevel.remainingXp.toLocaleString("pl-PL")} XP do następnego`}
+              accent="violet"
+              progress={playerLevel.progress}
+            />
+
+            <CommandCard
+              icon={<Gauge size={19} />}
+              label="Freedom Score"
+              value={`${freedomEngine.freedomScore}/100`}
+              detail={`${freedomEngine.dataConfidence} data confidence`}
+              accent="cyan"
+              progress={freedomEngine.freedomScore}
+            />
+
+            <CommandCard
+              icon={<Rocket size={19} />}
+              label="Current Trajectory"
+              value={
+                freedomEngine.projectedFreedomDate
+                  ? freedomEngine.projectedFreedomDate
+                  : freedomEngine.yearsToFreedom !== null
+                    ? `${freedomEngine.yearsToFreedom.toFixed(1)} lat`
+                    : "Brak trajektorii"
+              }
+              detail={`Rolling cashflow ${formatSignedMoney(
+                freedomEngine.averageSurplus
+              )} / mies.`}
+              accent="emerald"
+              progress={Math.min(
+                (netWorth / 3_000_000) * 100,
+                100
+              )}
+            />
+
+            <CommandCard
+              icon={<ShieldCheck size={19} />}
+              label="Primary Mission"
+              value={
+                primaryMission
+                  ? primaryMission.title
+                  : "Brak aktywnej misji"
+              }
+              detail={
+                primaryMission
+                  ? `${primaryMission.progress.toFixed(0)}% · ${primaryMission.footer}`
+                  : "Freedom Engine nie wykrył aktywnego priorytetu."
+              }
+              accent="amber"
+              progress={
+                primaryMission
+                  ? primaryMission.progress
+                  : 100
+              }
+            />
+          </div>
+
+          <div className="mt-5 flex items-center gap-3">
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400"
+                style={{
+                  width: `${Math.min(
+                    (netWorth /
+                      3_000_000) *
+                      100,
+                    100
+                  )}%`,
+                }}
+              />
+            </div>
+
+            <span className="shrink-0 text-xs font-black text-cyan-400">
+              {Math.min(
+                (netWorth /
+                  3_000_000) *
+                  100,
+                100
+              ).toFixed(1)}
+              % FREE
+            </span>
+          </div>
+        </section>
+      )}
 
       {/* =====================================
           HISTORICAL WARNING
@@ -661,7 +849,7 @@ export function Dashboard({
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-              Freedom Progress
+              Wealth Milestone
             </p>
 
             <div className="mt-2 flex items-center gap-3">
@@ -671,9 +859,10 @@ export function Dashboard({
 
               <div>
                 <h2 className="text-xl font-bold">
-                  Level{" "}
-                  {currentLevel.level} —{" "}
-                  {currentLevel.name}
+                  {currentLevel.name} →{" "}
+                  {nextTarget !== null
+                    ? formatCompactMoney(nextTarget)
+                    : "FREE"}
                 </h2>
 
                 {nextTarget !==
@@ -1311,6 +1500,84 @@ type DashboardMetricProps = {
 
   comparison?: MetricComparison;
 };
+
+type CommandAccent =
+  | "violet"
+  | "cyan"
+  | "emerald"
+  | "amber";
+
+function CommandCard({
+  icon,
+  label,
+  value,
+  detail,
+  accent,
+  progress,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  detail: string;
+  accent: CommandAccent;
+  progress: number;
+}) {
+  const styles = {
+    violet: {
+      icon: "bg-violet-500/10 text-violet-400",
+      bar: "bg-violet-500",
+    },
+    cyan: {
+      icon: "bg-cyan-500/10 text-cyan-400",
+      bar: "bg-cyan-400",
+    },
+    emerald: {
+      icon: "bg-emerald-500/10 text-emerald-400",
+      bar: "bg-emerald-400",
+    },
+    amber: {
+      icon: "bg-amber-500/10 text-amber-400",
+      bar: "bg-amber-400",
+    },
+  }[accent];
+
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">
+            {label}
+          </p>
+          <p className="mt-2 text-lg font-black text-white">
+            {value}
+          </p>
+        </div>
+
+        <div
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${styles.icon}`}
+        >
+          {icon}
+        </div>
+      </div>
+
+      <p className="mt-2 min-h-8 text-xs leading-4 text-slate-500">
+        {detail}
+      </p>
+
+      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-800">
+        <div
+          className={`h-full rounded-full ${styles.bar}`}
+          style={{
+            width: `${Math.max(
+              0,
+              Math.min(progress, 100)
+            )}%`,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
 
 function DashboardMetric({
   title,

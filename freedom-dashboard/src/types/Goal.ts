@@ -1,5 +1,17 @@
 import type { LucideIcon } from "lucide-react";
 
+export type GoalPriority =
+  | "HIGH"
+  | "MEDIUM"
+  | "LOW";
+
+export type GoalType =
+  | "EMERGENCY_FUND"
+  | "HOME"
+  | "CAR"
+  | "TRAVEL"
+  | "OTHER";
+
 export type Goal = {
   id: number;
   name: string;
@@ -7,6 +19,8 @@ export type Goal = {
   targetAmount: number;
   monthlyContribution: number;
   targetDate?: string;
+  priority?: GoalPriority;
+  type?: GoalType;
   color: string;
 };
 

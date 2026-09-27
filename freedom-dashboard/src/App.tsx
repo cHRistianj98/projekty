@@ -20,6 +20,7 @@ import { Liabilities } from "./pages/Liabilities";
 import { Budget } from "./pages/Budget";
 import { Analytics } from "./pages/Analytics";
 import { Achievements } from "./pages/Achievements";
+import { FreedomEngine } from "./pages/FreedomEngine";
 import { AchievementUnlockManager } from "./features/achievements/AchievementUnlockManager";
 
 import { initialMonthlyBudget } from "./data/monthlyBudget";
@@ -876,6 +877,38 @@ function App() {
 
   /*
    * =========================================================
+   * DEV DEMO DATA
+   * =========================================================
+   */
+
+  function handleLoadDemoData() {
+    const shouldLoad = window.confirm(
+      "Załadować dane demo? Obecne dane finansowe w localStorage zostaną zastąpione."
+    );
+
+    if (!shouldLoad) {
+      return;
+    }
+
+    setPortfolio(demoPortfolio);
+    setLiabilities(demoLiabilities);
+    setGoals(demoGoals);
+    setMonthlyBudget(demoMonthlyBudget);
+    setNetWorthHistory(demoNetWorthHistory);
+    setRecurringTransactions(demoRecurringTransactions);
+
+    // Budget plans zostawiamy puste w demo, żeby nie mieszać planu z realnym cashflow.
+    setBudgetPlans([]);
+
+    window.setTimeout(() => {
+      window.alert(
+        "Dane demo załadowane. FREEDOM ma teraz 6 miesięcy historii do testowania."
+      );
+    }, 0);
+  }
+
+  /*
+   * =========================================================
    * ROUTING
    * =========================================================
    */
@@ -891,10 +924,41 @@ function App() {
       />
       <div className="min-h-screen bg-[#050b16] text-white">
         <Sidebar
-          netWorth={
-            netWorth
-          }
+          netWorth={netWorth}
+          portfolio={portfolio}
+          goals={goals}
+          liabilities={liabilities}
+          monthlyBudget={monthlyBudget}
         />
+
+        <button
+          type="button"
+          onClick={handleLoadDemoData}
+          className="
+            fixed
+            bottom-5
+            right-5
+            z-[90]
+            rounded-2xl
+            border
+            border-violet-500/30
+            bg-violet-500/15
+            px-4
+            py-3
+            text-xs
+            font-black
+            uppercase
+            tracking-[0.12em]
+            text-violet-300
+            shadow-2xl
+            backdrop-blur
+            transition
+            hover:bg-violet-500/25
+          "
+          title="Zastąp obecne dane zestawem testowym"
+        >
+          DEV: Load demo data
+        </button>
 
         <div className="ml-64">
           <Routes>
@@ -1083,6 +1147,19 @@ function App() {
 />
 
 <Route
+  path="/freedom"
+  element={
+    <FreedomEngine
+      netWorth={netWorth}
+      portfolio={portfolio}
+      goals={goals}
+      liabilities={liabilities}
+      monthlyBudget={monthlyBudget}
+    />
+  }
+/>
+
+<Route
   path="/simulator"
   element={
     <Simulator
@@ -1106,6 +1183,216 @@ function App() {
     </BrowserRouter>
   );
 }
+
+/*
+ * =========================================================
+ * DEMO DATASET 1.0
+ * =========================================================
+ *
+ * Profil testowy:
+ * - 295 000 zł aktywów
+ * - 32 000 zł zobowiązań
+ * - ok. 263 000 zł net worth
+ * - 42 000 zł płynnej poduszki
+ * - 6 miesięcy historii
+ * - dodatni, ale nie absurdalny cashflow
+ */
+
+const demoPortfolio: Asset[] = [
+  {
+    id: 91001,
+    name: "Konto oszczędnościowe",
+    value: 42_000,
+    color: "#3b82f6",
+    category: "cash",
+  },
+  {
+    id: 91002,
+    name: "ETF MSCI World",
+    value: 135_000,
+    color: "#10b981",
+    category: "stocks",
+  },
+  {
+    id: 91003,
+    name: "Obligacje skarbowe",
+    value: 30_000,
+    color: "#f59e0b",
+    category: "stocks",
+  },
+  {
+    id: 91004,
+    name: "Bitcoin",
+    value: 28_000,
+    color: "#f97316",
+    category: "crypto",
+  },
+  {
+    id: 91005,
+    name: "Ethereum",
+    value: 17_000,
+    color: "#6366f1",
+    category: "crypto",
+  },
+  {
+    id: 91006,
+    name: "Kapitał w biznesie",
+    value: 18_000,
+    color: "#8b5cf6",
+    category: "business",
+  },
+  {
+    id: 91007,
+    name: "Samochód",
+    value: 25_000,
+    color: "#64748b",
+    category: "vehicle",
+  },
+];
+
+const demoLiabilities: Liability[] = [
+  {
+    id: 92001,
+    name: "Kredyt gotówkowy",
+    originalAmount: 45_000,
+    remainingAmount: 24_000,
+    monthlyPayment: 1_350,
+    principalPayment: 1_170,
+    interestPayment: 180,
+    interestRate: 8.9,
+  },
+  {
+    id: 92002,
+    name: "Raty 0% — elektronika",
+    originalAmount: 12_000,
+    remainingAmount: 8_000,
+    monthlyPayment: 1_000,
+    principalPayment: 1_000,
+    interestPayment: 0,
+    interestRate: 0,
+  },
+];
+
+const demoGoals: Goal[] = [
+  {
+    id: 93001,
+    name: "BMW / fundusz samochodowy",
+    currentAmount: 28_000,
+    targetAmount: 100_000,
+    monthlyContribution: 2_000,
+    targetDate: "2028-06-01",
+    color: "#3b82f6",
+  },
+  {
+    id: 93002,
+    name: "Wkład własny na dom",
+    currentAmount: 45_000,
+    targetAmount: 250_000,
+    monthlyContribution: 3_000,
+    targetDate: "2030-12-01",
+    color: "#10b981",
+  },
+  {
+    id: 93003,
+    name: "Poduszka 50K",
+    currentAmount: 42_000,
+    targetAmount: 50_000,
+    monthlyContribution: 1_000,
+    targetDate: "2027-03-01",
+    color: "#f59e0b",
+  },
+];
+
+const demoMonthlyBudget: MonthlyBudget = {
+  incomes: [
+    { id: 94001, name: "Praca / B2B", amount: 15_000, recurring: true, date: "2026-04-10", recurringRuleId: 96001 },
+    { id: 94002, name: "Praca / B2B", amount: 15_000, recurring: true, date: "2026-05-10", recurringRuleId: 96001 },
+    { id: 94003, name: "Praca / B2B", amount: 15_000, recurring: true, date: "2026-06-10", recurringRuleId: 96001 },
+    { id: 94004, name: "Praca / B2B", amount: 16_000, recurring: true, date: "2026-07-10", recurringRuleId: 96001 },
+    { id: 94005, name: "Praca / B2B", amount: 16_000, recurring: true, date: "2026-08-10", recurringRuleId: 96001 },
+    { id: 94006, name: "Praca / B2B", amount: 16_000, recurring: true, date: "2026-09-10", recurringRuleId: 96001 },
+    { id: 94007, name: "Premia / dodatkowe zlecenie", amount: 3_500, recurring: false, date: "2026-06-22" },
+    { id: 94008, name: "Dodatkowe zlecenie", amount: 2_500, recurring: false, date: "2026-09-18" },
+  ],
+  expenses: [
+    { id: 95001, name: "Mieszkanie", amount: 2_400, category: "fixed", recurring: true, date: "2026-04-05", recurringRuleId: 96002 },
+    { id: 95002, name: "Jedzenie", amount: 1_850, category: "living", recurring: false, date: "2026-04-18" },
+    { id: 95003, name: "Transport", amount: 850, category: "living", recurring: false, date: "2026-04-24" },
+    { id: 95004, name: "Rata kredytu", amount: 1_350, category: "fixed", recurring: true, date: "2026-04-15", recurringRuleId: 96003 },
+    { id: 95005, name: "Rozrywka / inne", amount: 900, category: "living", recurring: false, date: "2026-04-27" },
+
+    { id: 95006, name: "Mieszkanie", amount: 2_400, category: "fixed", recurring: true, date: "2026-05-05", recurringRuleId: 96002 },
+    { id: 95007, name: "Jedzenie", amount: 1_950, category: "living", recurring: false, date: "2026-05-18" },
+    { id: 95008, name: "Transport", amount: 780, category: "living", recurring: false, date: "2026-05-24" },
+    { id: 95009, name: "Rata kredytu", amount: 1_350, category: "fixed", recurring: true, date: "2026-05-15", recurringRuleId: 96003 },
+    { id: 95010, name: "Zakupy / inne", amount: 1_020, category: "living", recurring: false, date: "2026-05-27" },
+
+    { id: 95011, name: "Mieszkanie", amount: 2_400, category: "fixed", recurring: true, date: "2026-06-05", recurringRuleId: 96002 },
+    { id: 95012, name: "Jedzenie", amount: 2_050, category: "living", recurring: false, date: "2026-06-18" },
+    { id: 95013, name: "Transport", amount: 900, category: "living", recurring: false, date: "2026-06-24" },
+    { id: 95014, name: "Rata kredytu", amount: 1_350, category: "fixed", recurring: true, date: "2026-06-15", recurringRuleId: 96003 },
+    { id: 95015, name: "Wyjazd", amount: 1_600, category: "living", recurring: false, date: "2026-06-27" },
+
+    { id: 95016, name: "Mieszkanie", amount: 2_400, category: "fixed", recurring: true, date: "2026-07-05", recurringRuleId: 96002 },
+    { id: 95017, name: "Jedzenie", amount: 1_900, category: "living", recurring: false, date: "2026-07-18" },
+    { id: 95018, name: "Transport", amount: 820, category: "living", recurring: false, date: "2026-07-24" },
+    { id: 95019, name: "Rata kredytu", amount: 1_350, category: "fixed", recurring: true, date: "2026-07-15", recurringRuleId: 96003 },
+    { id: 95020, name: "Sport / rozrywka", amount: 1_130, category: "living", recurring: false, date: "2026-07-27" },
+
+    { id: 95021, name: "Mieszkanie", amount: 2_400, category: "fixed", recurring: true, date: "2026-08-05", recurringRuleId: 96002 },
+    { id: 95022, name: "Jedzenie", amount: 2_100, category: "living", recurring: false, date: "2026-08-18" },
+    { id: 95023, name: "Transport", amount: 880, category: "living", recurring: false, date: "2026-08-24" },
+    { id: 95024, name: "Rata kredytu", amount: 1_350, category: "fixed", recurring: true, date: "2026-08-15", recurringRuleId: 96003 },
+    { id: 95025, name: "Wyjazdy / inne", amount: 1_370, category: "living", recurring: false, date: "2026-08-27" },
+
+    { id: 95026, name: "Mieszkanie", amount: 2_400, category: "fixed", recurring: true, date: "2026-09-05", recurringRuleId: 96002 },
+    { id: 95027, name: "Jedzenie", amount: 2_000, category: "living", recurring: false, date: "2026-09-18" },
+    { id: 95028, name: "Transport", amount: 900, category: "living", recurring: false, date: "2026-09-24" },
+    { id: 95029, name: "Rata kredytu", amount: 1_350, category: "fixed", recurring: true, date: "2026-09-15", recurringRuleId: 96003 },
+    { id: 95030, name: "Sport / rozrywka", amount: 1_250, category: "living", recurring: false, date: "2026-09-26" },
+  ],
+};
+
+const demoNetWorthHistory: NetWorthSnapshot[] = [
+  { id: 97001, date: "2026-04-30", value: 208_000 },
+  { id: 97002, date: "2026-05-31", value: 216_500 },
+  { id: 97003, date: "2026-06-30", value: 228_000 },
+  { id: 97004, date: "2026-07-31", value: 239_500 },
+  { id: 97005, date: "2026-08-31", value: 251_000 },
+  { id: 97006, date: "2026-09-27", value: 263_000 },
+];
+
+const demoRecurringTransactions: RecurringTransaction[] = [
+  {
+    id: 96001,
+    type: "income",
+    name: "Praca / B2B",
+    amount: 16_000,
+    dayOfMonth: 10,
+    startDate: "2026-04-10",
+    active: true,
+  },
+  {
+    id: 96002,
+    type: "expense",
+    name: "Mieszkanie",
+    amount: 2_400,
+    category: "fixed",
+    dayOfMonth: 5,
+    startDate: "2026-04-05",
+    active: true,
+  },
+  {
+    id: 96003,
+    type: "expense",
+    name: "Rata kredytu",
+    amount: 1_350,
+    category: "fixed",
+    dayOfMonth: 15,
+    startDate: "2026-04-15",
+    active: true,
+  },
+];
 
 /*
  * =========================================================

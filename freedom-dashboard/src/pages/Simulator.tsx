@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import {
   Calculator,
   CalendarDays,
+  GitCompareArrows,
   Coins,
   Flag,
   Landmark,
@@ -15,6 +16,7 @@ import {
 
 type SimulatorProps = {
   netWorth: number;
+  rollingMonthlyCashflow?: number;
 };
 
 type SimulationPoint = {
@@ -28,6 +30,42 @@ type Milestone = {
   name: string;
   amount: number;
 };
+
+type ScenarioPreset = {
+  id: "conservative" | "current" | "aggressive";
+  name: string;
+  description: string;
+  annualReturn: number;
+  cashflowShare: number;
+  annualContributionGrowth: number;
+};
+
+const scenarioPresets: ScenarioPreset[] = [
+  {
+    id: "conservative",
+    name: "Conservative",
+    description: "Niższy zwrot i część nadwyżki zostaje poza inwestycjami.",
+    annualReturn: 5,
+    cashflowShare: 70,
+    annualContributionGrowth: 2,
+  },
+  {
+    id: "current",
+    name: "Current Pace",
+    description: "Bazowy scenariusz oparty o Twoje obecne tempo.",
+    annualReturn: 7,
+    cashflowShare: 100,
+    annualContributionGrowth: 3,
+  },
+  {
+    id: "aggressive",
+    name: "Aggressive",
+    description: "Wyższy zwrot i szybszy wzrost miesięcznych wpłat.",
+    annualReturn: 9,
+    cashflowShare: 100,
+    annualContributionGrowth: 6,
+  },
+];
 
 const milestones: Milestone[] = [
   {
@@ -54,6 +92,7 @@ const milestones: Milestone[] = [
 
 export function Simulator({
   netWorth,
+  rollingMonthlyCashflow = 0,
 }: SimulatorProps) {
   const [startingCapital, setStartingCapital] =
     useState(netWorth);
@@ -69,6 +108,87 @@ export function Simulator({
 
   const [years, setYears] =
     useState(20);
+
+  const [activeScenario, setActiveScenario] =
+    useState<ScenarioPreset["id"] | null>("current");
+
+  const liveMonthlyContribution =
+    Math.max(
+      0,
+      Math.round(
+        rollingMonthlyCashflow
+      )
+    );
+
+  const hasLiveTrajectory =
+    liveMonthlyContribution > 0;
+
+  const isUsingLiveTrajectory =
+    hasLiveTrajectory &&
+    startingCapital === netWorth &&
+    monthlyContribution ===
+      liveMonthlyContribution;
+
+  const scenarioComparisons =
+    useMemo(
+      () =>
+        scenarioPresets.map(
+          (preset) => {
+            const contributionBase =
+              hasLiveTrajectory
+                ? liveMonthlyContribution
+                : monthlyContribution;
+
+            const scenario =
+              calculateSimulation({
+                startingCapital:
+                  netWorth,
+                monthlyContribution:
+                  contributionBase *
+                  (preset.cashflowShare /
+                    100),
+                annualReturn:
+                  preset.annualReturn,
+                annualContributionGrowth:
+                  preset.annualContributionGrowth,
+                years,
+              });
+
+            const final =
+              scenario[
+                scenario.length - 1
+              ];
+
+            const free =
+              findMilestoneYear(
+                scenario,
+                3_000_000
+              );
+
+            return {
+              ...preset,
+              monthlyContribution:
+                Math.round(
+                  contributionBase *
+                    (preset.cashflowShare /
+                      100)
+                ),
+              finalPortfolio:
+                final?.portfolio ??
+                netWorth,
+              free,
+              simulation: scenario,
+            };
+          }
+        ),
+      [
+        hasLiveTrajectory,
+        liveMonthlyContribution,
+        monthlyContribution,
+        netWorth,
+        years,
+      ]
+    );
 
   const simulation = useMemo(
     () =>
@@ -229,6 +349,82 @@ export function Simulator({
         </div>
       </section>
 
+      {/* LIVE TRAJECTORY */}
+
+      <section className="mt-5 rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-[#0b1322] to-[#0b1322] p-5">
+        <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
+          <div>
+            <div className="flex items-center gap-2">
+              <TrendingUp
+                size={18}
+                className="text-cyan-400"
+              />
+
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-400">
+                Current trajectory
+              </p>
+
+              <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-400">
+                Live data · rolling 3M
+              </span>
+            </div>
+
+            <p className="mt-3 text-sm text-slate-400">
+              Aktualne tempo budowania kapitału na podstawie ostatnich miesięcy.
+            </p>
+
+            <div className="mt-3 flex flex-wrap gap-x-7 gap-y-2 text-sm">
+              <span className="text-slate-500">
+                Majątek teraz:{" "}
+                <strong className="text-white">
+                  {formatMoney(netWorth)}
+                </strong>
+              </span>
+
+              <span className="text-slate-500">
+                Rolling cashflow 3M:{" "}
+                <strong
+                  className={
+                    hasLiveTrajectory
+                      ? "text-emerald-400"
+                      : "text-rose-400"
+                  }
+                >
+                  {formatSignedMoney(
+                    rollingMonthlyCashflow
+                  )} / mies.
+                </strong>
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            disabled={!hasLiveTrajectory}
+            onClick={() => {
+              setStartingCapital(netWorth);
+              setMonthlyContribution(liveMonthlyContribution);
+              setAnnualReturn(7);
+              setAnnualContributionGrowth(3);
+              setActiveScenario("current");
+            }}
+            className={`shrink-0 rounded-xl border px-5 py-3 text-sm font-black transition ${
+              !hasLiveTrajectory
+                ? "cursor-not-allowed border-slate-800 bg-slate-900 text-slate-600"
+                : isUsingLiveTrajectory
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                  : "border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:border-cyan-400/60 hover:bg-cyan-500/15"
+            }`}
+          >
+            {isUsingLiveTrajectory
+              ? "✓ Używasz aktualnego tempa"
+              : hasLiveTrajectory
+                ? "⚡ Użyj mojego aktualnego tempa"
+                : "Brak dodatniego rolling cashflow"}
+          </button>
+        </div>
+      </section>
+
       {/* CONTROLS + RESULT */}
 
       <section className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
@@ -243,13 +439,34 @@ export function Simulator({
             Twój scenariusz
           </h2>
 
+          <div className="mt-4 flex items-center justify-between rounded-xl border border-slate-800 bg-[#08111f] px-3 py-2.5">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-600">
+                Aktywny scenariusz
+              </p>
+              <p className="mt-0.5 text-sm font-black text-white">
+                {activeScenario
+                  ? scenarioPresets.find((preset) => preset.id === activeScenario)?.name
+                  : "Custom"}
+              </p>
+            </div>
+            <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${
+              activeScenario
+                ? "bg-violet-500/10 text-violet-300"
+                : "bg-amber-500/10 text-amber-400"
+            }`}>
+              {activeScenario ? "Preset" : "Manual"}
+            </span>
+          </div>
+
           <div className="mt-7 space-y-6">
             <MoneyInput
               label="Kapitał startowy"
               value={startingCapital}
-              onChange={
-                setStartingCapital
-              }
+              onChange={(value) => {
+                setStartingCapital(value);
+                setActiveScenario(null);
+              }}
               icon={
                 <WalletCards
                   size={18}
@@ -262,15 +479,22 @@ export function Simulator({
               value={
                 monthlyContribution
               }
-              onChange={
-                setMonthlyContribution
-              }
+              onChange={(value) => {
+                setMonthlyContribution(value);
+                setActiveScenario(null);
+              }}
               icon={
                 <PiggyBank
                   size={18}
                 />
               }
             />
+
+            {isUsingLiveTrajectory && (
+              <div className="-mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-400">
+                ⚡ Miesięczna inwestycja pochodzi z rolling cashflow 3M.
+              </div>
+            )}
 
             <RangeControl
               label="Średnia stopa zwrotu"
@@ -279,9 +503,10 @@ export function Simulator({
               max={15}
               step={0.5}
               suffix="% rocznie"
-              onChange={
-                setAnnualReturn
-              }
+              onChange={(value) => {
+                setAnnualReturn(value);
+                setActiveScenario(null);
+              }}
             />
 
             <RangeControl
@@ -293,9 +518,10 @@ export function Simulator({
               max={15}
               step={1}
               suffix="% rocznie"
-              onChange={
-                setAnnualContributionGrowth
-              }
+              onChange={(value) => {
+                setAnnualContributionGrowth(value);
+                setActiveScenario(null);
+              }}
             />
 
             <RangeControl
@@ -305,7 +531,10 @@ export function Simulator({
               max={30}
               step={1}
               suffix="lat"
-              onChange={setYears}
+              onChange={(value) => {
+                setYears(value);
+                setActiveScenario(null);
+              }}
             />
           </div>
 
@@ -323,6 +552,7 @@ export function Simulator({
                 3
               );
               setYears(20);
+               setActiveScenario(null);
             }}
             className="mt-7 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-300 transition hover:border-blue-500/50 hover:text-white"
           >
@@ -424,6 +654,135 @@ export function Simulator({
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* SCENARIO LAB */}
+
+      <section className="mt-5 rounded-2xl border border-slate-800 bg-[#0b1322] p-6">
+        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+          <div>
+            <div className="flex items-center gap-2">
+              <GitCompareArrows
+                size={19}
+                className="text-violet-400"
+              />
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-violet-400">
+                Scenario Lab
+              </p>
+            </div>
+
+            <h2 className="mt-2 text-xl font-black">
+              Trzy drogi do FREE
+            </h2>
+
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+              Porównanie używa tego samego kapitału startowego i aktualnego rolling cashflow 3M. Różnią się stopą zwrotu, udziałem nadwyżki inwestowanej oraz tempem wzrostu wpłat.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-[#08111f] px-4 py-3 text-xs text-slate-500">
+            Horyzont porównania:{" "}
+            <span className="font-black text-white">
+              {years} lat
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
+          {scenarioComparisons.map(
+            (scenario) => (
+              <button
+                key={scenario.id}
+                type="button"
+                onClick={() => {
+                  setStartingCapital(
+                    netWorth
+                  );
+                  setMonthlyContribution(
+                    scenario.monthlyContribution
+                  );
+                  setAnnualReturn(
+                    scenario.annualReturn
+                  );
+                  setAnnualContributionGrowth(
+                    scenario.annualContributionGrowth
+                  );
+                  setActiveScenario(scenario.id);
+                }}
+                className={`rounded-2xl border p-5 text-left transition ${
+                  activeScenario === scenario.id
+                    ? "border-violet-400/60 bg-violet-500/10 shadow-[0_0_0_1px_rgba(168,85,247,0.12)]"
+                    : "border-slate-800 bg-[#08111f]/70 hover:border-violet-500/40 hover:bg-violet-500/5"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-lg font-black text-white">
+                      {scenario.name}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      {scenario.description}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {activeScenario === scenario.id && (
+                      <span className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-400">
+                        Active
+                      </span>
+                    )}
+                    <span className="rounded-lg bg-violet-500/10 px-2.5 py-1 text-xs font-black text-violet-300">
+                      {scenario.annualReturn}%
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  <ScenarioMetric
+                    label="Inwestujesz"
+                    value={`${scenario.cashflowShare}% cashflow`}
+                  />
+                  <ScenarioMetric
+                    label="Wpłata"
+                    value={`${scenario.monthlyContribution.toLocaleString("pl-PL")} zł`}
+                  />
+                  <ScenarioMetric
+                    label={`Majątek za ${years} lat`}
+                    value={formatCompactMoney(
+                      scenario.finalPortfolio
+                    )}
+                  />
+                  <ScenarioMetric
+                    label="FREE"
+                    value={
+                      scenario.free
+                        ? scenario.free.year ===
+                          0
+                          ? "już"
+                          : `rok ${scenario.free.calendarYear}`
+                        : `> ${years} lat`
+                    }
+                    accent
+                  />
+                </div>
+
+                <p className="mt-4 text-[11px] font-bold uppercase tracking-[0.14em] text-violet-400">
+                  {activeScenario === scenario.id
+                    ? "✓ Ten scenariusz jest aktywny"
+                    : "Kliknij, aby użyć scenariusza →"}
+                </p>
+              </button>
+            )
+          )}
+        </div>
+
+        <div className="mt-7">
+          <ScenarioComparisonChart
+            scenarios={
+              scenarioComparisons
+            }
+          />
         </div>
       </section>
 
@@ -749,6 +1108,245 @@ function MilestoneCard({
             </p>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ScenarioMetric({
+  label,
+  value,
+  accent = false,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950/30 p-3">
+      <p className="text-[10px] uppercase tracking-[0.12em] text-slate-600">
+        {label}
+      </p>
+      <p
+        className={`mt-1 text-sm font-black ${
+          accent
+            ? "text-emerald-400"
+            : "text-slate-200"
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function ScenarioComparisonChart({
+  scenarios,
+}: {
+  scenarios: Array<
+    ScenarioPreset & {
+      simulation: SimulationPoint[];
+    }
+  >;
+}) {
+  const width = 1100;
+  const height = 330;
+  const paddingLeft = 90;
+  const paddingRight = 30;
+  const paddingTop = 30;
+  const paddingBottom = 50;
+
+  const allPoints =
+    scenarios.flatMap(
+      (scenario) =>
+        scenario.simulation
+    );
+
+  const maxValue =
+    Math.max(
+      ...allPoints.map(
+        (point) => point.portfolio
+      ),
+      3_000_000,
+      1
+    ) * 1.06;
+
+  const maxYears =
+    Math.max(
+      ...allPoints.map(
+        (point) => point.year
+      ),
+      1
+    );
+
+  const xForYear = (
+    year: number
+  ) =>
+    paddingLeft +
+    (year / maxYears) *
+      (width -
+        paddingLeft -
+        paddingRight);
+
+  const yForValue = (
+    value: number
+  ) =>
+    paddingTop +
+    (1 - value / maxValue) *
+      (height -
+        paddingTop -
+        paddingBottom);
+
+  const strokes = [
+    "rgb(148 163 184)",
+    "rgb(59 130 246)",
+    "rgb(168 85 247)",
+  ];
+
+  const freeY =
+    yForValue(3_000_000);
+
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-[#08111f]/60 p-4">
+      <div className="mb-4 flex flex-wrap gap-5 text-xs">
+        {scenarios.map(
+          (scenario, index) => (
+            <div
+              key={scenario.id}
+              className="flex items-center gap-2"
+            >
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{
+                  backgroundColor:
+                    strokes[index],
+                }}
+              />
+              <span className="text-slate-400">
+                {scenario.name}
+              </span>
+            </div>
+          )
+        )}
+
+        <div className="flex items-center gap-2">
+          <span className="h-px w-5 border-t border-dashed border-emerald-500" />
+          <span className="text-emerald-400">
+            FREE · 3 mln
+          </span>
+        </div>
+      </div>
+
+      <div className="min-w-[850px]">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          className="h-[330px] w-full"
+          role="img"
+          aria-label="Porównanie scenariuszy drogi do wolności finansowej"
+        >
+          {Array.from(
+            { length: 5 },
+            (_, index) =>
+              (maxValue / 4) *
+              index
+          ).map((value) => {
+            const y =
+              yForValue(value);
+
+            return (
+              <g key={value}>
+                <line
+                  x1={paddingLeft}
+                  x2={
+                    width -
+                    paddingRight
+                  }
+                  y1={y}
+                  y2={y}
+                  stroke="rgb(30 41 59)"
+                  strokeWidth="1"
+                />
+                <text
+                  x={paddingLeft - 14}
+                  y={y + 4}
+                  textAnchor="end"
+                  fill="rgb(100 116 139)"
+                  fontSize="12"
+                >
+                  {formatCompactMoney(
+                    value
+                  )}
+                </text>
+              </g>
+            );
+          })}
+
+          <line
+            x1={paddingLeft}
+            x2={width - paddingRight}
+            y1={freeY}
+            y2={freeY}
+            stroke="rgb(16 185 129)"
+            strokeWidth="2"
+            strokeDasharray="8 7"
+            opacity="0.8"
+          />
+
+          {scenarios.map(
+            (scenario, index) => {
+              const points =
+                scenario.simulation
+                  .map(
+                    (point) =>
+                      `${xForYear(
+                        point.year
+                      )},${yForValue(
+                        point.portfolio
+                      )}`
+                  )
+                  .join(" ");
+
+              return (
+                <polyline
+                  key={scenario.id}
+                  points={points}
+                  fill="none"
+                  stroke={
+                    strokes[index]
+                  }
+                  strokeWidth={
+                    scenario.id ===
+                    "current"
+                      ? "4"
+                      : "3"
+                  }
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              );
+            }
+          )}
+
+          {Array.from(
+            { length: 5 },
+            (_, index) =>
+              Math.round(
+                (maxYears / 4) *
+                  index
+              )
+          ).map((year) => (
+            <text
+              key={year}
+              x={xForYear(year)}
+              y={height - 18}
+              textAnchor="middle"
+              fill="rgb(100 116 139)"
+              fontSize="12"
+            >
+              {year} lat
+            </text>
+          ))}
+        </svg>
       </div>
     </div>
   );
@@ -1149,6 +1747,18 @@ function formatMoney(
   return `${Math.round(
     value
   ).toLocaleString(
+    "pl-PL"
+  )} zł`;
+}
+
+function formatSignedMoney(
+  value: number
+) {
+  const rounded = Math.round(value);
+  const sign =
+    rounded > 0 ? "+" : "";
+
+  return `${sign}${rounded.toLocaleString(
     "pl-PL"
   )} zł`;
 }

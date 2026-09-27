@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 
-import type { Goal } from "../../types/Goal";
+import type { Goal, GoalPriority, GoalType } from "../../types/Goal";
 
 type EditGoalModalProps = {
   goal: Goal;
@@ -48,6 +48,19 @@ export function EditGoalModal({
     goal.monthlyContribution.toString()
   );
 
+  const [priority, setPriority] =
+    useState<GoalPriority>(
+      goal.priority ?? "MEDIUM"
+    );
+
+  const [goalType, setGoalType] =
+    useState<GoalType>(
+      goal.type ?? "OTHER"
+    );
+
+  const [targetDate, setTargetDate] =
+    useState(goal.targetDate ?? "");
+
   const [color, setColor] =
     useState(goal.color);
 
@@ -80,6 +93,10 @@ export function EditGoalModal({
       currentAmount: current,
       targetAmount: target,
       monthlyContribution: monthly,
+      priority,
+      type: goalType,
+      targetDate:
+        targetDate || undefined,
       color,
     });
 
@@ -88,7 +105,7 @@ export function EditGoalModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-[#0b1322] shadow-2xl">
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-800 bg-[#0b1322] shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 px-6 py-5">
           <div>
             <h2 className="text-xl font-bold">
@@ -141,6 +158,65 @@ export function EditGoalModal({
               setMonthlyContribution
             }
           />
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-300">
+              Typ celu
+            </label>
+            <select
+              value={goalType}
+              onChange={(event) =>
+                setGoalType(event.target.value as GoalType)
+              }
+              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none transition focus:border-blue-500"
+            >
+              <option value="EMERGENCY_FUND">Poduszka bezpieczeństwa</option>
+              <option value="HOME">Dom / nieruchomość</option>
+              <option value="CAR">Samochód</option>
+              <option value="TRAVEL">Podróże</option>
+              <option value="OTHER">Inny cel</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-300">
+              Priorytet
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {(["HIGH", "MEDIUM", "LOW"] as GoalPriority[]).map(
+                (item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setPriority(item)}
+                    className={`rounded-xl border px-3 py-2.5 text-xs font-black transition ${
+                      priority === item
+                        ? item === "HIGH"
+                          ? "border-rose-500/40 bg-rose-500/10 text-rose-400"
+                          : item === "MEDIUM"
+                            ? "border-amber-500/40 bg-amber-500/10 text-amber-400"
+                            : "border-blue-500/40 bg-blue-500/10 text-blue-400"
+                        : "border-slate-700 bg-slate-900 text-slate-500"
+                    }`}
+                  >
+                    {item}
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-300">
+              Deadline
+            </label>
+            <input
+              type="date"
+              value={targetDate}
+              onChange={(event) => setTargetDate(event.target.value)}
+              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none transition focus:border-blue-500"
+            />
+          </div>
 
           <div>
             <label className="mb-3 block text-sm font-medium text-slate-300">
