@@ -44,6 +44,8 @@ import type {
 import type { Asset } from "./types/Asset";
 import type { Goal } from "./types/Goal";
 import { goalApi } from "./api/goalApi";
+import { authApi } from "./api/authApi";
+import { Login } from "./pages/Login";
 import type { Liability } from "./types/Liability";
 import type { NetWorthSnapshot } from "./types/NetWorthHistory";
 import type { MonthlyBudgetPlan } from "./types/Budget";
@@ -54,6 +56,71 @@ import type {
 } from "./types/RecurringTransaction";
 
 function App() {
+  /*
+   * =========================================================
+   * AUTH
+   * =========================================================
+   */
+
+  const [isAuthenticated, setIsAuthenticated] = useState(() => authApi.isLoggedIn());
+  const [isCheckingAuth, setIsCheckingAuth] = useState(() => authApi.isLoggedIn());
+
+  const [currentUserEmail, setCurrentUserEmail] = useState("");
+
+  useEffect(() => {
+    if (!authApi.getToken()) {
+      setIsCheckingAuth(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function checkAuth() {
+      try {
+        const user = await authApi.me();
+
+        if (!cancelled) {
+          setCurrentUserEmail(user.email);
+          setIsAuthenticated(true);
+        }
+      } catch (error) {
+        console.error("Zapisana sesja jest nieważna:", error);
+        authApi.removeToken();
+
+        if (!cancelled) {
+          setCurrentUserEmail("");
+          setIsAuthenticated(false);
+        }
+      } finally {
+        if (!cancelled) setIsCheckingAuth(false);
+      }
+    }
+
+    void checkAuth();
+    return () => { cancelled = true; };
+  }, []);
+
+  async function handleLogin(email: string, password: string) {
+    const response = await authApi.login(email, password);
+    authApi.saveToken(response.token);
+
+    try {
+      const user = await authApi.me();
+      setCurrentUserEmail(user.email);
+      setIsAuthenticated(true);
+    } catch (error) {
+      authApi.removeToken();
+      throw error;
+    }
+  }
+
+  function handleLogout() {
+    authApi.removeToken();
+    setCurrentUserEmail("");
+    setGoals([]);
+    setIsAuthenticated(false);
+  }
+
   /*
    * =========================================================
    * PORTFOLIO
@@ -204,6 +271,11 @@ function App() {
   const [goals, setGoals] = useState<Goal[]>([]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setGoals([]);
+      return;
+    }
+
     let cancelled = false;
 
     async function loadGoals() {
@@ -223,7 +295,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isAuthenticated]);
 
   async function handleAddGoal(goal: Goal) {
     try {
@@ -980,6 +1052,21 @@ function App() {
    * =========================================================
    */
 
+  if (isCheckingAuth) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#050b16] text-white">
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-violet-500/20 border-t-violet-400" />
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Initializing Freedom</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Login onLogin={handleLogin} />;
+  }
+
   return (
     <BrowserRouter>
       <AchievementUnlockManager
@@ -996,6 +1083,8 @@ function App() {
           goals={goals}
           liabilities={liabilities}
           monthlyBudget={monthlyBudget}
+          userEmail={currentUserEmail}
+          onLogout={handleLogout}
         />
 
         <button

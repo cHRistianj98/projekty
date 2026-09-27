@@ -11,6 +11,7 @@ import {
   BrainCircuit,
   ClipboardCheck,
   Mountain,
+  LogOut,
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
@@ -89,6 +90,8 @@ type SidebarProps = {
   goals: Goal[];
   liabilities: Liability[];
   monthlyBudget: MonthlyBudget;
+  userEmail: string;
+  onLogout: () => void;
 };
 
 export function Sidebar({
@@ -97,6 +100,8 @@ export function Sidebar({
   goals,
   liabilities,
   monthlyBudget,
+  userEmail,
+  onLogout,
 }: SidebarProps) {
   const achievements = getAchievements({
     netWorth,
@@ -291,6 +296,77 @@ export function Sidebar({
         >
           Level rośnie z XP za osiągnięcia. Majątek ma osobną ścieżkę
           milestone&apos;ów.
+        </div>
+      </div>
+
+      {/* AUTHENTICATED USER */}
+
+      <div
+        className="
+          mt-3
+          rounded-2xl
+          border border-slate-800
+          bg-[#0a1525]
+          p-3
+        "
+      >
+        <div className="flex items-center gap-3">
+          <div
+            className="
+              flex h-9 w-9 shrink-0
+              items-center justify-center
+              rounded-xl
+              border border-violet-500/20
+              bg-violet-500/10
+              text-xs font-black uppercase
+              text-violet-300
+            "
+          >
+            {userEmail.charAt(0) || "U"}
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div
+              className="
+                text-[10px] font-black uppercase
+                tracking-[0.12em] text-slate-600
+              "
+            >
+              Signed in
+            </div>
+
+            <div
+              className="
+                mt-0.5 truncate
+                text-xs font-semibold
+                text-slate-300
+              "
+              title={userEmail}
+            >
+              {userEmail}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onLogout}
+            className="
+              flex h-9 w-9 shrink-0
+              items-center justify-center
+              rounded-xl
+              border border-slate-800
+              bg-slate-900
+              text-slate-500
+              transition
+              hover:border-red-500/30
+              hover:bg-red-500/10
+              hover:text-red-300
+            "
+            title="Wyloguj"
+            aria-label="Wyloguj"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </div>
     </aside>
