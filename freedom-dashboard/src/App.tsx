@@ -26,7 +26,6 @@ import { AchievementUnlockManager } from "./features/achievements/AchievementUnl
 import { upsertMonthlySnapshot } from "./features/review/monthlySnapshot";
 
 import { initialMonthlyBudget } from "./data/monthlyBudget";
-import { initialPortfolio } from "./data/portfolio";
 import { initialNetWorthHistory } from "./data/netWorthHistory";
 import { initialLiabilities } from "./data/liabilities";
 import { initialBudgetPlans } from "./data/budgetPlans";
@@ -44,6 +43,7 @@ import type {
 import type { Asset } from "./types/Asset";
 import type { Goal } from "./types/Goal";
 import { goalApi } from "./api/goalApi";
+import { assetApi } from "./api/assetApi";
 import { authApi } from "./api/authApi";
 import { Login } from "./pages/Login";
 import type { Liability } from "./types/Liability";
@@ -118,6 +118,7 @@ function App() {
     authApi.removeToken();
     setCurrentUserEmail("");
     setGoals([]);
+    setPortfolio([]);
     setIsAuthenticated(false);
   }
 
@@ -127,63 +128,91 @@ function App() {
    * =========================================================
    */
 
-  const [
-    portfolio,
-    setPortfolio,
-  ] = useState<Asset[]>(() => {
-    const saved =
-      localStorage.getItem(
-        "freedom-portfolio"
-      );
-
-    return saved
-      ? JSON.parse(saved)
-      : initialPortfolio;
-  });
+  const [portfolio, setPortfolio] = useState<Asset[]>([]);
 
   useEffect(() => {
-    localStorage.setItem(
-      "freedom-portfolio",
-      JSON.stringify(portfolio)
-    );
-  }, [portfolio]);
+    if (!isAuthenticated) {
+      setPortfolio([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadAssets() {
+      try {
+        const loadedAssets = await assetApi.getAll();
+
+        if (!cancelled) {
+          setPortfolio(loadedAssets);
+        }
+      } catch (error) {
+        console.error("Nie udało się pobrać aktywów z backendu:", error);
+      }
+    }
+
+    void loadAssets();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
 
   const totalAssets =
     calculateNetWorth(
       portfolio
     );
 
-  function handleAddAsset(
+  async function handleAddAsset(
     asset: Asset
   ) {
-    setPortfolio((current) => [
-      ...current,
-      asset,
-    ]);
+    try {
+      const createdAsset = await assetApi.create(asset);
+
+      setPortfolio((current) => [
+        ...current,
+        createdAsset,
+      ]);
+    } catch (error) {
+      console.error("Nie udało się dodać aktywa:", error);
+      window.alert("Nie udało się zapisać aktywa w backendzie.");
+    }
   }
 
-  function handleUpdateAsset(
+  async function handleUpdateAsset(
     updatedAsset: Asset
   ) {
-    setPortfolio((current) =>
-      current.map((asset) =>
-        asset.id ===
-        updatedAsset.id
-          ? updatedAsset
-          : asset
-      )
-    );
+    try {
+      const savedAsset = await assetApi.update(
+        updatedAsset.id,
+        updatedAsset
+      );
+
+      setPortfolio((current) =>
+        current.map((asset) =>
+          asset.id === savedAsset.id
+            ? savedAsset
+            : asset
+        )
+      );
+    } catch (error) {
+      console.error("Nie udało się zaktualizować aktywa:", error);
+      window.alert("Nie udało się zaktualizować aktywa w backendzie.");
+    }
   }
 
-  function handleDeleteAsset(
+  async function handleDeleteAsset(
     id: number
   ) {
-    setPortfolio((current) =>
-      current.filter(
-        (asset) =>
-          asset.id !== id
-      )
-    );
+    try {
+      await assetApi.remove(id);
+
+      setPortfolio((current) =>
+        current.filter((asset) => asset.id !== id)
+      );
+    } catch (error) {
+      console.error("Nie udało się usunąć aktywa:", error);
+      window.alert("Nie udało się usunąć aktywa z backendu.");
+    }
   }
 
   /*
@@ -1022,11 +1051,19 @@ function App() {
         goals.map((goal) => goalApi.remove(goal.id))
       );
 
+      await Promise.all(
+        portfolio.map((asset) => assetApi.remove(asset.id))
+      );
+
       const createdDemoGoals = await Promise.all(
         demoGoals.map((goal) => goalApi.create(goal))
       );
 
-      setPortfolio(demoPortfolio);
+      const createdDemoPortfolio = await Promise.all(
+        demoPortfolio.map((asset) => assetApi.create(asset))
+      );
+
+      setPortfolio(createdDemoPortfolio);
       setLiabilities(demoLiabilities);
       setGoals(createdDemoGoals);
       setMonthlyBudget(demoMonthlyBudget);
@@ -1038,7 +1075,7 @@ function App() {
       setBudgetPlans([]);
 
       window.alert(
-        "Dane demo załadowane. Cele zostały zapisane w PostgreSQL."
+        "Dane demo załadowane. Cele i aktywa zostały zapisane w PostgreSQL."
       );
     } catch (error) {
       console.error("Nie udało się załadować danych demo:", error);
