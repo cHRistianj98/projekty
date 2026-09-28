@@ -22,6 +22,7 @@ import { Analytics } from "./pages/Analytics";
 import { Achievements } from "./pages/Achievements";
 import { FreedomEngine } from "./pages/FreedomEngine";
 import { MonthlyReview } from "./pages/MonthlyReview";
+import { FinancialTimeline } from "./pages/FinancialTimeline";
 import { AchievementUnlockManager } from "./features/achievements/AchievementUnlockManager";
 
 
@@ -469,32 +470,6 @@ function App() {
     return () => { cancelled = true; };
   }, [isAuthenticated]);
 
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    const today = new Date().toLocaleDateString("sv-SE");
-
-    async function saveCurrentNetWorth() {
-      try {
-        const saved = await netWorthHistoryApi.save({
-          id: 0,
-          date: today,
-          value: netWorth,
-        });
-
-        setNetWorthHistory((current) => {
-          const existing = current.some((item) => item.date === saved.date);
-          return existing
-            ? current.map((item) => item.date === saved.date ? saved : item)
-            : [...current, saved].sort((a, b) => a.date.localeCompare(b.date));
-        });
-      } catch (error) {
-        console.error("Nie udało się zapisać historii net worth:", error);
-      }
-    }
-
-    void saveCurrentNetWorth();
-  }, [isAuthenticated, netWorth]);
 
   /*
    * =========================================================
@@ -1139,6 +1114,19 @@ function App() {
       netWorth={
         netWorth
       }
+    />
+  }
+/>
+
+
+<Route
+  path="/timeline"
+  element={
+    <FinancialTimeline
+      netWorth={netWorth}
+      monthlyBudget={monthlyBudget}
+      netWorthHistory={netWorthHistory}
+      monthlySnapshots={monthlySnapshots}
     />
   }
 />

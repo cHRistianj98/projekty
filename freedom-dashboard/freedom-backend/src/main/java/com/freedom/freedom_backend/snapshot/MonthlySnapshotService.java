@@ -7,12 +7,15 @@ import com.freedom.freedom_backend.goal.Goal;
 import com.freedom.freedom_backend.goal.GoalRepository;
 import com.freedom.freedom_backend.liability.Liability;
 import com.freedom.freedom_backend.liability.LiabilityRepository;
+import com.freedom.freedom_backend.networth.NetWorthHistoryService;
 import com.freedom.freedom_backend.transaction.Transaction;
 import com.freedom.freedom_backend.transaction.TransactionRepository;
 import com.freedom.freedom_backend.transaction.TransactionType;
 import com.freedom.freedom_backend.user.User;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -31,6 +34,7 @@ public class MonthlySnapshotService {
     private final GoalRepository goalRepository;
     private final LiabilityRepository liabilityRepository;
     private final AchievementService achievementService;
+    private final NetWorthHistoryService netWorthHistoryService;
 
     public MonthlySnapshotService(
             MonthlySnapshotRepository snapshotRepository,
@@ -38,7 +42,8 @@ public class MonthlySnapshotService {
             AssetRepository assetRepository,
             GoalRepository goalRepository,
             LiabilityRepository liabilityRepository,
-            AchievementService achievementService
+            AchievementService achievementService,
+            NetWorthHistoryService netWorthHistoryService
     ) {
         this.snapshotRepository = snapshotRepository;
         this.transactionRepository = transactionRepository;
@@ -46,6 +51,7 @@ public class MonthlySnapshotService {
         this.goalRepository = goalRepository;
         this.liabilityRepository = liabilityRepository;
         this.achievementService = achievementService;
+        this.netWorthHistoryService = netWorthHistoryService;
     }
 
     @Transactional(readOnly = true)
@@ -73,7 +79,8 @@ public class MonthlySnapshotService {
                         )
                         .isPresent()
         ) {
-            throw new IllegalStateException(
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
                     "Month " + month + " is already closed"
             );
         }
@@ -258,9 +265,16 @@ public class MonthlySnapshotService {
                         snapshotLiabilities
                 );
 
-        return MonthlySnapshotResponse.from(
-                snapshotRepository.save(snapshot)
+        MonthlySnapshot saved =
+                snapshotRepository.save(snapshot);
+
+        netWorthHistoryService.upsertForClosedMonth(
+                user,
+                month,
+                netWorth
         );
+
+        return MonthlySnapshotResponse.from(saved);
     }
 
     private int calculatePositiveMonths(

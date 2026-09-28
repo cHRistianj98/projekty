@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   Mountain,
   LogOut,
+  History,
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
@@ -66,6 +67,11 @@ const menuItems = [
     name: "Analizy",
     icon: ChartPie,
     path: "/analytics",
+  },
+  {
+    name: "Timeline",
+    icon: History,
+    path: "/timeline",
   },
   {
     name: "Review",

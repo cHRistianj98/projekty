@@ -53,4 +53,28 @@ public class NetWorthHistoryService {
                 repository.save(history)
         );
     }
+
+    public void upsertForClosedMonth(
+            User user,
+            String month,
+            java.math.BigDecimal value
+    ) {
+        NetWorthHistory history =
+                repository
+                        .findByUserIdAndMonth(
+                                user.getId(),
+                                month
+                        )
+                        .orElseGet(() ->
+                                new NetWorthHistory(
+                                        user,
+                                        month,
+                                        value
+                                )
+                        );
+
+        history.updateValue(value);
+        repository.save(history);
+    }
+
 }

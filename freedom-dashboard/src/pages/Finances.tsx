@@ -1,23 +1,34 @@
-import { useState } from "react";
+import { useState, type ComponentType } from "react";
 
 import {
   Banknote,
+  CalendarDays,
   Car,
+  CreditCard,
   ChartNoAxesCombined,
   ChevronLeft,
   ChevronRight,
   House,
+  PiggyBank,
   Plus,
+  Pencil,
+  Repeat2,
   ShoppingBasket,
+  Trash2,
+  Sparkles,
+  Target,
+  TrendingDown,
+  TrendingUp,
+  WalletCards,
 } from "lucide-react";
 
 import { AddIncomeModal } from "../components/finances/AddIncomeModal";
-import { IncomeRow } from "../components/finances/IncomeRow";
 import { EditIncomeModal } from "../components/finances/EditIncomeModal";
 
 import { AddExpenseModal } from "../components/dashboard/AddExpenseModal";
-import { ExpenseRow } from "../components/finances/ExpenseRow";
 import { EditExpenseModal } from "../components/finances/EditExpenseModal";
+
+import { CategoryIcon } from "../components/categories/CategoryIcon";
 
 import { RecurringTransactionsSection } from "../components/finances/RecurringTransactionsSection";
 import { AddRecurringTransactionModal } from "../components/finances/AddRecurringTransactionModal";
@@ -289,6 +300,12 @@ export function Finances({
 
         recurringRuleId:
           rule.id,
+
+        categoryId: rule.categoryId,
+        categoryName: rule.categoryName,
+        categoryIconKey: rule.categoryIconKey,
+        categoryColor: rule.categoryColor,
+        categoryGroup: rule.categoryGroup,
       });
 
       return;
@@ -312,6 +329,12 @@ export function Finances({
 
       recurringRuleId:
         rule.id,
+
+      categoryId: rule.categoryId,
+      categoryName: rule.categoryName,
+      categoryIconKey: rule.categoryIconKey,
+      categoryColor: rule.categoryColor,
+      categoryGroup: rule.categoryGroup,
     });
   }
 
@@ -348,7 +371,7 @@ export function Finances({
               onClick={() =>
                 changeMonth(-1)
               }
-              className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+              className="cursor-pointer rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
             >
               <ChevronLeft
                 size={18}
@@ -366,7 +389,7 @@ export function Finances({
               onClick={() =>
                 changeMonth(1)
               }
-              className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+              className="cursor-pointer rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
             >
               <ChevronRight
                 size={18}
@@ -381,7 +404,7 @@ export function Finances({
                 true
               )
             }
-            className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold transition hover:bg-blue-500"
+            className="flex cursor-pointer items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold transition hover:bg-blue-500"
           >
             <Plus size={18} />
 
@@ -396,45 +419,44 @@ export function Finances({
         <SummaryCard
           label="Dochód"
           value={income}
-          color="text-emerald-400"
+          color="text-emerald-300"
           subtitle={`${monthlyIncomes.length} źródeł`}
+          icon={WalletCards}
+          accent="emerald"
+          eyebrow="INCOME"
         />
 
         <SummaryCard
           label="Wydatki i alokacje"
-          value={
-            totalExpenses
-          }
-          color="text-red-400"
+          value={totalExpenses}
+          color="text-rose-300"
           subtitle={`${monthlyExpenses.length} pozycji`}
+          icon={CreditCard}
+          accent="rose"
+          eyebrow="OUTFLOW"
         />
 
         <SummaryCard
           label="Wolne środki"
           value={available}
-          color={
-            available >= 0
-              ? "text-blue-400"
-              : "text-red-400"
-          }
-          subtitle={
-            available >= 0
-              ? "Miesiąc na plusie"
-              : "Miesiąc na minusie"
-          }
+          color={available >= 0 ? "text-sky-300" : "text-red-300"}
+          subtitle={available >= 0 ? "Kapitał gotowy do alokacji" : "Miesiąc na minusie"}
+          icon={available >= 0 ? PiggyBank : TrendingDown}
+          accent={available >= 0 ? "sky" : "rose"}
+          eyebrow="AVAILABLE"
         />
 
         <SummaryCard
           label="Stopa oszczędności"
           value={savingsRate}
-          color={
-            savingsRate >= 50
-              ? "text-emerald-400"
-              : "text-amber-400"
-          }
+          color={savingsRate >= 50 ? "text-emerald-300" : "text-amber-300"}
           subtitle="Cel: minimum 50%"
           suffix="%"
           decimals={1}
+          icon={savingsRate >= 50 ? TrendingUp : Target}
+          accent={savingsRate >= 50 ? "emerald" : "amber"}
+          eyebrow="SAVINGS RATE"
+          progress={Math.max(0, Math.min(100, savingsRate))}
         />
       </section>
 
@@ -474,16 +496,15 @@ export function Finances({
 
       {/* INCOMES */}
 
-      <section className="mt-8 overflow-hidden rounded-2xl border border-emerald-500/20 bg-slate-900/70">
+      <section className="mt-8 overflow-hidden rounded-2xl border border-emerald-500/20 bg-slate-900/70 shadow-[0_12px_35px_rgba(0,0,0,0.14)] transition hover:border-emerald-500/30">
         <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
           <div className="flex items-center gap-3">
-            <Banknote
-              size={20}
-              className="text-emerald-400"
-            />
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 ring-1 ring-emerald-500/20">
+              <Banknote size={24} className="text-emerald-400" />
+            </div>
 
             <div>
-              <h2 className="font-semibold">
+              <h2 className="text-lg font-bold">
                 Przychody
               </h2>
 
@@ -512,7 +533,7 @@ export function Finances({
                   true
                 )
               }
-              className="flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-400 transition hover:bg-emerald-500/20"
+              className="flex cursor-pointer items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-400 transition hover:bg-emerald-500/20"
             >
               <Plus size={16} />
 
@@ -543,23 +564,18 @@ export function Finances({
               (
                 incomeItem
               ) => (
-                <IncomeRow
-                  key={
-                    incomeItem.id
-                  }
-                  income={
-                    incomeItem
-                  }
-                  onEdit={() =>
-                    setEditingIncome(
-                      incomeItem
-                    )
-                  }
-                  onDelete={() =>
-                    onDeleteIncome(
-                      incomeItem.id
-                    )
-                  }
+                <TransactionVisualRow
+                  key={incomeItem.id}
+                  name={incomeItem.name}
+                  amount={incomeItem.amount}
+                  date={incomeItem.date}
+                  recurring={incomeItem.recurring}
+                  categoryName={incomeItem.categoryName ?? "Przychód"}
+                  categoryIconKey={incomeItem.categoryIconKey ?? "Wallet"}
+                  categoryColor={incomeItem.categoryColor ?? "#10b981"}
+                  tone="income"
+                  onEdit={() => setEditingIncome(incomeItem)}
+                  onDelete={() => onDeleteIncome(incomeItem.id)}
                 />
               )
             )
@@ -597,19 +613,16 @@ export function Finances({
                 key={
                   config.category
                 }
-                className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70"
+                className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70 shadow-[0_12px_35px_rgba(0,0,0,0.12)] transition hover:border-slate-700"
               >
                 <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
                   <div className="flex items-center gap-3">
-                    <Icon
-                      size={20}
-                      className={
-                        config.color
-                      }
-                    />
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950/70 ring-1 ring-slate-800">
+                      <Icon size={24} className={config.color} />
+                    </div>
 
                     <div>
-                      <h2 className="font-semibold">
+                      <h2 className="text-lg font-bold">
                         {
                           config.title
                         }
@@ -658,23 +671,18 @@ export function Finances({
                         (
                           expense
                         ) => (
-                          <ExpenseRow
-                            key={
-                              expense.id
-                            }
-                            expense={
-                              expense
-                            }
-                            onEdit={() =>
-                              setEditingExpense(
-                                expense
-                              )
-                            }
-                            onDelete={() =>
-                              onDeleteExpense(
-                                expense.id
-                              )
-                            }
+                          <TransactionVisualRow
+                            key={expense.id}
+                            name={expense.name}
+                            amount={expense.amount}
+                            date={expense.date}
+                            recurring={expense.recurring}
+                            categoryName={expense.categoryName ?? config.title}
+                            categoryIconKey={expense.categoryIconKey ?? fallbackIconKey(config.category)}
+                            categoryColor={expense.categoryColor ?? fallbackCategoryColor(config.category)}
+                            tone="expense"
+                            onEdit={() => setEditingExpense(expense)}
+                            onDelete={() => onDeleteExpense(expense.id)}
                           />
                         )
                       )
@@ -812,18 +820,188 @@ export function Finances({
   );
 }
 
+
+type TransactionVisualRowProps = {
+  name: string;
+  amount: number;
+  date?: string;
+  recurring: boolean;
+  categoryName: string;
+  categoryIconKey: string;
+  categoryColor: string;
+  tone: "income" | "expense";
+  onEdit: () => void;
+  onDelete: () => void;
+};
+
+function TransactionVisualRow({
+  name,
+  amount,
+  date,
+  recurring,
+  categoryName,
+  categoryIconKey,
+  categoryColor,
+  tone,
+  onEdit,
+  onDelete,
+}: TransactionVisualRowProps) {
+  const amountClass =
+    tone === "income"
+      ? "text-emerald-300"
+      : "text-slate-100";
+
+  return (
+    <div className="group flex items-center gap-4 border-b border-slate-800/80 px-5 py-4 last:border-b-0 transition hover:bg-white/[0.025]">
+      <div
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ring-1 ring-white/10 shadow-lg"
+        style={{
+          backgroundColor: `${categoryColor}22`,
+          color: categoryColor,
+          boxShadow: `0 8px 24px ${categoryColor}18`,
+        }}
+        title={categoryName}
+      >
+        <CategoryIcon
+          iconKey={categoryIconKey}
+          className="h-5 w-5"
+        />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="truncate text-base font-bold text-slate-100">
+            {name}
+          </span>
+
+          <span
+            className="rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+            style={{
+              borderColor: `${categoryColor}35`,
+              backgroundColor: `${categoryColor}12`,
+              color: categoryColor,
+            }}
+          >
+            {categoryName}
+          </span>
+        </div>
+
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+          <span className="flex items-center gap-1">
+            <CalendarDays size={12} />
+            {formatTransactionDate(date)}
+          </span>
+
+          <span>•</span>
+
+          <span className="flex items-center gap-1">
+            {recurring && <Repeat2 size={12} />}
+            {recurring ? "Powtarzalny" : "Jednorazowy"}
+          </span>
+        </div>
+      </div>
+
+      <div className="ml-auto flex items-center gap-3">
+        <div className={`min-w-[110px] text-right text-base font-black ${amountClass}`}>
+          {tone === "income" ? "+" : ""}
+          {amount.toLocaleString("pl-PL")} zł
+        </div>
+
+        <button
+          type="button"
+          onClick={onEdit}
+          title="Edytuj"
+          className="cursor-pointer rounded-xl p-2 text-slate-500 transition hover:bg-blue-500/10 hover:text-blue-300"
+        >
+          <Pencil size={17} />
+        </button>
+
+        <button
+          type="button"
+          onClick={onDelete}
+          title="Usuń"
+          className="cursor-pointer rounded-xl p-2 text-slate-500 transition hover:bg-red-500/10 hover:text-red-300"
+        >
+          <Trash2 size={17} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function formatTransactionDate(date?: string) {
+  if (!date) return "Brak daty";
+
+  const [year, month, day] = date.split("-");
+  if (!year || !month || !day) return date;
+
+  return `${day}.${month}.${year}`;
+}
+
+function fallbackIconKey(category: ExpenseCategory) {
+  switch (category) {
+    case "fixed":
+      return "House";
+    case "investment":
+      return "TrendingUp";
+    case "goal":
+      return "Target";
+    default:
+      return "ShoppingBasket";
+  }
+}
+
+function fallbackCategoryColor(category: ExpenseCategory) {
+  switch (category) {
+    case "fixed":
+      return "#fb7185";
+    case "investment":
+      return "#60a5fa";
+    case "goal":
+      return "#a78bfa";
+    default:
+      return "#fbbf24";
+  }
+}
+
 type SummaryCardProps = {
   label: string;
-
   value: number;
-
   color: string;
-
   subtitle: string;
-
   suffix?: string;
-
   decimals?: number;
+  icon: ComponentType<{ size?: number; className?: string }>;
+  accent: "emerald" | "rose" | "sky" | "amber";
+  eyebrow: string;
+  progress?: number;
+};
+
+const summaryAccent = {
+  emerald: {
+    border: "border-emerald-500/20",
+    glow: "bg-emerald-400/10",
+    icon: "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20",
+    bar: "bg-emerald-400",
+  },
+  rose: {
+    border: "border-rose-500/20",
+    glow: "bg-rose-400/10",
+    icon: "bg-rose-400/10 text-rose-300 ring-rose-400/20",
+    bar: "bg-rose-400",
+  },
+  sky: {
+    border: "border-sky-500/20",
+    glow: "bg-sky-400/10",
+    icon: "bg-sky-400/10 text-sky-300 ring-sky-400/20",
+    bar: "bg-sky-400",
+  },
+  amber: {
+    border: "border-amber-500/20",
+    glow: "bg-amber-400/10",
+    icon: "bg-amber-400/10 text-amber-300 ring-amber-400/20",
+    bar: "bg-amber-400",
+  },
 };
 
 function SummaryCard({
@@ -833,33 +1011,64 @@ function SummaryCard({
   subtitle,
   suffix = " zł",
   decimals = 0,
+  icon: Icon,
+  accent,
+  eyebrow,
+  progress,
 }: SummaryCardProps) {
+  const palette = summaryAccent[accent];
+
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-      <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
-        {label}
+    <div className={`group relative min-h-[180px] overflow-hidden rounded-2xl border ${palette.border} bg-gradient-to-br from-slate-900 via-slate-900/95 to-[#07111f] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.22)] transition duration-300 hover:-translate-y-0.5 hover:border-slate-600`}>
+      <div className={`pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full ${palette.glow} blur-3xl transition duration-500 group-hover:scale-125`} />
+      <Icon className="pointer-events-none absolute -bottom-7 -right-4 h-32 w-32 rotate-[-10deg] text-white/[0.035] transition duration-500 group-hover:scale-110 group-hover:text-white/[0.055]" />
+
+      <div className="relative z-[1] flex h-full flex-col justify-between">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-600">
+              {eyebrow}
+            </div>
+            <div className="mt-1 text-xs font-bold uppercase tracking-wider text-slate-400">
+              {label}
+            </div>
+          </div>
+
+          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ring-1 ${palette.icon} shadow-lg`}>
+            <Icon size={21} />
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <div className={`text-[2rem] font-black leading-none tracking-tight ${color}`}>
+            {value.toLocaleString("pl-PL", {
+              minimumFractionDigits: decimals,
+              maximumFractionDigits: decimals,
+            })}
+            {suffix}
+          </div>
+
+          <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+            <Sparkles size={13} className="opacity-70" />
+            <span>{subtitle}</span>
+          </div>
+
+          {progress !== undefined && (
+            <div className="mt-4">
+              <div className="mb-1.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                <span>Progress</span>
+                <span>{Math.round(progress)}%</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
+                <div
+                  className={`h-full rounded-full ${palette.bar} transition-all duration-500`}
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-
-      <div
-        className={`mt-3 text-3xl font-bold ${color}`}
-      >
-        {value.toLocaleString(
-          "pl-PL",
-          {
-            minimumFractionDigits:
-              decimals,
-
-            maximumFractionDigits:
-              decimals,
-          }
-        )}
-
-        {suffix}
-      </div>
-
-      <p className="mt-2 text-xs text-slate-600">
-        {subtitle}
-      </p>
     </div>
   );
 }

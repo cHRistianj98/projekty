@@ -4,28 +4,30 @@ export type ExpenseCategory =
   | "investment"
   | "goal";
 
-export type Expense = {
+export type TransactionCategoryDetails = {
+  categoryId?: number;
+  categoryName?: string;
+  categoryIconKey?: string;
+  categoryColor?: string;
+  categoryGroup?: string;
+};
+
+export type Expense = TransactionCategoryDetails & {
   id: number;
   name: string;
   amount: number;
   category: ExpenseCategory;
   recurring: boolean;
   date: string;
-
-  /*
-   * Jeżeli transakcja pochodzi z reguły cyklicznej,
-   * przechowujemy tutaj ID tej reguły.
-   */
   recurringRuleId?: number;
 };
 
-export type Income = {
+export type Income = TransactionCategoryDetails & {
   id: number;
   name: string;
   amount: number;
   recurring: boolean;
   date: string;
-
   recurringRuleId?: number;
 };
 

@@ -1,25 +1,22 @@
 package com.freedom.freedom_backend.transaction;
 
+import com.freedom.freedom_backend.category.Category;
 import com.freedom.freedom_backend.user.User;
 import jakarta.persistence.*;
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Entity
 @Table(name = "transactions")
 public class Transaction {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Enumerated(EnumType.STRING) @Column(nullable = false)
     private TransactionType type;
 
     @Column(nullable = false)
@@ -28,8 +25,13 @@ public class Transaction {
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal amount;
 
+    // Legacy 1.0 group. Kept for old rows and existing analytics during migration.
     @Enumerated(EnumType.STRING)
     private ExpenseCategory category;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id")
+    private Category detailedCategory;
 
     @Column(nullable = false)
     private boolean recurring;
@@ -42,41 +44,21 @@ public class Transaction {
 
     protected Transaction() {}
 
-    public Transaction(
-            User user,
-            TransactionType type,
-            String name,
-            BigDecimal amount,
-            ExpenseCategory category,
-            boolean recurring,
-            LocalDate date,
-            Long recurringRuleId
-    ) {
+    public Transaction(User user, TransactionType type, String name, BigDecimal amount,
+                       ExpenseCategory category, Category detailedCategory, boolean recurring,
+                       LocalDate date, Long recurringRuleId) {
         this.user = user;
-        update(
-                type,
-                name,
-                amount,
-                category,
-                recurring,
-                date,
-                recurringRuleId
-        );
+        update(type, name, amount, category, detailedCategory, recurring, date, recurringRuleId);
     }
 
-    public void update(
-            TransactionType type,
-            String name,
-            BigDecimal amount,
-            ExpenseCategory category,
-            boolean recurring,
-            LocalDate date,
-            Long recurringRuleId
-    ) {
+    public void update(TransactionType type, String name, BigDecimal amount,
+                       ExpenseCategory category, Category detailedCategory, boolean recurring,
+                       LocalDate date, Long recurringRuleId) {
         this.type = type;
         this.name = name;
         this.amount = amount;
         this.category = category;
+        this.detailedCategory = detailedCategory;
         this.recurring = recurring;
         this.date = date;
         this.recurringRuleId = recurringRuleId;
@@ -88,6 +70,7 @@ public class Transaction {
     public String getName() { return name; }
     public BigDecimal getAmount() { return amount; }
     public ExpenseCategory getCategory() { return category; }
+    public Category getDetailedCategory() { return detailedCategory; }
     public boolean isRecurring() { return recurring; }
     public LocalDate getDate() { return date; }
     public Long getRecurringRuleId() { return recurringRuleId; }

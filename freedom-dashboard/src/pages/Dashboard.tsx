@@ -3,6 +3,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { Link } from "react-router-dom";
+
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -465,7 +467,7 @@ export function Dashboard({
     ) ??
     null;
 
-  const monthlyRouterAmount = Math.max(Math.round(freedomEngine.averageSurplus), 0);
+  const monthlyRouterAmount = Math.max(Math.round(surplus), 0);
 
   const moneyPlan = routeMoney({
     amount: monthlyRouterAmount,
@@ -510,10 +512,14 @@ export function Dashboard({
   const hasCurrentMonthIncome =
     selectedIncomes.length > 0;
 
-  const hasCurrentNetWorthSnapshot =
-    netWorthHistory.some(
-      (snapshot) => snapshot.date.slice(0, 7) === currentMonth
-    );
+  /*
+   * FREEDOM 8.0 / backend-authoritative history:
+   * NetWorthHistory is written only by Close Month, so it must NOT be
+   * a prerequisite for closing the current month.
+   */
+  const hasCurrentWealthState =
+    portfolio.length > 0 ||
+    liabilities.length > 0;
 
   const monthClosed = Boolean(currentMonthSnapshot);
 
@@ -543,11 +549,11 @@ export function Dashboard({
       label: "REVIEW",
       done:
         hasCurrentMonthIncome &&
-        hasCurrentNetWorthSnapshot,
+        hasCurrentMonthTransactions,
       active:
         !monthClosed &&
         hasCurrentMonthIncome &&
-        hasCurrentNetWorthSnapshot,
+        hasCurrentMonthTransactions,
     },
     {
       label: "CLOSE MONTH",
@@ -555,7 +561,7 @@ export function Dashboard({
       active:
         !monthClosed &&
         hasCurrentMonthIncome &&
-        hasCurrentNetWorthSnapshot,
+        hasCurrentMonthTransactions,
     },
     {
       label: "ROUTE MONEY",
@@ -578,11 +584,11 @@ export function Dashboard({
       done: hasCurrentMonthIncome,
     },
     {
-      label: "Net Worth zaktualizowany",
-      detail: hasCurrentNetWorthSnapshot
-        ? formatMoney(netWorth)
-        : "Brak snapshotu Net Worth dla tego miesiąca",
-      done: hasCurrentNetWorthSnapshot,
+      label: "Stan majątku gotowy",
+      detail: hasCurrentWealthState
+        ? `${formatMoney(netWorth)} live · snapshot powstanie przy Close Month`
+        : "Dodaj aktywa lub zobowiązania, aby zbudować stan majątku",
+      done: hasCurrentWealthState,
     },
     {
       label: "Monthly Review zamknięty",
@@ -596,8 +602,25 @@ export function Dashboard({
   const readyToClose =
     hasCurrentMonthTransactions &&
     hasCurrentMonthIncome &&
-    hasCurrentNetWorthSnapshot &&
     !monthClosed;
+
+  const monthScore = calculateMonthScore({
+    income,
+    surplus,
+    savingsRate,
+    hasTransactions: hasCurrentMonthTransactions,
+    hasWealthState: hasCurrentWealthState,
+    monthClosed,
+  });
+
+  const monthScoreLabel =
+    monthScore >= 85
+      ? "Excellent month"
+      : monthScore >= 70
+        ? "Strong month"
+        : monthScore >= 50
+          ? "Building"
+          : "Needs attention";
 
   const currentLevel =
     findFreedomLevel(
@@ -744,10 +767,10 @@ export function Dashboard({
             <div>
               <div className="flex items-center gap-2">
                 <Gauge size={18} className="text-cyan-400" />
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-400">Command Center 4.0</p>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-400">Monthly Operating System 8.0</p>
               </div>
-              <h2 className="mt-2 text-2xl font-black text-white">Stan → progres → następny ruch → trajektoria</h2>
-              <p className="mt-1 text-sm text-slate-500">Najważniejsze informacje z całego FREEDOM na jednym ekranie.</p>
+              <h2 className="mt-2 text-2xl font-black text-white">Zarabiaj → kontroluj → alokuj → zamknij → rozwijaj majątek</h2>
+              <p className="mt-1 text-sm text-slate-500">Jedna miesięczna pętla sterująca całym FREEDOM.</p>
             </div>
             <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3">
               <p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-400">Do FREE</p>
@@ -777,8 +800,8 @@ export function Dashboard({
               <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-400">Your Next Move</p>
-                  <h3 className="mt-1 text-lg font-black text-white">Money Router · {formatMoney(monthlyRouterAmount)} / mies.</h3>
-                  <p className="mt-1 text-xs text-slate-600">Na podstawie rolling cashflow z Freedom Engine.</p>
+                  <h3 className="mt-1 text-lg font-black text-white">Deploy Surplus · {formatMoney(monthlyRouterAmount)}</h3>
+                  <p className="mt-1 text-xs text-slate-600">Bieżąca nadwyżka tego miesiąca — plan alokacji, jeszcze bez automatycznego wykonania.</p>
                 </div>
                 {moneyPlan.deadlineSummary.requiredMonthly > 0 && (
                   <div className={`rounded-xl border px-3 py-2 text-right ${moneyPlan.deadlineSummary.onTrack ? "border-emerald-500/20 bg-emerald-500/10" : "border-rose-500/20 bg-rose-500/10"}`}>
@@ -861,40 +884,54 @@ export function Dashboard({
               <div className="flex items-center gap-2 text-blue-400">
                 <CalendarCheck size={18} />
                 <p className="text-xs font-black uppercase tracking-[0.18em]">
-                  Monthly Cycle 1.0
+                  Monthly OS 8.0
                 </p>
               </div>
               <h2 className="mt-2 text-2xl font-black capitalize text-white">
                 {formatMonth(currentMonth)}
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Jeden proces: planuj → śledź → przejrzyj → zamknij → rozdysponuj.
+                Miesięczny system operacyjny: kontrola cashflow, decyzja o nadwyżce i finalny snapshot.
               </p>
             </div>
 
-            <div className={`rounded-xl border px-4 py-3 ${
-              monthClosed
-                ? "border-emerald-500/20 bg-emerald-500/10"
-                : readyToClose
-                  ? "border-cyan-500/20 bg-cyan-500/10"
-                  : "border-slate-700 bg-slate-900/60"
-            }`}>
-              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
-                Status miesiąca
-              </p>
-              <p className={`mt-1 font-black ${
+            <div className="flex flex-wrap gap-3">
+              <div className="min-w-36 rounded-xl border border-violet-500/20 bg-violet-500/10 px-4 py-3">
+                <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                  Month Score
+                </p>
+                <p className="mt-1 text-lg font-black text-violet-300">
+                  {monthScore} / 100
+                </p>
+                <p className="mt-0.5 text-[10px] font-bold text-slate-500">
+                  {monthScoreLabel}
+                </p>
+              </div>
+
+              <div className={`min-w-40 rounded-xl border px-4 py-3 ${
                 monthClosed
-                  ? "text-emerald-400"
+                  ? "border-emerald-500/20 bg-emerald-500/10"
                   : readyToClose
-                    ? "text-cyan-400"
-                    : "text-slate-300"
+                    ? "border-cyan-500/20 bg-cyan-500/10"
+                    : "border-slate-700 bg-slate-900/60"
               }`}>
-                {monthClosed
-                  ? "CLOSED 🔒"
-                  : readyToClose
-                    ? "READY TO CLOSE"
-                    : `${daysLeftInMonth} dni do końca`}
-              </p>
+                <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                  Status miesiąca
+                </p>
+                <p className={`mt-1 font-black ${
+                  monthClosed
+                    ? "text-emerald-400"
+                    : readyToClose
+                      ? "text-cyan-400"
+                      : "text-slate-300"
+                }`}>
+                  {monthClosed
+                    ? "CLOSED 🔒"
+                    : readyToClose
+                      ? "READY TO CLOSE"
+                      : `${daysLeftInMonth} dni do końca`}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -1005,6 +1042,24 @@ export function Dashboard({
                     ? "Podstawowe dane są gotowe. Otwórz Review, sprawdź miesiąc i użyj CLOSE MONTH."
                     : "Księguj transakcje i aktualizuj Net Worth. FREEDOM sam pokaże, kiedy miesiąc będzie gotowy do zamknięcia."}
               </p>
+
+              {!monthClosed && readyToClose && (
+                <Link
+                  to="/review"
+                  className="mt-5 inline-flex items-center justify-center rounded-xl border border-cyan-500/30 bg-cyan-500/15 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-cyan-300 transition hover:bg-cyan-500/25"
+                >
+                  Open Monthly Review →
+                </Link>
+              )}
+
+              {monthClosed && (
+                <Link
+                  to="/timeline"
+                  className="mt-5 inline-flex items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-emerald-300 transition hover:bg-emerald-500/20"
+                >
+                  View Financial Timeline →
+                </Link>
+              )}
 
               {monthClosed && currentMonthSnapshot && (
                 <div className="mt-4 grid grid-cols-2 gap-3">
@@ -1666,70 +1721,55 @@ export function Dashboard({
 
               return (
                 <div
-                  key={level.level}
-                  className={`group relative min-h-[190px] overflow-hidden rounded-xl border transition duration-300 hover:-translate-y-1 hover:shadow-2xl ${
+                  key={
+                    level.level
+                  }
+                  className={`rounded-xl border p-4 transition ${
                     active
-                      ? "border-blue-400/70 shadow-lg shadow-blue-500/10"
+                      ? "border-blue-500/40 bg-blue-500/10"
                       : completed
-                        ? "border-emerald-500/30"
-                        : "border-slate-800"
+                        ? "border-emerald-500/20 bg-emerald-500/5"
+                        : "border-slate-800 bg-slate-950/40"
                   }`}
                 >
                   <div
-                    className="absolute inset-0 bg-no-repeat transition-transform duration-500 group-hover:scale-105"
-                    style={{
-                      backgroundImage: "url('/levels/levels.png')",
-                      backgroundSize: "700% 100%",
-                      backgroundPosition: `${((level.level - 1) / 6) * 100}% center`,
-                    }}
-                  />
-
-                  <div
-                    className={`absolute inset-0 ${
+                    className={`text-xs font-bold ${
                       active
-                        ? "bg-gradient-to-t from-[#06101f] via-[#06101f]/45 to-blue-950/10"
+                        ? "text-blue-400"
                         : completed
-                          ? "bg-gradient-to-t from-[#06130f] via-[#06130f]/55 to-emerald-950/15"
-                          : "bg-gradient-to-t from-[#050b16] via-[#050b16]/70 to-[#050b16]/35 grayscale-[35%]"
+                          ? "text-emerald-400"
+                          : "text-slate-600"
                     }`}
-                  />
-
-                  <div className="relative flex min-h-[190px] flex-col justify-between p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div
-                        className={`rounded-lg border bg-black/35 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] backdrop-blur-md ${
-                          active
-                            ? "border-blue-400/40 text-blue-300"
-                            : completed
-                              ? "border-emerald-400/30 text-emerald-300"
-                              : "border-white/10 text-slate-300"
-                        }`}
-                      >
-                        Level {level.level}
-                      </div>
-
-                      {active && (
-                        <div className="rounded-lg border border-blue-400/40 bg-blue-500/20 px-2 py-1 text-[10px] font-black text-blue-200 backdrop-blur-md">
-                          YOU
-                        </div>
-                      )}
-
-                      {!active && completed && (
-                        <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/20 px-2 py-1 text-[10px] font-black text-emerald-200 backdrop-blur-md">
-                          ✓ DONE
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <div className="text-base font-black text-white drop-shadow-lg">
-                        {level.name}
-                      </div>
-                      <div className="mt-1 text-xs font-semibold text-slate-300 drop-shadow-lg">
-                        {level.level === 1 ? "< 100k" : formatCompactMoney(level.min)}
-                      </div>
-                    </div>
+                  >
+                    LEVEL{" "}
+                    {level.level}
                   </div>
+
+                  <div className="mt-2 font-semibold">
+                    {level.name}
+                  </div>
+
+                  <div className="mt-1 text-xs text-slate-500">
+                    {level.level ===
+                    1
+                      ? "< 100k"
+                      : formatCompactMoney(
+                          level.min
+                        )}
+                  </div>
+
+                  {active && (
+                    <div className="mt-3 text-xs font-bold text-blue-400">
+                      ← YOU
+                    </div>
+                  )}
+
+                  {!active &&
+                    completed && (
+                      <div className="mt-3 text-xs font-bold text-emerald-400">
+                        ✓ DONE
+                      </div>
+                    )}
                 </div>
               );
             }
@@ -2795,6 +2835,49 @@ function calculateNetWorthChangeForMonth(
     endValue -
     firstSnapshot.value
   );
+}
+
+
+function calculateMonthScore({
+  income,
+  surplus,
+  savingsRate,
+  hasTransactions,
+  hasWealthState,
+  monthClosed,
+}: {
+  income: number;
+  surplus: number;
+  savingsRate: number;
+  hasTransactions: boolean;
+  hasWealthState: boolean;
+  monthClosed: boolean;
+}) {
+  let score = 0;
+
+  if (hasTransactions) score += 15;
+  if (income > 0) score += 15;
+  if (hasWealthState) score += 10;
+
+  if (surplus > 0) {
+    score += 20;
+  } else if (surplus === 0 && income > 0) {
+    score += 8;
+  }
+
+  if (savingsRate >= 50) {
+    score += 30;
+  } else if (savingsRate >= 30) {
+    score += 22;
+  } else if (savingsRate >= 10) {
+    score += 12;
+  } else if (savingsRate > 0) {
+    score += 5;
+  }
+
+  if (monthClosed) score += 10;
+
+  return Math.max(0, Math.min(score, 100));
 }
 
 function getSavingsMessage(

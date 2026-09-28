@@ -1,0 +1,79 @@
+import type { Category, CategoryType } from "../../types/Category";
+import { CategoryIcon } from "./CategoryIcon";
+
+const groupLabels: Record<string, string> = {
+  FIXED: "Stałe",
+  LIVING: "Życie",
+  HEALTH: "Zdrowie",
+  GROWTH: "Rozwój",
+  LIFESTYLE: "Lifestyle",
+  WEALTH: "Majątek",
+  GOALS: "Cele",
+  INCOME: "Dochody",
+  OTHER: "Inne",
+};
+
+export function CategoryPicker({
+  categories,
+  type,
+  value,
+  onChange,
+}: {
+  categories: Category[];
+  type: CategoryType;
+  value?: number;
+  onChange: (categoryId: number) => void;
+}) {
+  const visible = categories
+    .filter((category) => category.type === type && category.active)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+
+  const groups = [...new Set(visible.map((category) => category.group))];
+
+  return (
+    <div className="max-h-[310px] space-y-5 overflow-y-auto pr-1">
+      {groups.map((group) => (
+        <section key={group}>
+          <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+            {groupLabels[group] ?? group}
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {visible
+              .filter((category) => category.group === group)
+              .map((category) => {
+                const selected = category.id === value;
+
+                return (
+                  <button
+                    key={category.id}
+                    type="button"
+                    onClick={() => onChange(category.id)}
+                    className={`cursor-pointer rounded-2xl border p-3 text-center transition ${
+                      selected
+                        ? "border-cyan-400 bg-cyan-400/10 shadow-[0_0_0_1px_rgba(34,211,238,0.15)]"
+                        : "border-slate-800 bg-slate-950/50 hover:border-slate-600 hover:bg-slate-900"
+                    }`}
+                  >
+                    <div
+                      className="mx-auto flex h-12 w-12 items-center justify-center rounded-full text-white shadow-lg"
+                      style={{ backgroundColor: category.color }}
+                    >
+                      <CategoryIcon iconKey={category.iconKey} className="h-6 w-6" />
+                    </div>
+
+                    <div
+                      className="mt-2 truncate text-xs font-bold text-slate-200"
+                      title={category.name}
+                    >
+                      {category.name}
+                    </div>
+                  </button>
+                );
+              })}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
