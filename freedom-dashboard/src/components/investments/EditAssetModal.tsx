@@ -1,12 +1,9 @@
-import { useState } from "react";
-import { X } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Pencil, X } from "lucide-react";
 
-import {
-  assetCategoryLabels,
-  getAssetCategory,
-  type Asset,
-  type AssetCategory,
-} from "../../types/Asset";
+import type { Asset, AssetCategory, AssetIconKey } from "../../types/Asset";
+import { assetCategoryLabels, defaultAssetIconByCategory, getAssetCategory, getAssetIconKey } from "../../types/Asset";
+import { AssetIcon, assetIconOptions } from "./assetIcons";
 
 type EditAssetModalProps = {
   asset: Asset;
@@ -14,171 +11,75 @@ type EditAssetModalProps = {
   onUpdate: (asset: Asset) => void;
 };
 
-const availableColors = [
-  "#3b82f6",
-  "#10b981",
-  "#f59e0b",
-  "#f97316",
-  "#6366f1",
-  "#a855f7",
-  "#ec4899",
-  "#64748b",
-];
+const availableColors = ["#3b82f6", "#10b981", "#f59e0b", "#f97316", "#6366f1", "#a855f7", "#ec4899", "#64748b"];
+const categories = Object.keys(assetCategoryLabels) as AssetCategory[];
 
-const categories = Object.entries(assetCategoryLabels) as [
-  AssetCategory,
-  string,
-][];
-
-export function EditAssetModal({
-  asset,
-  onClose,
-  onUpdate,
-}: EditAssetModalProps) {
+export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps) {
   const [name, setName] = useState(asset.name);
   const [value, setValue] = useState(asset.value.toString());
-  const [category, setCategory] =
-    useState<AssetCategory>(getAssetCategory(asset));
+  const [category, setCategory] = useState<AssetCategory>(getAssetCategory(asset));
   const [color, setColor] = useState(asset.color);
+  const [iconKey, setIconKey] = useState<AssetIconKey>(getAssetIconKey(asset));
+
+  function handleCategoryChange(nextCategory: AssetCategory) {
+    setCategory(nextCategory);
+    if (!asset.iconKey || iconKey === defaultAssetIconByCategory[category]) {
+      setIconKey(defaultAssetIconByCategory[nextCategory]);
+    }
+  }
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-
     const numericValue = Number(value);
+    if (name.trim() === "" || numericValue < 0 || Number.isNaN(numericValue)) return;
 
-    if (
-      name.trim() === "" ||
-      numericValue < 0 ||
-      Number.isNaN(numericValue)
-    ) {
-      return;
-    }
-
-    onUpdate({
-      ...asset,
-      name: name.trim(),
-      value: numericValue,
-      color,
-      category,
-    });
-
+    onUpdate({ ...asset, name: name.trim(), value: numericValue, color, category, iconKey });
     onClose();
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-800 bg-[#0b1322] shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-800 px-6 py-5">
-          <div>
-            <h2 className="text-xl font-bold">Edytuj aktywo</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Zmień dane pozycji w portfelu
-            </p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-[#020611]/80 p-4 backdrop-blur-md">
+      <div className="relative my-auto w-full max-w-2xl overflow-hidden rounded-[28px] border bg-[#08111f] shadow-[0_30px_100px_rgba(0,0,0,.65)]" style={{ borderColor: `${color}45`, boxShadow: `0 30px 100px rgba(0,0,0,.65), 0 0 70px ${color}12` }}>
+        <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full blur-3xl" style={{ backgroundColor: `${color}18` }} />
+
+        <div className="relative flex items-center justify-between border-b border-slate-800/80 px-7 py-6">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl ring-1 ring-white/10" style={{ color, backgroundColor: `${color}18` }}><Pencil size={22} /></div>
+            <div><h2 className="text-xl font-black text-white">Edytuj aktywo</h2><p className="mt-1 text-sm text-slate-500">Dopasuj pozycję dokładnie do swojego portfela</p></div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-800 hover:text-white"
-          >
-            <X size={20} />
-          </button>
+          <button type="button" onClick={onClose} className="cursor-pointer rounded-xl p-2.5 text-slate-500 transition hover:bg-slate-800 hover:text-white"><X size={20} /></button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5 p-6">
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">
-              Nazwa aktywa
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none transition focus:border-blue-500"
-            />
+        <form onSubmit={handleSubmit} className="relative space-y-6 p-7">
+          <div className="grid gap-5 md:grid-cols-2">
+            <Field label="Nazwa aktywa"><input autoFocus value={name} onChange={(e) => setName(e.target.value)} className={inputClass} /></Field>
+            <Field label="Aktualna wartość"><div className="relative"><input type="number" min="0" step="0.01" value={value} onChange={(e) => setValue(e.target.value)} className={`${inputClass} pr-14`} /><span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-600">zł</span></div></Field>
           </div>
 
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">
-              Kategoria
-            </label>
-            <select
-              value={category}
-              onChange={(event) =>
-                setCategory(event.target.value as AssetCategory)
-              }
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none transition focus:border-blue-500"
-            >
-              {categories.map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </select>
-            {!asset.category && (
-              <p className="mt-2 text-xs leading-5 text-amber-400/80">
-                To starsze aktywo nie miało kategorii. Wybierz właściwą
-                i zapisz — od tej chwili Engine będzie je klasyfikował.
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">
-              Aktualna wartość
-            </label>
-            <div className="relative">
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={value}
-                onChange={(event) => setValue(event.target.value)}
-                className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 pr-14 text-white outline-none transition focus:border-blue-500"
-              />
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-500">
-                zł
-              </span>
+          <Field label="Kategoria">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {categories.map((item) => <button key={item} type="button" onClick={() => handleCategoryChange(item)} className={`cursor-pointer rounded-xl border px-3 py-2.5 text-left text-xs font-bold transition ${category === item ? "border-blue-400/60 bg-blue-500/12 text-blue-200" : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:text-white"}`}>{assetCategoryLabels[item]}</button>)}
             </div>
-          </div>
+          </Field>
 
-          <div>
-            <label className="mb-3 block text-sm font-medium text-slate-300">
-              Kolor
-            </label>
-            <div className="flex flex-wrap gap-3">
-              {availableColors.map((availableColor) => (
-                <button
-                  key={availableColor}
-                  type="button"
-                  onClick={() => setColor(availableColor)}
-                  className={`h-9 w-9 rounded-full transition ${
-                    color === availableColor
-                      ? "scale-110 ring-2 ring-white ring-offset-2 ring-offset-[#0b1322]"
-                      : "hover:scale-110"
-                  }`}
-                  style={{ backgroundColor: availableColor }}
-                />
-              ))}
+          <Field label="Ikona">
+            <div className="grid grid-cols-8 gap-2 max-sm:grid-cols-4">
+              {assetIconOptions.map((option) => <button key={option.key} type="button" title={option.label} onClick={() => setIconKey(option.key)} className={`group flex aspect-square cursor-pointer items-center justify-center rounded-xl border transition hover:-translate-y-0.5 ${iconKey === option.key ? "border-white/35 bg-white/10" : "border-slate-800 bg-slate-900/55 hover:border-slate-700"}`} style={iconKey === option.key ? { color, boxShadow: `inset 0 0 22px ${color}18, 0 0 18px ${color}12` } : undefined}><option.icon size={20} className={iconKey === option.key ? "" : "text-slate-500 transition group-hover:text-slate-300"} /></button>)}
             </div>
+          </Field>
+
+          <Field label="Kolor"><div className="flex flex-wrap gap-3">{availableColors.map((item) => <button key={item} type="button" title={item} onClick={() => setColor(item)} className={`h-9 w-9 cursor-pointer rounded-full transition hover:scale-110 ${color === item ? "scale-110 ring-2 ring-white ring-offset-2 ring-offset-[#08111f]" : ""}`} style={{ backgroundColor: item, boxShadow: color === item ? `0 0 22px ${item}70` : undefined }} />)}</div></Field>
+
+          <div className="relative overflow-hidden rounded-2xl border p-4" style={{ borderColor: `${color}38`, background: `linear-gradient(90deg, ${color}18, rgba(15,23,42,.7) 45%, rgba(15,23,42,.5))` }}>
+            <div className="flex items-center justify-between gap-4"><div className="flex min-w-0 items-center gap-3"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1 ring-white/10" style={{ color, backgroundColor: `${color}22`, boxShadow: `0 8px 25px ${color}20` }}><AssetIcon iconKey={iconKey} size={23} /></div><div className="min-w-0"><div className="truncate font-black text-white">{name || "Aktywo"}</div><div className="mt-1 text-xs font-medium" style={{ color }}>{assetCategoryLabels[category]}</div></div></div><div className="shrink-0 text-lg font-black text-white">{Number(value || 0).toLocaleString("pl-PL")} zł</div></div>
           </div>
 
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-xl border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
-            >
-              Anuluj
-            </button>
-            <button
-              type="submit"
-              className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold transition hover:bg-blue-500"
-            >
-              Zapisz zmiany
-            </button>
-          </div>
+          <div className="flex justify-end gap-3 pt-1"><button type="button" onClick={onClose} className="cursor-pointer rounded-xl border border-slate-700 px-5 py-3 text-sm font-bold text-slate-300 transition hover:bg-slate-800">Anuluj</button><button type="submit" className="cursor-pointer rounded-xl bg-blue-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-blue-950/30 transition hover:-translate-y-0.5 hover:bg-blue-500">Zapisz zmiany</button></div>
         </form>
       </div>
     </div>
   );
 }
+
+function Field({ label, children }: { label: string; children: ReactNode }) { return <div><label className="mb-2.5 block text-xs font-black uppercase tracking-[.12em] text-slate-500">{label}</label>{children}</div>; }
+const inputClass = "w-full rounded-xl border border-slate-700/80 bg-slate-900/80 px-4 py-3.5 font-semibold text-white outline-none transition placeholder:text-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10";

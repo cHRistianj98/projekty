@@ -1,13 +1,7 @@
-import type {
-  Asset,
-  AssetCategory,
-} from "../types/Asset";
-
+import type { Asset, AssetCategory, AssetIconKey } from "../types/Asset";
 import { authApi } from "./authApi";
 
-const API_URL =
-  import.meta.env.VITE_API_URL ??
-  "http://localhost:8080";
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 
 type BackendAssetCategory =
   | "CASH"
@@ -24,224 +18,106 @@ type BackendAsset = {
   value: number;
   color: string;
   category: BackendAssetCategory;
+  iconKey?: AssetIconKey | null;
 };
 
-type AssetRequest = {
-  name: string;
-  value: number;
-  color: string;
-  category: BackendAssetCategory;
-};
-
-function getAuthorizationHeader() {
+function authHeaders(): HeadersInit {
   const token = authApi.getToken();
-
-  if (!token) {
-    throw new Error(
-      "Brak tokenu uwierzytelniającego."
-    );
-  }
-
+  if (!token) throw new Error("Brak tokenu JWT");
   return {
     Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
   };
 }
 
-function toBackendCategory(
-  category?: AssetCategory
-): BackendAssetCategory {
+async function handle<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    throw new Error((await response.text()) || `HTTP ${response.status}`);
+  }
+  return response.status === 204 ? (undefined as T) : response.json();
+}
+
+function toBackendCategory(category?: AssetCategory): BackendAssetCategory {
   switch (category) {
-    case "cash":
-      return "CASH";
-
-    case "stocks":
-      return "STOCKS";
-
-    case "crypto":
-      return "CRYPTO";
-
-    case "realEstate":
-      return "REAL_ESTATE";
-
-    case "business":
-      return "BUSINESS";
-
-    case "vehicle":
-      return "VEHICLE";
-
-    case "other":
-    default:
-      return "OTHER";
+    case "cash": return "CASH";
+    case "stocks": return "STOCKS";
+    case "crypto": return "CRYPTO";
+    case "realEstate": return "REAL_ESTATE";
+    case "business": return "BUSINESS";
+    case "vehicle": return "VEHICLE";
+    default: return "OTHER";
   }
 }
 
-function fromBackendCategory(
-  category: BackendAssetCategory
-): AssetCategory {
+function fromBackendCategory(category: BackendAssetCategory): AssetCategory {
   switch (category) {
-    case "CASH":
-      return "cash";
-
-    case "STOCKS":
-      return "stocks";
-
-    case "CRYPTO":
-      return "crypto";
-
-    case "REAL_ESTATE":
-      return "realEstate";
-
-    case "BUSINESS":
-      return "business";
-
-    case "VEHICLE":
-      return "vehicle";
-
-    case "OTHER":
-    default:
-      return "other";
+    case "CASH": return "cash";
+    case "STOCKS": return "stocks";
+    case "CRYPTO": return "crypto";
+    case "REAL_ESTATE": return "realEstate";
+    case "BUSINESS": return "business";
+    case "VEHICLE": return "vehicle";
+    default: return "other";
   }
 }
 
-function toAssetRequest(
-  asset: Asset
-): AssetRequest {
+function fromBackend(row: BackendAsset): Asset {
+  return {
+    id: row.id,
+    name: row.name,
+    value: Number(row.value),
+    color: row.color,
+    category: fromBackendCategory(row.category),
+    ...(row.iconKey ? { iconKey: row.iconKey } : {}),
+  };
+}
+
+function body(asset: Asset) {
   return {
     name: asset.name,
     value: asset.value,
     color: asset.color,
-    category: toBackendCategory(
-      asset.category
-    ),
+    category: toBackendCategory(asset.category),
+    iconKey: asset.iconKey ?? null,
   };
-}
-
-function fromBackendAsset(
-  asset: BackendAsset
-): Asset {
-  return {
-    id: asset.id,
-    name: asset.name,
-    value: Number(asset.value),
-    color: asset.color,
-    category: fromBackendCategory(
-      asset.category
-    ),
-  };
-}
-
-async function handleResponse(
-  response: Response
-) {
-  if (!response.ok) {
-    const body =
-      await response.text();
-
-    throw new Error(
-      body ||
-        `Asset API error: ${response.status}`
-    );
-  }
 }
 
 export const assetApi = {
   async getAll(): Promise<Asset[]> {
-    const response = await fetch(
-      `${API_URL}/api/assets`,
-      {
-        headers: {
-          ...getAuthorizationHeader(),
-        },
-      }
+    const rows = await handle<BackendAsset[]>(
+      await fetch(`${API_URL}/api/assets`, { headers: authHeaders() })
     );
-
-    await handleResponse(response);
-
-    const assets =
-      (await response.json()) as BackendAsset[];
-
-    return assets.map(
-      fromBackendAsset
-    );
+    return rows.map(fromBackend);
   },
 
-  async create(
-    asset: Asset
-  ): Promise<Asset> {
-    const response = await fetch(
-      `${API_URL}/api/assets`,
-      {
+  async create(asset: Asset): Promise<Asset> {
+    const row = await handle<BackendAsset>(
+      await fetch(`${API_URL}/api/assets`, {
         method: "POST",
-
-        headers: {
-          "Content-Type":
-            "application/json",
-
-          ...getAuthorizationHeader(),
-        },
-
-        body: JSON.stringify(
-          toAssetRequest(asset)
-        ),
-      }
+        headers: authHeaders(),
+        body: JSON.stringify(body(asset)),
+      })
     );
-
-    await handleResponse(response);
-
-    const created =
-      (await response.json()) as BackendAsset;
-
-    return fromBackendAsset(
-      created
-    );
+    return fromBackend(row);
   },
 
-  async update(
-    id: number,
-    asset: Asset
-  ): Promise<Asset> {
-    const response = await fetch(
-      `${API_URL}/api/assets/${id}`,
-      {
+  async update(id: number, asset: Asset): Promise<Asset> {
+    const row = await handle<BackendAsset>(
+      await fetch(`${API_URL}/api/assets/${id}`, {
         method: "PUT",
-
-        headers: {
-          "Content-Type":
-            "application/json",
-
-          ...getAuthorizationHeader(),
-        },
-
-        body: JSON.stringify(
-          toAssetRequest(asset)
-        ),
-      }
+        headers: authHeaders(),
+        body: JSON.stringify(body(asset)),
+      })
     );
-
-    await handleResponse(response);
-
-    const updated =
-      (await response.json()) as BackendAsset;
-
-    return fromBackendAsset(
-      updated
-    );
+    return fromBackend(row);
   },
 
-  async remove(
-    id: number
-  ): Promise<void> {
-    const response = await fetch(
-      `${API_URL}/api/assets/${id}`,
-      {
+  async remove(id: number): Promise<void> {
+    await handle<void>(
+      await fetch(`${API_URL}/api/assets/${id}`, {
         method: "DELETE",
-
-        headers: {
-          ...getAuthorizationHeader(),
-        },
-      }
+        headers: authHeaders(),
+      })
     );
-
-    await handleResponse(response);
   },
 };

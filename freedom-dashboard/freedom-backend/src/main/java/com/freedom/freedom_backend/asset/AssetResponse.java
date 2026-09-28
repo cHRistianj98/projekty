@@ -7,18 +7,17 @@ public record AssetResponse(
         String name,
         BigDecimal value,
         String color,
-        AssetCategory category
+        AssetCategory category,
+        String iconKey
 ) {
-
-    public static AssetResponse from(
-            Asset asset
-    ) {
+    public static AssetResponse from(Asset asset) {
         return new AssetResponse(
                 asset.getId(),
                 asset.getName(),
                 asset.getValue(),
                 asset.getColor(),
-                asset.getCategory()
+                asset.getCategory(),
+                asset.getIconKey()
         );
     }
 }
