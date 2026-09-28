@@ -25,7 +25,6 @@ import {
   getAchievements,
 } from "../features/achievements/achievementEngine";
 
-import { createMonthlySnapshot } from "../features/review/monthlySnapshot";
 
 import type { Asset } from "../types/Asset";
 import type { Goal } from "../types/Goal";
@@ -42,7 +41,7 @@ type MonthlyReviewProps = {
   monthlyBudget: MonthlyBudget;
   netWorthHistory: NetWorthSnapshot[];
   monthlySnapshots: MonthlySnapshot[];
-  onCloseMonth: (snapshot: MonthlySnapshot) => void;
+  onCloseMonth: (month: string) => Promise<void>;
 };
 
 export function MonthlyReview({
@@ -68,6 +67,8 @@ export function MonthlyReview({
   const [selectedMonth, setSelectedMonth] = useState(() =>
     getLatestMonth(monthlyBudget)
   );
+
+  const [isClosingMonth, setIsClosingMonth] = useState(false);
 
   const reviewMonth = availableMonths.includes(selectedMonth)
     ? selectedMonth
@@ -331,17 +332,18 @@ export function MonthlyReview({
     goals: activeGoals,
   });
 
-  function handleCloseMonth() {
-    const snapshot = createMonthlySnapshot({
-      month: reviewMonth,
-      netWorth,
-      portfolio,
-      goals,
-      liabilities,
-      monthlyBudget,
-    });
+  async function handleCloseMonth() {
+    if (isClosingMonth || frozenSnapshot) return;
 
-    onCloseMonth(snapshot);
+    setIsClosingMonth(true);
+
+    try {
+      await onCloseMonth(reviewMonth);
+    } catch {
+      // App.tsx pokazuje komunikat błędu.
+    } finally {
+      setIsClosingMonth(false);
+    }
   }
 
   const canCloseMonth = isLatestMonth;
@@ -436,7 +438,7 @@ export function MonthlyReview({
               <button
                 type="button"
                 onClick={handleCloseMonth}
-                disabled={!canCloseMonth}
+                disabled={!canCloseMonth || isClosingMonth}
                 className="rounded-2xl border border-violet-500/30 bg-violet-500/10 px-5 py-4 text-left text-violet-300 transition hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/50 disabled:text-slate-600"
                 title={
                   canCloseMonth
@@ -446,10 +448,10 @@ export function MonthlyReview({
               >
                 <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
                   <Save size={14} />
-                  Close Month
+                  {isClosingMonth ? "Closing..." : "Close Month"}
                 </div>
                 <p className="mt-1 text-sm font-black">
-                  Zamknij {monthLabel}
+                  {isClosingMonth ? "Zamykam miesiąc..." : `Zamknij ${monthLabel}`}
                 </p>
               </button>
             )}

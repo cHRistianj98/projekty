@@ -23,12 +23,7 @@ import { Achievements } from "./pages/Achievements";
 import { FreedomEngine } from "./pages/FreedomEngine";
 import { MonthlyReview } from "./pages/MonthlyReview";
 import { AchievementUnlockManager } from "./features/achievements/AchievementUnlockManager";
-import { upsertMonthlySnapshot } from "./features/review/monthlySnapshot";
 
-import { initialMonthlyBudget } from "./data/monthlyBudget";
-import { initialNetWorthHistory } from "./data/netWorthHistory";
-import { initialBudgetPlans } from "./data/budgetPlans";
-import { initialRecurringTransactions } from "./data/recurringTransactions";
 
 import { calculateNetWorth } from "./utils/portfolio";
 import { calculateTotalLiabilities } from "./utils/liabilities";
@@ -45,6 +40,11 @@ import { goalApi } from "./api/goalApi";
 import { assetApi } from "./api/assetApi";
 import { liabilityApi } from "./api/liabilityApi";
 import { authApi } from "./api/authApi";
+import { transactionApi } from "./api/transactionApi";
+import { recurringTransactionApi } from "./api/recurringTransactionApi";
+import { budgetApi } from "./api/budgetApi";
+import { monthlySnapshotApi } from "./api/monthlySnapshotApi";
+import { netWorthHistoryApi } from "./api/netWorthHistoryApi";
 import { Login } from "./pages/Login";
 import type { Liability } from "./types/Liability";
 import type { NetWorthSnapshot } from "./types/NetWorthHistory";
@@ -120,6 +120,11 @@ function App() {
     setGoals([]);
     setPortfolio([]);
     setLiabilities([]);
+    setMonthlyBudget({ incomes: [], expenses: [] });
+    setRecurringTransactions([]);
+    setBudgetPlans([]);
+    setMonthlySnapshots([]);
+    setNetWorthHistory([]);
     setIsAuthenticated(false);
   }
 
@@ -391,179 +396,166 @@ function App() {
 
   /*
    * =========================================================
-   * MONTHLY REVIEW SNAPSHOTS
+   * MONTHLY REVIEW SNAPSHOTS — SPRING BOOT API
    * =========================================================
    */
 
-  const [
-    monthlySnapshots,
-    setMonthlySnapshots,
-  ] = useState<MonthlySnapshot[]>(() => {
-    const saved = localStorage.getItem(
-      "freedom-monthly-snapshots"
-    );
-
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [monthlySnapshots, setMonthlySnapshots] = useState<MonthlySnapshot[]>([]);
 
   useEffect(() => {
-    localStorage.setItem(
-      "freedom-monthly-snapshots",
-      JSON.stringify(monthlySnapshots)
-    );
-  }, [monthlySnapshots]);
+    if (!isAuthenticated) {
+      setMonthlySnapshots([]);
+      return;
+    }
 
-  function handleCloseMonth(
-    snapshot: MonthlySnapshot
-  ) {
-    setMonthlySnapshots((current) =>
-      upsertMonthlySnapshot(
-        current,
-        snapshot
-      )
-    );
+    let cancelled = false;
+
+    async function loadMonthlySnapshots() {
+      try {
+        const loaded = await monthlySnapshotApi.getAll();
+        if (!cancelled) setMonthlySnapshots(loaded);
+      } catch (error) {
+        console.error("Nie udało się pobrać snapshotów z backendu:", error);
+      }
+    }
+
+    void loadMonthlySnapshots();
+    return () => { cancelled = true; };
+  }, [isAuthenticated]);
+
+  async function handleCloseMonth(month: string) {
+    try {
+      const created = await monthlySnapshotApi.closeMonth(month);
+
+      setMonthlySnapshots((current) => [
+        created,
+        ...current.filter((snapshot) => snapshot.month !== created.month),
+      ]);
+    } catch (error) {
+      console.error("Nie udało się zamknąć miesiąca:", error);
+      window.alert(
+        "Nie udało się zamknąć miesiąca. Być może ten miesiąc jest już zamknięty."
+      );
+      throw error;
+    }
   }
 
   /*
    * =========================================================
-   * NET WORTH HISTORY
+   * NET WORTH HISTORY — SPRING BOOT API
    * =========================================================
    */
 
-  const [
-    netWorthHistory,
-    setNetWorthHistory,
-  ] = useState<
-    NetWorthSnapshot[]
-  >(() => {
-    const saved =
-      localStorage.getItem(
-        "freedom-net-worth-history"
-      );
-
-    return saved
-      ? JSON.parse(saved)
-      : initialNetWorthHistory;
-  });
+  const [netWorthHistory, setNetWorthHistory] = useState<NetWorthSnapshot[]>([]);
 
   useEffect(() => {
-    const today =
-      new Date()
-        .toLocaleDateString(
-          "sv-SE"
-        );
+    if (!isAuthenticated) {
+      setNetWorthHistory([]);
+      return;
+    }
 
-    setNetWorthHistory(
-      (currentHistory) => {
-        const existing =
-          currentHistory.find(
-            (snapshot) =>
-              snapshot.date ===
-              today
-          );
+    let cancelled = false;
 
-        if (existing) {
-          return currentHistory.map(
-            (snapshot) =>
-              snapshot.date ===
-              today
-                ? {
-                    ...snapshot,
-
-                    value:
-                      netWorth,
-                  }
-                : snapshot
-          );
-        }
-
-        return [
-          ...currentHistory,
-          {
-            id: Date.now(),
-
-            date: today,
-
-            value: netWorth,
-          },
-        ];
+    async function loadNetWorthHistory() {
+      try {
+        const loaded = await netWorthHistoryApi.getAll();
+        if (!cancelled) setNetWorthHistory(loaded);
+      } catch (error) {
+        console.error("Nie udało się pobrać historii net worth:", error);
       }
-    );
-  }, [netWorth]);
+    }
+
+    void loadNetWorthHistory();
+    return () => { cancelled = true; };
+  }, [isAuthenticated]);
 
   useEffect(() => {
-    localStorage.setItem(
-      "freedom-net-worth-history",
-      JSON.stringify(
-        netWorthHistory
-      )
-    );
-  }, [netWorthHistory]);
+    if (!isAuthenticated) return;
+
+    const today = new Date().toLocaleDateString("sv-SE");
+
+    async function saveCurrentNetWorth() {
+      try {
+        const saved = await netWorthHistoryApi.save({
+          id: 0,
+          date: today,
+          value: netWorth,
+        });
+
+        setNetWorthHistory((current) => {
+          const existing = current.some((item) => item.date === saved.date);
+          return existing
+            ? current.map((item) => item.date === saved.date ? saved : item)
+            : [...current, saved].sort((a, b) => a.date.localeCompare(b.date));
+        });
+      } catch (error) {
+        console.error("Nie udało się zapisać historii net worth:", error);
+      }
+    }
+
+    void saveCurrentNetWorth();
+  }, [isAuthenticated, netWorth]);
 
   /*
    * =========================================================
-   * CASHFLOW
+   * CASHFLOW — SPRING BOOT API
    * =========================================================
    */
 
-  const [
-    monthlyBudget,
-    setMonthlyBudget,
-  ] =
-    useState<MonthlyBudget>(
-      () => {
-        const saved =
-          localStorage.getItem(
-            "freedom-budget"
-          );
-
-        return saved
-          ? JSON.parse(saved)
-          : initialMonthlyBudget;
-      }
-    );
-
-  useEffect(() => {
-    localStorage.setItem(
-      "freedom-budget",
-      JSON.stringify(
-        monthlyBudget
-      )
-    );
-  }, [monthlyBudget]);
-
-  /*
-   * =========================================================
-   * RECURRING TRANSACTIONS
-   * =========================================================
-   */
-
-  const [
-    recurringTransactions,
-    setRecurringTransactions,
-  ] = useState<
-    RecurringTransaction[]
-  >(() => {
-    const saved =
-      localStorage.getItem(
-        "freedom-recurring-transactions"
-      );
-
-    return saved
-      ? JSON.parse(saved)
-      : initialRecurringTransactions;
+  const [monthlyBudget, setMonthlyBudget] = useState<MonthlyBudget>({
+    incomes: [],
+    expenses: [],
   });
 
   useEffect(() => {
-    localStorage.setItem(
-      "freedom-recurring-transactions",
-      JSON.stringify(
-        recurringTransactions
-      )
-    );
-  }, [
-    recurringTransactions,
-  ]);
+    if (!isAuthenticated) {
+      setMonthlyBudget({ incomes: [], expenses: [] });
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadTransactions() {
+      try {
+        const loaded = await transactionApi.getAll();
+        if (!cancelled) setMonthlyBudget(loaded);
+      } catch (error) {
+        console.error("Nie udało się pobrać transakcji z backendu:", error);
+      }
+    }
+
+    void loadTransactions();
+    return () => { cancelled = true; };
+  }, [isAuthenticated]);
+
+  /*
+   * =========================================================
+   * RECURRING TRANSACTIONS — SPRING BOOT API
+   * =========================================================
+   */
+
+  const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setRecurringTransactions([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadRecurringTransactions() {
+      try {
+        const loaded = await recurringTransactionApi.getAll();
+        if (!cancelled) setRecurringTransactions(loaded);
+      } catch (error) {
+        console.error("Nie udało się pobrać reguł cyklicznych:", error);
+      }
+    }
+
+    void loadRecurringTransactions();
+    return () => { cancelled = true; };
+  }, [isAuthenticated]);
 
   /*
    * =========================================================
@@ -571,174 +563,77 @@ function App() {
    * =========================================================
    */
 
-  function handleAddExpense(
-    expense: Expense
-  ) {
-    /*
-     * Jeżeli transakcja ma recurringRuleId,
-     * oznacza to, że księgujemy ISTNIEJĄCĄ
-     * regułę cykliczną.
-     *
-     * Nie wolno wtedy tworzyć kolejnej reguły.
-     */
-    if (
-      expense.recurringRuleId !==
-      undefined
-    ) {
-      setMonthlyBudget(
-        (current) => ({
+  async function handleAddExpense(expense: Expense) {
+    try {
+      if (expense.recurringRuleId !== undefined) {
+        const created = await transactionApi.createExpense(expense);
+        setMonthlyBudget((current) => ({
           ...current,
+          expenses: [...current.expenses, created],
+        }));
+        return;
+      }
 
-          expenses: [
-            ...current.expenses,
-            {
-              ...expense,
-
-              id:
-                createTransactionId(),
-            },
-          ],
-        })
-      );
-
-      return;
-    }
-
-    /*
-     * Zwykły jednorazowy wydatek.
-     */
-    if (!expense.recurring) {
-      setMonthlyBudget(
-        (current) => ({
+      if (!expense.recurring) {
+        const created = await transactionApi.createExpense(expense);
+        setMonthlyBudget((current) => ({
           ...current,
+          expenses: [...current.expenses, created],
+        }));
+        return;
+      }
 
-          expenses: [
-            ...current.expenses,
-            {
-              ...expense,
+      const newRule = await recurringTransactionApi.create({
+        ...expense,
+        id: 0,
+        type: "expense",
+        dayOfMonth: getDayFromDate(expense.date),
+        startDate: expense.date,
+        active: true,
+      });
 
-              id:
-                createTransactionId(),
-            },
-          ],
-        })
-      );
+      const created = await transactionApi.createExpense({
+        ...expense,
+        id: 0,
+        recurring: true,
+        recurringRuleId: newRule.id,
+      });
 
-      return;
+      setRecurringTransactions((current) => [...current, newRule]);
+      setMonthlyBudget((current) => ({
+        ...current,
+        expenses: [...current.expenses, created],
+      }));
+    } catch (error) {
+      console.error("Nie udało się dodać wydatku:", error);
+      window.alert("Nie udało się zapisać wydatku w backendzie.");
     }
-
-    /*
-     * NOWY wydatek cykliczny.
-     *
-     * Tworzymy:
-     * 1. konkretną transakcję,
-     * 2. regułę cykliczną,
-     * 3. spinamy je recurringRuleId.
-     */
-
-    const transactionId =
-      createTransactionId();
-
-    const ruleId =
-      createRuleId();
-
-    const dayOfMonth =
-      getDayFromDate(
-        expense.date
-      );
-
-    const newExpense: Expense = {
-      ...expense,
-
-      id: transactionId,
-
-      recurring: true,
-
-      recurringRuleId:
-        ruleId,
-    };
-
-    const newRule:
-      RecurringTransaction = {
-      id: ruleId,
-
-      type: "expense",
-
-      name:
-        expense.name,
-
-      amount:
-        expense.amount,
-
-      category:
-        expense.category,
-
-      dayOfMonth,
-
-      startDate:
-        expense.date,
-
-      active: true,
-    };
-
-    setMonthlyBudget(
-      (current) => ({
-        ...current,
-
-        expenses: [
-          ...current.expenses,
-          newExpense,
-        ],
-      })
-    );
-
-    setRecurringTransactions(
-      (current) => [
-        ...current,
-        newRule,
-      ]
-    );
   }
 
-  function handleDeleteExpense(
-    id: number
-  ) {
-    setMonthlyBudget(
-      (current) => ({
+  async function handleDeleteExpense(id: number) {
+    try {
+      await transactionApi.remove(id);
+      setMonthlyBudget((current) => ({
         ...current,
-
-        expenses:
-          current.expenses.filter(
-            (expense) =>
-              expense.id !== id
-          ),
-      })
-    );
+        expenses: current.expenses.filter((expense) => expense.id !== id),
+      }));
+    } catch (error) {
+      console.error("Nie udało się usunąć wydatku:", error);
+    }
   }
 
-  function handleUpdateExpense(
-    updatedExpense: Expense
-  ) {
-    /*
-     * Edytujemy tylko konkretną
-     * zaksięgowaną transakcję.
-     *
-     * Reguła cykliczna pozostaje bez zmian.
-     */
-    setMonthlyBudget(
-      (current) => ({
+  async function handleUpdateExpense(updatedExpense: Expense) {
+    try {
+      const saved = await transactionApi.updateExpense(updatedExpense);
+      setMonthlyBudget((current) => ({
         ...current,
-
-        expenses:
-          current.expenses.map(
-            (expense) =>
-              expense.id ===
-              updatedExpense.id
-                ? updatedExpense
-                : expense
-          ),
-      })
-    );
+        expenses: current.expenses.map((expense) =>
+          expense.id === saved.id ? saved : expense
+        ),
+      }));
+    } catch (error) {
+      console.error("Nie udało się zaktualizować wydatku:", error);
+    }
   }
 
   /*
@@ -747,160 +642,78 @@ function App() {
    * =========================================================
    */
 
-  function handleAddIncome(
-    income: Income
-  ) {
-    /*
-     * Księgowanie istniejącej reguły.
-     */
-    if (
-      income.recurringRuleId !==
-      undefined
-    ) {
-      setMonthlyBudget(
-        (current) => ({
+  async function handleAddIncome(income: Income) {
+    try {
+      if (income.recurringRuleId !== undefined) {
+        const created = await transactionApi.createIncome(income);
+        setMonthlyBudget((current) => ({
           ...current,
+          incomes: [...current.incomes, created],
+        }));
+        return;
+      }
 
-          incomes: [
-            ...current.incomes,
-            {
-              ...income,
-
-              id:
-                createTransactionId(),
-            },
-          ],
-        })
-      );
-
-      return;
-    }
-
-    /*
-     * Jednorazowy przychód.
-     */
-    if (!income.recurring) {
-      setMonthlyBudget(
-        (current) => ({
+      if (!income.recurring) {
+        const created = await transactionApi.createIncome(income);
+        setMonthlyBudget((current) => ({
           ...current,
+          incomes: [...current.incomes, created],
+        }));
+        return;
+      }
 
-          incomes: [
-            ...current.incomes,
-            {
-              ...income,
+      const newRule = await recurringTransactionApi.create({
+        id: 0,
+        type: "income",
+        name: income.name,
+        amount: income.amount,
+        dayOfMonth: getDayFromDate(income.date),
+        startDate: income.date,
+        active: true,
+      });
 
-              id:
-                createTransactionId(),
-            },
-          ],
-        })
-      );
+      const created = await transactionApi.createIncome({
+        ...income,
+        id: 0,
+        recurring: true,
+        recurringRuleId: newRule.id,
+      });
 
-      return;
+      setRecurringTransactions((current) => [...current, newRule]);
+      setMonthlyBudget((current) => ({
+        ...current,
+        incomes: [...current.incomes, created],
+      }));
+    } catch (error) {
+      console.error("Nie udało się dodać przychodu:", error);
+      window.alert("Nie udało się zapisać przychodu w backendzie.");
     }
-
-    /*
-     * NOWY przychód cykliczny.
-     */
-
-    const transactionId =
-      createTransactionId();
-
-    const ruleId =
-      createRuleId();
-
-    const dayOfMonth =
-      getDayFromDate(
-        income.date
-      );
-
-    const newIncome: Income = {
-      ...income,
-
-      id: transactionId,
-
-      recurring: true,
-
-      recurringRuleId:
-        ruleId,
-    };
-
-    const newRule:
-      RecurringTransaction = {
-      id: ruleId,
-
-      type: "income",
-
-      name:
-        income.name,
-
-      amount:
-        income.amount,
-
-      dayOfMonth,
-
-      startDate:
-        income.date,
-
-      active: true,
-    };
-
-    setMonthlyBudget(
-      (current) => ({
-        ...current,
-
-        incomes: [
-          ...current.incomes,
-          newIncome,
-        ],
-      })
-    );
-
-    setRecurringTransactions(
-      (current) => [
-        ...current,
-        newRule,
-      ]
-    );
   }
 
-  function handleDeleteIncome(
-    id: number
-  ) {
-    setMonthlyBudget(
-      (current) => ({
+  async function handleDeleteIncome(id: number) {
+    try {
+      await transactionApi.remove(id);
+      setMonthlyBudget((current) => ({
         ...current,
-
-        incomes:
-          current.incomes.filter(
-            (income) =>
-              income.id !== id
-          ),
-      })
-    );
+        incomes: current.incomes.filter((income) => income.id !== id),
+      }));
+    } catch (error) {
+      console.error("Nie udało się usunąć przychodu:", error);
+    }
   }
 
-  function handleUpdateIncome(
-    updatedIncome: Income
-  ) {
-    /*
-     * Edycja transakcji nie zmienia
-     * automatycznie reguły.
-     */
-    setMonthlyBudget(
-      (current) => ({
+  async function handleUpdateIncome(updatedIncome: Income) {
+    try {
+      const saved = await transactionApi.updateIncome(updatedIncome);
+      setMonthlyBudget((current) => ({
         ...current,
-
-        incomes:
-          current.incomes.map(
-            (income) =>
-              income.id ===
-              updatedIncome.id
-                ? updatedIncome
-                : income
-          ),
-      })
-    );
+        incomes: current.incomes.map((income) =>
+          income.id === saved.id ? saved : income
+        ),
+      }));
+    } catch (error) {
+      console.error("Nie udało się zaktualizować przychodu:", error);
+    }
   }
 
   /*
@@ -909,143 +722,92 @@ function App() {
    * =========================================================
    */
 
-  function handleAddRecurringTransaction(
-    rule: RecurringTransaction
-  ) {
-    setRecurringTransactions(
-      (current) => [
-        ...current,
-        rule,
-      ]
-    );
+  async function handleAddRecurringTransaction(rule: RecurringTransaction) {
+    try {
+      const created = await recurringTransactionApi.create(rule);
+      setRecurringTransactions((current) => [...current, created]);
+    } catch (error) {
+      console.error("Nie udało się dodać reguły cyklicznej:", error);
+    }
   }
 
-  function handleUpdateRecurringTransaction(
-    updatedRule:
-      RecurringTransaction
-  ) {
-    /*
-     * Zmieniamy tylko regułę.
-     *
-     * Już zaksięgowane historyczne
-     * transakcje pozostają bez zmian.
-     */
-    setRecurringTransactions(
-      (current) =>
-        current.map(
-          (rule) =>
-            rule.id ===
-            updatedRule.id
-              ? updatedRule
-              : rule
-        )
-    );
+  async function handleUpdateRecurringTransaction(updatedRule: RecurringTransaction) {
+    try {
+      const saved = await recurringTransactionApi.update(updatedRule);
+      setRecurringTransactions((current) =>
+        current.map((rule) => rule.id === saved.id ? saved : rule)
+      );
+    } catch (error) {
+      console.error("Nie udało się zaktualizować reguły cyklicznej:", error);
+    }
   }
 
-  function handleToggleRecurringTransaction(
-    id: number
-  ) {
-    setRecurringTransactions(
-      (current) =>
-        current.map(
-          (rule) =>
-            rule.id === id
-              ? {
-                  ...rule,
+  async function handleToggleRecurringTransaction(id: number) {
+    const currentRule = recurringTransactions.find((rule) => rule.id === id);
+    if (!currentRule) return;
 
-                  active:
-                    !rule.active,
-                }
-              : rule
-        )
-    );
+    await handleUpdateRecurringTransaction({
+      ...currentRule,
+      active: !currentRule.active,
+    });
   }
 
-  function handleDeleteRecurringTransaction(
-    id: number
-  ) {
-    /*
-     * Usuwamy tylko regułę.
-     *
-     * Historyczne zaksięgowane
-     * transakcje zostają.
-     */
-    setRecurringTransactions(
-      (current) =>
-        current.filter(
-          (rule) =>
-            rule.id !== id
-        )
-    );
+  async function handleDeleteRecurringTransaction(id: number) {
+    try {
+      await recurringTransactionApi.remove(id);
+      setRecurringTransactions((current) =>
+        current.filter((rule) => rule.id !== id)
+      );
+    } catch (error) {
+      console.error("Nie udało się usunąć reguły cyklicznej:", error);
+    }
   }
 
   /*
    * =========================================================
-   * BUDGET PLANS
+   * BUDGET PLANS — SPRING BOOT API
    * =========================================================
    */
 
-  const [
-    budgetPlans,
-    setBudgetPlans,
-  ] = useState<
-    MonthlyBudgetPlan[]
-  >(() => {
-    const saved =
-      localStorage.getItem(
-        "freedom-budget-plans"
-      );
-
-    return saved
-      ? JSON.parse(saved)
-      : initialBudgetPlans;
-  });
+  const [budgetPlans, setBudgetPlans] = useState<MonthlyBudgetPlan[]>([]);
 
   useEffect(() => {
-    localStorage.setItem(
-      "freedom-budget-plans",
-      JSON.stringify(
-        budgetPlans
-      )
-    );
-  }, [budgetPlans]);
+    if (!isAuthenticated) {
+      setBudgetPlans([]);
+      return;
+    }
 
-  function handleSaveBudgetPlan(
-    plan: MonthlyBudgetPlan
-  ) {
-    setBudgetPlans(
-      (current) => {
-        const alreadyExists =
-          current.some(
-            (existingPlan) =>
-              existingPlan.month ===
-              plan.month
-          );
+    let cancelled = false;
 
-        if (alreadyExists) {
-          return current.map(
-            (existingPlan) =>
-              existingPlan.month ===
-              plan.month
-                ? plan
-                : existingPlan
-          );
-        }
-
-        return [
-          ...current,
-          plan,
-        ];
+    async function loadBudgetPlans() {
+      try {
+        const loaded = await budgetApi.getAll();
+        if (!cancelled) setBudgetPlans(loaded);
+      } catch (error) {
+        console.error("Nie udało się pobrać planów budżetowych:", error);
       }
-    );
+    }
+
+    void loadBudgetPlans();
+    return () => { cancelled = true; };
+  }, [isAuthenticated]);
+
+  async function handleSaveBudgetPlan(plan: MonthlyBudgetPlan) {
+    try {
+      const saved = await budgetApi.save(plan);
+      setBudgetPlans((current) => {
+        const exists = current.some((item) => item.month === saved.month);
+        return exists
+          ? current.map((item) => item.month === saved.month ? saved : item)
+          : [...current, saved];
+      });
+    } catch (error) {
+      console.error("Nie udało się zapisać planu budżetowego:", error);
+      window.alert("Nie udało się zapisać planu budżetowego.");
+    }
   }
 
-  const [
-    selectedBudgetMonth,
-    setSelectedBudgetMonth,
-  ] = useState(() =>
-    getCurrentMonth()
-  );
+  const [selectedBudgetMonth, setSelectedBudgetMonth] = useState(() => getCurrentMonth());
 
   /*
    * =========================================================
@@ -1055,51 +817,79 @@ function App() {
 
   async function handleLoadDemoData() {
     const shouldLoad = window.confirm(
-      "Załadować dane demo? Obecne dane finansowe zostaną zastąpione."
+      "Załadować dane demo? Obecne cele, aktywa, zobowiązania, transakcje i reguły cykliczne zostaną zastąpione."
     );
 
-    if (!shouldLoad) {
-      return;
-    }
+    if (!shouldLoad) return;
 
     try {
+      await Promise.all(goals.map((goal) => goalApi.remove(goal.id)));
+      await Promise.all(portfolio.map((asset) => assetApi.remove(asset.id)));
+      await Promise.all(liabilities.map((liability) => liabilityApi.remove(liability.id)));
+      await Promise.all([
+        ...monthlyBudget.incomes.map((income) => transactionApi.remove(income.id)),
+        ...monthlyBudget.expenses.map((expense) => transactionApi.remove(expense.id)),
+      ]);
       await Promise.all(
-        goals.map((goal) => goalApi.remove(goal.id))
-      );
-
-      await Promise.all(
-        portfolio.map((asset) => assetApi.remove(asset.id))
-      );
-
-      await Promise.all(
-        liabilities.map((liability) => liabilityApi.remove(liability.id))
+        recurringTransactions.map((rule) => recurringTransactionApi.remove(rule.id))
       );
 
       const createdDemoGoals = await Promise.all(
         demoGoals.map((goal) => goalApi.create(goal))
       );
-
       const createdDemoPortfolio = await Promise.all(
         demoPortfolio.map((asset) => assetApi.create(asset))
       );
-
       const createdDemoLiabilities = await Promise.all(
         demoLiabilities.map((liability) => liabilityApi.create(liability))
       );
 
+      const ruleIdMap = new Map<number, number>();
+      const createdDemoRules: RecurringTransaction[] = [];
+      for (const rule of demoRecurringTransactions) {
+        const created = await recurringTransactionApi.create(rule);
+        ruleIdMap.set(rule.id, created.id);
+        createdDemoRules.push(created);
+      }
+
+      const createdIncomes: Income[] = [];
+      for (const income of demoMonthlyBudget.incomes) {
+        const mappedRuleId = income.recurringRuleId !== undefined
+          ? ruleIdMap.get(income.recurringRuleId)
+          : undefined;
+        createdIncomes.push(await transactionApi.createIncome({
+          ...income,
+          id: 0,
+          ...(mappedRuleId !== undefined ? { recurringRuleId: mappedRuleId } : { recurringRuleId: undefined }),
+        }));
+      }
+
+      const createdExpenses: Expense[] = [];
+      for (const expense of demoMonthlyBudget.expenses) {
+        const mappedRuleId = expense.recurringRuleId !== undefined
+          ? ruleIdMap.get(expense.recurringRuleId)
+          : undefined;
+        createdExpenses.push(await transactionApi.createExpense({
+          ...expense,
+          id: 0,
+          ...(mappedRuleId !== undefined ? { recurringRuleId: mappedRuleId } : { recurringRuleId: undefined }),
+        }));
+      }
+
+      const createdHistory: NetWorthSnapshot[] = [];
+      for (const point of demoNetWorthHistory) {
+        createdHistory.push(await netWorthHistoryApi.save(point));
+      }
+
       setPortfolio(createdDemoPortfolio);
       setLiabilities(createdDemoLiabilities);
       setGoals(createdDemoGoals);
-      setMonthlyBudget(demoMonthlyBudget);
-      setNetWorthHistory(demoNetWorthHistory);
-      setMonthlySnapshots([]);
-      setRecurringTransactions(demoRecurringTransactions);
-
-      // Budget plans zostawiamy puste w demo, żeby nie mieszać planu z realnym cashflow.
-      setBudgetPlans([]);
+      setMonthlyBudget({ incomes: createdIncomes, expenses: createdExpenses });
+      setRecurringTransactions(createdDemoRules);
+      setNetWorthHistory(createdHistory);
 
       window.alert(
-        "Dane demo załadowane. Cele, aktywa i zobowiązania zostały zapisane w PostgreSQL."
+        "Dane demo zapisane w PostgreSQL: cele, aktywa, zobowiązania, cashflow, reguły cykliczne i historia net worth."
       );
     } catch (error) {
       console.error("Nie udało się załadować danych demo:", error);
@@ -1656,31 +1446,6 @@ function getCurrentMonth() {
   return `${now.getFullYear()}-${String(
     now.getMonth() + 1
   ).padStart(2, "0")}`;
-}
-
-/*
- * Date.now() samo w sobie jest prawie
- * wystarczające, ale oddzielamy przestrzeń
- * ID transakcji i reguł.
- */
-
-function createTransactionId() {
-  return (
-    Date.now() * 10 +
-    Math.floor(
-      Math.random() * 5
-    )
-  );
-}
-
-function createRuleId() {
-  return (
-    Date.now() * 10 +
-    5 +
-    Math.floor(
-      Math.random() * 5
-    )
-  );
 }
 
 export default App;

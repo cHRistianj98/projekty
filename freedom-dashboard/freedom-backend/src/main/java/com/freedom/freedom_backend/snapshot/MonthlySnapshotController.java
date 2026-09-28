@@ -1,7 +1,6 @@
 package com.freedom.freedom_backend.snapshot;
 
 import com.freedom.freedom_backend.user.User;
-import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -27,12 +26,15 @@ public class MonthlySnapshotController {
         return service.getAll(user);
     }
 
-    @PostMapping
+    @PostMapping("/close/{month}")
     @ResponseStatus(HttpStatus.CREATED)
-    public MonthlySnapshotResponse create(
-            @Valid @RequestBody MonthlySnapshotRequest request,
+    public MonthlySnapshotResponse closeMonth(
+            @PathVariable String month,
             @AuthenticationPrincipal User user
     ) {
-        return service.create(request, user);
+        return service.closeMonth(
+                month,
+                user
+        );
     }
 }
