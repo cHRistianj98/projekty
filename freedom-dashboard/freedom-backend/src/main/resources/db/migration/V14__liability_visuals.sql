@@ -1,0 +1,4 @@
+ALTER TABLE liabilities
+    ADD COLUMN IF NOT EXISTS image_url TEXT,
+    ADD COLUMN IF NOT EXISTS image_position VARCHAR(20) DEFAULT 'center',
+    ADD COLUMN IF NOT EXISTS icon_key VARCHAR(40);

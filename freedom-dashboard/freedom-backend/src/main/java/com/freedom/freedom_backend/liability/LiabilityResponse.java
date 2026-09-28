@@ -3,7 +3,6 @@ package com.freedom.freedom_backend.liability;
 import java.math.BigDecimal;
 
 public record LiabilityResponse(
-
         Long id,
         String name,
         LiabilityType type,
@@ -12,13 +11,12 @@ public record LiabilityResponse(
         BigDecimal monthlyPayment,
         BigDecimal principalPayment,
         BigDecimal interestPayment,
-        BigDecimal interestRate
-
+        BigDecimal interestRate,
+        String imageUrl,
+        String imagePosition,
+        String iconKey
 ) {
-
-    public static LiabilityResponse from(
-            Liability liability
-    ) {
+    public static LiabilityResponse from(Liability liability) {
         return new LiabilityResponse(
                 liability.getId(),
                 liability.getName(),
@@ -28,7 +26,10 @@ public record LiabilityResponse(
                 liability.getMonthlyPayment(),
                 liability.getPrincipalPayment(),
                 liability.getInterestPayment(),
-                liability.getInterestRate()
+                liability.getInterestRate(),
+                liability.getImageUrl(),
+                liability.getImagePosition(),
+                liability.getIconKey()
         );
     }
 }
