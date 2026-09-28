@@ -27,7 +27,6 @@ import { upsertMonthlySnapshot } from "./features/review/monthlySnapshot";
 
 import { initialMonthlyBudget } from "./data/monthlyBudget";
 import { initialNetWorthHistory } from "./data/netWorthHistory";
-import { initialLiabilities } from "./data/liabilities";
 import { initialBudgetPlans } from "./data/budgetPlans";
 import { initialRecurringTransactions } from "./data/recurringTransactions";
 
@@ -44,6 +43,7 @@ import type { Asset } from "./types/Asset";
 import type { Goal } from "./types/Goal";
 import { goalApi } from "./api/goalApi";
 import { assetApi } from "./api/assetApi";
+import { liabilityApi } from "./api/liabilityApi";
 import { authApi } from "./api/authApi";
 import { Login } from "./pages/Login";
 import type { Liability } from "./types/Liability";
@@ -119,6 +119,7 @@ function App() {
     setCurrentUserEmail("");
     setGoals([]);
     setPortfolio([]);
+    setLiabilities([]);
     setIsAuthenticated(false);
   }
 
@@ -217,69 +218,84 @@ function App() {
 
   /*
    * =========================================================
-   * LIABILITIES
+   * LIABILITIES — SPRING BOOT API
    * =========================================================
    */
 
-  const [
-    liabilities,
-    setLiabilities,
-  ] = useState<Liability[]>(() => {
-    const saved =
-      localStorage.getItem(
-        "freedom-liabilities"
-      );
-
-    return saved
-      ? JSON.parse(saved)
-      : initialLiabilities;
-  });
+  const [liabilities, setLiabilities] = useState<Liability[]>([]);
 
   useEffect(() => {
-    localStorage.setItem(
-      "freedom-liabilities",
-      JSON.stringify(
-        liabilities
-      )
-    );
-  }, [liabilities]);
+    if (!isAuthenticated) {
+      setLiabilities([]);
+      return;
+    }
 
-  function handleAddLiability(
-    liability: Liability
-  ) {
-    setLiabilities(
-      (current) => [
+    let cancelled = false;
+
+    async function loadLiabilities() {
+      try {
+        const loadedLiabilities = await liabilityApi.getAll();
+
+        if (!cancelled) {
+          setLiabilities(loadedLiabilities);
+        }
+      } catch (error) {
+        console.error("Nie udało się pobrać zobowiązań z backendu:", error);
+      }
+    }
+
+    void loadLiabilities();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
+
+  async function handleAddLiability(liability: Liability) {
+    try {
+      const createdLiability = await liabilityApi.create(liability);
+
+      setLiabilities((current) => [
         ...current,
-        liability,
-      ]
-    );
+        createdLiability,
+      ]);
+    } catch (error) {
+      console.error("Nie udało się dodać zobowiązania:", error);
+      window.alert("Nie udało się zapisać zobowiązania w backendzie.");
+    }
   }
 
-  function handleUpdateLiability(
-    updatedLiability: Liability
-  ) {
-    setLiabilities(
-      (current) =>
-        current.map(
-          (liability) =>
-            liability.id ===
-            updatedLiability.id
-              ? updatedLiability
-              : liability
+  async function handleUpdateLiability(updatedLiability: Liability) {
+    try {
+      const savedLiability = await liabilityApi.update(
+        updatedLiability.id,
+        updatedLiability
+      );
+
+      setLiabilities((current) =>
+        current.map((liability) =>
+          liability.id === savedLiability.id
+            ? savedLiability
+            : liability
         )
-    );
+      );
+    } catch (error) {
+      console.error("Nie udało się zaktualizować zobowiązania:", error);
+      window.alert("Nie udało się zaktualizować zobowiązania w backendzie.");
+    }
   }
 
-  function handleDeleteLiability(
-    id: number
-  ) {
-    setLiabilities(
-      (current) =>
-        current.filter(
-          (liability) =>
-            liability.id !== id
-        )
-    );
+  async function handleDeleteLiability(id: number) {
+    try {
+      await liabilityApi.remove(id);
+
+      setLiabilities((current) =>
+        current.filter((liability) => liability.id !== id)
+      );
+    } catch (error) {
+      console.error("Nie udało się usunąć zobowiązania:", error);
+      window.alert("Nie udało się usunąć zobowiązania z backendu.");
+    }
   }
 
   const totalLiabilities =
@@ -1055,6 +1071,10 @@ function App() {
         portfolio.map((asset) => assetApi.remove(asset.id))
       );
 
+      await Promise.all(
+        liabilities.map((liability) => liabilityApi.remove(liability.id))
+      );
+
       const createdDemoGoals = await Promise.all(
         demoGoals.map((goal) => goalApi.create(goal))
       );
@@ -1063,8 +1083,12 @@ function App() {
         demoPortfolio.map((asset) => assetApi.create(asset))
       );
 
+      const createdDemoLiabilities = await Promise.all(
+        demoLiabilities.map((liability) => liabilityApi.create(liability))
+      );
+
       setPortfolio(createdDemoPortfolio);
-      setLiabilities(demoLiabilities);
+      setLiabilities(createdDemoLiabilities);
       setGoals(createdDemoGoals);
       setMonthlyBudget(demoMonthlyBudget);
       setNetWorthHistory(demoNetWorthHistory);
@@ -1075,7 +1099,7 @@ function App() {
       setBudgetPlans([]);
 
       window.alert(
-        "Dane demo załadowane. Cele i aktywa zostały zapisane w PostgreSQL."
+        "Dane demo załadowane. Cele, aktywa i zobowiązania zostały zapisane w PostgreSQL."
       );
     } catch (error) {
       console.error("Nie udało się załadować danych demo:", error);
@@ -1466,6 +1490,7 @@ const demoLiabilities: Liability[] = [
   {
     id: 92001,
     name: "Kredyt gotówkowy",
+    type: "CASH_LOAN",
     originalAmount: 45_000,
     remainingAmount: 24_000,
     monthlyPayment: 1_350,
@@ -1476,6 +1501,7 @@ const demoLiabilities: Liability[] = [
   {
     id: 92002,
     name: "Raty 0% — elektronika",
+    type: "INSTALLMENTS",
     originalAmount: 12_000,
     remainingAmount: 8_000,
     monthlyPayment: 1_000,
