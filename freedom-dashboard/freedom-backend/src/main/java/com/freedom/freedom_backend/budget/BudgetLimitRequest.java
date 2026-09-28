@@ -7,12 +7,10 @@ import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 
 public record BudgetLimitRequest(
-
-        @NotNull
         ExpenseCategory category,
+        Long categoryId,
 
         @NotNull
         @DecimalMin("0.0")
         BigDecimal limit
-
 ) {}
