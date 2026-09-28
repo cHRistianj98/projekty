@@ -10,8 +10,11 @@ import {
   LockKeyhole,
   ShieldCheck,
   TrendingUp,
+  UserPlus,
   WalletCards,
 } from "lucide-react";
+
+import { authApi } from "../api/authApi";
 
 type LoginProps = {
   onLogin: (
@@ -23,10 +26,16 @@ type LoginProps = {
 export function Login({
   onLogin,
 }: LoginProps) {
+  const [mode, setMode] =
+    useState<"login" | "register">("login");
+
   const [email, setEmail] =
     useState("");
 
   const [password, setPassword] =
+    useState("");
+
+  const [confirmPassword, setConfirmPassword] =
     useState("");
 
   const [
@@ -48,20 +57,59 @@ export function Login({
     event.preventDefault();
 
     setError(null);
+
+    if (mode === "register") {
+      if (password.length < 8) {
+        setError("Hasło musi mieć co najmniej 8 znaków.");
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        setError("Hasła nie są takie same.");
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
-      await onLogin(
-        email,
-        password
-      );
-    } catch {
-      setError(
-        "Nieprawidłowy email lub hasło."
-      );
+      if (mode === "register") {
+        await authApi.register(email, password);
+      }
+
+      // Po rejestracji od razu wykonujemy normalny login,
+      // dzięki czemu App.tsx nie wymaga żadnej zmiany.
+      await onLogin(email, password);
+    } catch (caughtError) {
+      const message =
+        caughtError instanceof Error
+          ? caughtError.message
+          : "";
+
+      if (
+        mode === "register" &&
+        (message.includes("409") ||
+          message.toLowerCase().includes("already exists"))
+      ) {
+        setError("Konto z tym adresem email już istnieje.");
+      } else if (mode === "register") {
+        setError(
+          "Nie udało się utworzyć konta. Sprawdź dane i spróbuj ponownie."
+        );
+      } else {
+        setError("Nieprawidłowy email lub hasło.");
+      }
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function switchMode(nextMode: "login" | "register") {
+    setMode(nextMode);
+    setError(null);
+    setPassword("");
+    setConfirmPassword("");
+    setShowPassword(false);
   }
 
   return (
@@ -439,13 +487,23 @@ export function Login({
                     bg-blue-500/[0.08]
                   "
                 >
-                  <LockKeyhole
-                    className="
-                      h-5
-                      w-5
-                      text-blue-300
-                    "
-                  />
+                  {mode === "login" ? (
+                    <LockKeyhole
+                      className="
+                        h-5
+                        w-5
+                        text-blue-300
+                      "
+                    />
+                  ) : (
+                    <UserPlus
+                      className="
+                        h-5
+                        w-5
+                        text-blue-300
+                      "
+                    />
+                  )}
                 </div>
 
                 <p
@@ -457,7 +515,7 @@ export function Login({
                     text-violet-400
                   "
                 >
-                  Secure access
+                  {mode === "login" ? "Secure access" : "New player"}
                 </p>
 
                 <h2
@@ -468,7 +526,7 @@ export function Login({
                     tracking-[-0.03em]
                   "
                 >
-                  Welcome back.
+                  {mode === "login" ? "Welcome back." : "Create account."}
                 </h2>
 
                 <p
@@ -479,9 +537,9 @@ export function Login({
                     text-slate-500
                   "
                 >
-                  Zaloguj się do swojego
-                  finansowego command
-                  center.
+                  {mode === "login"
+                    ? "Zaloguj się do swojego finansowego command center."
+                    : "Załóż konto i rozpocznij budowę swojego finansowego systemu."}
                 </p>
               </div>
 
@@ -562,7 +620,7 @@ export function Login({
                           ? "text"
                           : "password"
                       }
-                      autoComplete="current-password"
+                      autoComplete={mode === "login" ? "current-password" : "new-password"}
                       required
                       value={password}
                       onChange={(event) =>
@@ -604,6 +662,7 @@ export function Login({
                         right-4
                         top-1/2
                         -translate-y-1/2
+                        cursor-pointer
                         text-slate-600
                         transition
                         hover:text-slate-300
@@ -622,6 +681,58 @@ export function Login({
                     </button>
                   </div>
                 </div>
+
+                {mode === "register" && (
+                  <div>
+                    <label
+                      htmlFor="confirm-password"
+                      className="
+                        mb-2
+                        block
+                        text-[11px]
+                        font-black
+                        uppercase
+                        tracking-[0.14em]
+                        text-slate-400
+                      "
+                    >
+                      Confirm password
+                    </label>
+
+                    <input
+                      id="confirm-password"
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      required
+                      value={confirmPassword}
+                      onChange={(event) =>
+                        setConfirmPassword(event.target.value)
+                      }
+                      placeholder="••••••••••••"
+                      className="
+                        w-full
+                        rounded-xl
+                        border
+                        border-white/[0.08]
+                        bg-[#070e1a]
+                        px-4
+                        py-3.5
+                        text-sm
+                        text-white
+                        outline-none
+                        transition
+                        placeholder:text-slate-700
+                        focus:border-violet-400/50
+                        focus:ring-4
+                        focus:ring-violet-500/[0.08]
+                      "
+                    />
+
+                    <p className="mt-2 text-[10px] text-slate-600">
+                      Minimum 8 znaków.
+                    </p>
+                  </div>
+                )}
 
                 {error && (
                   <div
@@ -647,6 +758,7 @@ export function Login({
                   className="
                     group
                     flex
+                    cursor-pointer
                     w-full
                     items-center
                     justify-center
@@ -668,8 +780,12 @@ export function Login({
                   "
                 >
                   {isSubmitting
-                    ? "AUTHENTICATING..."
-                    : "ENTER FREEDOM"}
+                    ? mode === "login"
+                      ? "AUTHENTICATING..."
+                      : "CREATING ACCOUNT..."
+                    : mode === "login"
+                      ? "ENTER FREEDOM"
+                      : "CREATE ACCOUNT"}
 
                   {!isSubmitting && (
                     <ArrowRight
@@ -683,6 +799,44 @@ export function Login({
                   )}
                 </button>
               </form>
+
+              <div
+                className="
+                  mt-6
+                  border-t
+                  border-white/[0.06]
+                  pt-6
+                  text-center
+                "
+              >
+                <p className="text-xs text-slate-500">
+                  {mode === "login"
+                    ? "Nie masz jeszcze konta?"
+                    : "Masz już konto?"}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    switchMode(
+                      mode === "login" ? "register" : "login"
+                    )
+                  }
+                  className="
+                    mt-2
+                    cursor-pointer
+                    text-xs
+                    font-black
+                    text-violet-300
+                    transition
+                    hover:text-violet-200
+                  "
+                >
+                  {mode === "login"
+                    ? "CREATE ACCOUNT →"
+                    : "← BACK TO SIGN IN"}
+                </button>
+              </div>
 
               <div
                 className="

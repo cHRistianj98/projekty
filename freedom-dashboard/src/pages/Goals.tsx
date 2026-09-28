@@ -1,20 +1,26 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   CalendarDays,
   Flag,
   Image,
   ImageOff,
+  Landmark,
   Pencil,
   Plus,
   Target,
   Trash2,
+  WalletCards,
+  X,
 } from "lucide-react";
 
 import { AddGoalModal } from "../components/goals/AddGoalModal";
 import { EditGoalModal } from "../components/goals/EditGoalModal";
 
 import type { Goal } from "../types/Goal";
+import type { Asset } from "../types/Asset";
+import { goalAllocationApi } from "../api/goalAllocationApi";
+import type { AllocateGoalMoneyRequest, GoalAllocationSummary } from "../types/GoalAllocation";
 
 import {
   calculateGoalProgress,
@@ -25,16 +31,23 @@ import {
 
 type GoalsProps = {
   goals: Goal[];
+  portfolio: Asset[];
   onAddGoal: (goal: Goal) => void;
-  onUpdateGoal: (goal: Goal) => void;
+  onUpdateGoal: (goal: Goal) => void | Promise<void>;
   onDeleteGoal: (id: number) => void;
+  onAllocateMoney: (
+    goalId: number,
+    request: AllocateGoalMoneyRequest
+  ) => Promise<void>;
 };
 
 export function Goals({
   goals,
+  portfolio,
   onAddGoal,
   onUpdateGoal,
   onDeleteGoal,
+  onAllocateMoney,
 }: GoalsProps) {
   const [
     isAddModalOpen,
@@ -49,6 +62,11 @@ export function Goals({
   const [
     visualGoal,
     setVisualGoal,
+  ] = useState<Goal | null>(null);
+
+  const [
+    fundingGoal,
+    setFundingGoal,
   ] = useState<Goal | null>(null);
 
   function handleDelete(
@@ -390,6 +408,17 @@ export function Goals({
                   </div>
                 )}
 
+                {!completed && (
+                  <button
+                    type="button"
+                    onClick={() => setFundingGoal(goal)}
+                    className="mt-4 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm font-black text-emerald-300 transition hover:-translate-y-0.5 hover:border-emerald-400/40 hover:bg-emerald-500/15 hover:shadow-lg hover:shadow-emerald-950/20"
+                  >
+                    <WalletCards size={17} />
+                    + ADD MONEY
+                  </button>
+                )}
+
                 {completed ? (
                   <div className="mt-4 flex items-center gap-2 border-t border-slate-800 pt-4 text-sm font-bold text-emerald-400">
                     <Target size={17} />
@@ -460,6 +489,21 @@ export function Goals({
         />
       )}
 
+      {fundingGoal && (
+        <GoalFundingModal
+          goal={fundingGoal}
+          portfolio={portfolio}
+          onClose={() => setFundingGoal(null)}
+          onAllocate={async (request) => {
+            await onAllocateMoney(
+              fundingGoal.id,
+              request
+            );
+            setFundingGoal(null);
+          }}
+        />
+      )}
+
       {visualGoal && (
         <GoalVisualModal
           goal={visualGoal}
@@ -475,6 +519,452 @@ export function Goals({
         />
       )}
     </main>
+  );
+}
+
+
+type GoalFundingModalProps = {
+  goal: Goal;
+  portfolio: Asset[];
+  onClose: () => void;
+  onAllocate: (
+    request: AllocateGoalMoneyRequest
+  ) => Promise<void>;
+};
+
+function GoalFundingModal({
+  goal,
+  portfolio,
+  onClose,
+  onAllocate,
+}: GoalFundingModalProps) {
+  const remaining = Math.max(
+    goal.targetAmount - goal.currentAmount,
+    0
+  );
+
+  const [mode, setMode] = useState<
+    "ALLOCATE_EXISTING" | "TRANSFER_AND_ALLOCATE"
+  >("ALLOCATE_EXISTING");
+
+  const [amount, setAmount] = useState(
+    String(Math.min(remaining, 2000))
+  );
+
+  const [targetAssetId, setTargetAssetId] =
+    useState<number | null>(
+      portfolio[0]?.id ?? null
+    );
+
+  const [sourceAssetId, setSourceAssetId] =
+    useState<number | null>(
+      portfolio.find(
+        (asset) => asset.category === "cash"
+      )?.id ??
+        portfolio[0]?.id ??
+        null
+    );
+
+  const [summary, setSummary] =
+    useState<GoalAllocationSummary | null>(
+      null
+    );
+
+  const [isLoadingSummary, setIsLoadingSummary] =
+    useState(true);
+  const [isSaving, setIsSaving] =
+    useState(false);
+  const [error, setError] =
+    useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSummary() {
+      try {
+        const loaded =
+          await goalAllocationApi.getSummary(
+            goal.id
+          );
+
+        if (!cancelled) {
+          setSummary(loaded);
+        }
+      } catch (caught) {
+        console.error(
+          "Nie udało się pobrać alokacji celu:",
+          caught
+        );
+      } finally {
+        if (!cancelled) {
+          setIsLoadingSummary(false);
+        }
+      }
+    }
+
+    void loadSummary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [goal.id]);
+
+  const parsedAmount = Number(
+    amount.replace(/\s/g, "").replace(",", ".")
+  );
+
+  const sourceAsset = portfolio.find(
+    (asset) => asset.id === sourceAssetId
+  );
+
+  const targetAsset = portfolio.find(
+    (asset) => asset.id === targetAssetId
+  );
+
+  const allocatedToTarget =
+    summary?.allocations
+      .filter(
+        (allocation) =>
+          allocation.assetId === targetAssetId
+      )
+      .reduce(
+        (sum, allocation) =>
+          sum + allocation.amount,
+        0
+      ) ?? 0;
+
+  const targetUnallocated = targetAsset
+    ? Math.max(
+        targetAsset.value - allocatedToTarget,
+        0
+      )
+    : 0;
+
+  const amountIsBasicValid =
+    Number.isFinite(parsedAmount) &&
+    parsedAmount > 0 &&
+    parsedAmount <= remaining;
+
+  const modeIsValid =
+    mode === "ALLOCATE_EXISTING"
+      ? parsedAmount <= targetUnallocated
+      : Boolean(
+          sourceAsset &&
+            targetAsset &&
+            sourceAsset.id !== targetAsset.id &&
+            parsedAmount <= sourceAsset.value
+        );
+
+  const valid =
+    amountIsBasicValid &&
+    modeIsValid &&
+    targetAssetId !== null;
+
+  const nextGoalAmount = valid
+    ? goal.currentAmount + parsedAmount
+    : goal.currentAmount;
+
+  async function submit(
+    event: React.FormEvent
+  ) {
+    event.preventDefault();
+    setError(null);
+
+    if (!valid || targetAssetId === null) {
+      if (
+        mode === "ALLOCATE_EXISTING" &&
+        parsedAmount > targetUnallocated
+      ) {
+        setError(
+          `W ${targetAsset?.name ?? "aktywie"} masz tylko ${targetUnallocated.toLocaleString("pl-PL")} zł nieprzypisanych do celów.`
+        );
+      } else if (
+        mode === "TRANSFER_AND_ALLOCATE" &&
+        sourceAsset &&
+        parsedAmount > sourceAsset.value
+      ) {
+        setError(
+          `Źródło ma tylko ${sourceAsset.value.toLocaleString("pl-PL")} zł.`
+        );
+      } else {
+        setError(
+          "Sprawdź kwotę i wybrane aktywa."
+        );
+      }
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      await onAllocate({
+        amount: parsedAmount,
+        mode,
+        sourceAssetId:
+          mode === "TRANSFER_AND_ALLOCATE"
+            ? sourceAssetId
+            : null,
+        targetAssetId,
+      });
+    } catch {
+      setError(
+        "Backend odrzucił operację. Sprawdź dostępne środki i spróbuj ponownie."
+      );
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-emerald-500/20 bg-[#0b1322] shadow-2xl shadow-black/50">
+        <div className="relative overflow-hidden border-b border-slate-800 px-6 py-5">
+          {goal.imageUrl && (
+            <>
+              <img
+                src={goal.imageUrl}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover opacity-20"
+                style={{
+                  objectPosition:
+                    goal.imagePosition ?? "center",
+                }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-[#0b1322] via-[#0b1322]/95 to-[#0b1322]/75" />
+            </>
+          )}
+
+          <div className="relative flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-400">
+                Portfolio → Goal
+              </p>
+              <h2 className="mt-1 text-xl font-black text-white">
+                Zasil · {goal.name}
+              </h2>
+              <p className="mt-2 text-xs text-slate-400">
+                Cel nie tworzy nowych pieniędzy. Wskazuje,
+                jaka część Twojego portfolio pracuje na ten cel.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="cursor-pointer rounded-xl p-2 text-slate-500 transition hover:bg-white/5 hover:text-white"
+            >
+              <X size={19} />
+            </button>
+          </div>
+        </div>
+
+        <form
+          onSubmit={submit}
+          className="space-y-6 p-6"
+        >
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/45 p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-600">
+                Cel teraz
+              </p>
+              <p className="mt-1 text-lg font-black text-white">
+                {goal.currentAmount.toLocaleString("pl-PL")} zł
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.05] p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-500/70">
+                Po operacji
+              </p>
+              <p className="mt-1 text-lg font-black text-emerald-300">
+                {nextGoalAmount.toLocaleString("pl-PL")} zł
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-3 text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+              Co robisz?
+            </p>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setMode("ALLOCATE_EXISTING")
+                }
+                className={`cursor-pointer rounded-2xl border p-4 text-left transition ${
+                  mode === "ALLOCATE_EXISTING"
+                    ? "border-blue-400/40 bg-blue-500/10"
+                    : "border-slate-800 bg-slate-950/35 hover:border-slate-700"
+                }`}
+              >
+                <p className="font-black text-white">
+                  Przypisz istniejące aktywo
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Np. 2k z już posiadanej gotówki staje się
+                  częścią Poduszki. Net Worth i portfolio bez zmian.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setMode("TRANSFER_AND_ALLOCATE")
+                }
+                className={`cursor-pointer rounded-2xl border p-4 text-left transition ${
+                  mode === "TRANSFER_AND_ALLOCATE"
+                    ? "border-violet-400/40 bg-violet-500/10"
+                    : "border-slate-800 bg-slate-950/35 hover:border-slate-700"
+                }`}
+              >
+                <p className="font-black text-white">
+                  Kup / przenieś i przypisz
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Np. Gotówka -2k → Obligacje +2k →
+                  Poduszka +2k. Net Worth bez zmian.
+                </p>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+              Kwota
+            </label>
+            <input
+              inputMode="decimal"
+              value={amount}
+              onChange={(event) =>
+                setAmount(event.target.value)
+              }
+              className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-2xl font-black text-white outline-none transition focus:border-emerald-400/50"
+            />
+          </div>
+
+          {mode === "TRANSFER_AND_ALLOCATE" && (
+            <div>
+              <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+                Z czego schodzi kapitał?
+              </label>
+              <select
+                value={sourceAssetId ?? ""}
+                onChange={(event) =>
+                  setSourceAssetId(
+                    Number(event.target.value)
+                  )
+                }
+                className="w-full cursor-pointer rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200"
+              >
+                {portfolio.map((asset) => (
+                  <option
+                    key={asset.id}
+                    value={asset.id}
+                  >
+                    {asset.name} · {asset.value.toLocaleString("pl-PL")} zł
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+              {mode === "ALLOCATE_EXISTING"
+                ? "Które aktywo finansuje cel?"
+                : "Do jakiego aktywa trafia kapitał?"}
+            </label>
+            <select
+              value={targetAssetId ?? ""}
+              onChange={(event) =>
+                setTargetAssetId(
+                  Number(event.target.value)
+                )
+              }
+              className="w-full cursor-pointer rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200"
+            >
+              {portfolio.map((asset) => (
+                <option
+                  key={asset.id}
+                  value={asset.id}
+                >
+                  {asset.name} · {asset.value.toLocaleString("pl-PL")} zł
+                </option>
+              ))}
+            </select>
+
+            {mode === "ALLOCATE_EXISTING" &&
+              targetAsset && (
+                <p className="mt-2 text-xs text-slate-500">
+                  Nieprzypisane do celów w tym aktywie:
+                  {" "}
+                  <strong className="text-slate-300">
+                    {isLoadingSummary
+                      ? "..."
+                      : `${targetUnallocated.toLocaleString("pl-PL")} zł`}
+                  </strong>
+                </p>
+              )}
+          </div>
+
+          {summary &&
+            summary.allocations.length > 0 && (
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                  Z czego składa się ten cel
+                </p>
+
+                <div className="mt-3 space-y-2">
+                  {summary.allocations.map(
+                    (allocation) => (
+                      <div
+                        key={allocation.id}
+                        className="flex items-center justify-between text-sm"
+                      >
+                        <span className="text-slate-400">
+                          {allocation.assetName}
+                        </span>
+                        <span className="font-black text-white">
+                          {allocation.amount.toLocaleString("pl-PL")} zł
+                        </span>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+
+          {error && (
+            <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm font-bold text-rose-300">
+              {error}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 border-t border-slate-800 pt-5">
+            <button
+              type="button"
+              onClick={onClose}
+              className="cursor-pointer rounded-xl border border-slate-700 px-4 py-3 text-sm font-bold text-slate-300"
+            >
+              Anuluj
+            </button>
+
+            <button
+              type="submit"
+              disabled={!valid || isSaving}
+              className="cursor-pointer rounded-xl bg-emerald-500 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isSaving
+                ? "Księguję..."
+                : mode === "ALLOCATE_EXISTING"
+                  ? "PRZYPISZ DO CELU"
+                  : "TRANSFER + CEL"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 

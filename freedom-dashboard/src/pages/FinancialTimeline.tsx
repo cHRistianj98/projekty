@@ -186,26 +186,7 @@ export function FinancialTimeline({
           </div>
 
           {chartPoints.length > 0 ? (
-            <div className="mt-7 flex h-48 items-end gap-2">
-              {chartPoints.map((point) => {
-                const value = point.netWorth ?? 0;
-                const height = 18 + ((value - chartMin) / chartRange) * 82;
-                return (
-                  <div key={point.month} className="group flex min-w-0 flex-1 flex-col items-center justify-end">
-                    <div className="mb-2 hidden whitespace-nowrap text-[10px] font-bold text-slate-300 group-hover:block">
-                      {formatMoney(value)}
-                    </div>
-                    <div
-                      className="w-full max-w-16 rounded-t-lg bg-gradient-to-t from-blue-700 to-cyan-400 transition hover:brightness-125"
-                      style={{ height: `${height}%` }}
-                    />
-                    <div className="mt-2 text-[10px] font-bold uppercase text-slate-600">
-                      {shortMonth(point.month)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <WealthChart points={chartPoints} min={chartMin} range={chartRange} />
           ) : (
             <div className="mt-6 rounded-2xl border border-dashed border-slate-800 p-8 text-center text-sm text-slate-600">
               Zamknij pierwszy miesiąc, aby rozpocząć historię Net Worth.
@@ -230,7 +211,7 @@ export function FinancialTimeline({
                   <button
                     type="button"
                     onClick={() => setExpandedMonth(expanded ? null : item.month)}
-                    className="w-full rounded-3xl border border-slate-800 bg-[#08111f] p-5 text-left transition hover:border-slate-700 hover:bg-[#0a1525]"
+                    className="w-full cursor-pointer rounded-3xl border border-slate-800 bg-[#08111f] p-5 text-left transition hover:-translate-y-0.5 hover:border-slate-700 hover:bg-[#0a1525] hover:shadow-[0_14px_45px_rgba(0,0,0,0.22)]"
                   >
                     <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
                       <div className="min-w-[180px]">
@@ -282,6 +263,207 @@ export function FinancialTimeline({
   );
 }
 
+function WealthChart({
+  points,
+  min,
+  range,
+}: {
+  points: TimelineMonth[];
+  min: number;
+  range: number;
+}) {
+  const width = 1000;
+  const height = 280;
+  const left = 96;
+  const right = 28;
+  const top = 22;
+  const bottom = 54;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+
+  const axisMin = min;
+  const axisMax = min + range;
+  const tickCount = 5;
+
+  const coords = points.map((point, index) => {
+    const value = point.netWorth ?? 0;
+    const x =
+      points.length === 1
+        ? left + plotWidth / 2
+        : left + (index / (points.length - 1)) * plotWidth;
+    const normalized = (value - axisMin) / Math.max(axisMax - axisMin, 1);
+    const y = top + (1 - normalized) * plotHeight;
+    return { ...point, value, x, y };
+  });
+
+  const line = coords.map((point) => `${point.x},${point.y}`).join(" ");
+  const area =
+    coords.length > 0
+      ? `M ${coords[0].x} ${height - bottom} L ${coords
+          .map((point) => `${point.x} ${point.y}`)
+          .join(" L ")} L ${coords[coords.length - 1].x} ${height - bottom} Z`
+      : "";
+
+  const yTicks = Array.from({ length: tickCount }, (_, index) => {
+    const ratio = index / (tickCount - 1);
+    return {
+      value: axisMax - ratio * (axisMax - axisMin),
+      y: top + ratio * plotHeight,
+    };
+  });
+
+  return (
+    <div className="mt-7 overflow-x-auto">
+      <div className="min-w-[760px]">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          className="h-[290px] w-full overflow-visible"
+          role="img"
+          aria-label="Wykres historii Net Worth"
+        >
+          <defs>
+            <linearGradient id="timelineArea" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="rgb(34 211 238)" stopOpacity="0.28" />
+              <stop offset="100%" stopColor="rgb(37 99 235)" stopOpacity="0.02" />
+            </linearGradient>
+            <linearGradient id="timelineLine" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="rgb(59 130 246)" />
+              <stop offset="100%" stopColor="rgb(34 211 238)" />
+            </linearGradient>
+          </defs>
+
+          {/* Y grid + labels */}
+          {yTicks.map((tick, index) => (
+            <g key={index}>
+              <line
+                x1={left}
+                x2={width - right}
+                y1={tick.y}
+                y2={tick.y}
+                stroke="rgb(30 41 59)"
+                strokeWidth="1"
+                strokeDasharray={index === tickCount - 1 ? undefined : "5 8"}
+              />
+              <text
+                x={left - 14}
+                y={tick.y + 4}
+                textAnchor="end"
+                fill="rgb(100 116 139)"
+                fontSize="11"
+                fontWeight="800"
+              >
+                {formatAxisMoney(tick.value)}
+              </text>
+            </g>
+          ))}
+
+          {/* Strong axes */}
+          <line
+            x1={left}
+            x2={left}
+            y1={top}
+            y2={height - bottom}
+            stroke="rgb(71 85 105)"
+            strokeWidth="2"
+          />
+          <line
+            x1={left}
+            x2={width - right}
+            y1={height - bottom}
+            y2={height - bottom}
+            stroke="rgb(71 85 105)"
+            strokeWidth="2"
+          />
+
+          <text
+            x={20}
+            y={top + plotHeight / 2}
+            transform={`rotate(-90 20 ${top + plotHeight / 2})`}
+            textAnchor="middle"
+            fill="rgb(100 116 139)"
+            fontSize="10"
+            fontWeight="900"
+            letterSpacing="1.5"
+          >
+            NET WORTH · PLN
+          </text>
+
+          {coords.length > 1 && <path d={area} fill="url(#timelineArea)" />}
+          {coords.length > 1 && (
+            <polyline
+              points={line}
+              fill="none"
+              stroke="url(#timelineLine)"
+              strokeWidth="4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          )}
+
+          {coords.map((point) => (
+            <g key={point.month} className="group cursor-pointer">
+              <line
+                x1={point.x}
+                x2={point.x}
+                y1={height - bottom}
+                y2={height - bottom + 7}
+                stroke="rgb(71 85 105)"
+                strokeWidth="2"
+              />
+              <circle cx={point.x} cy={point.y} r="15" fill="transparent" />
+              <circle
+                cx={point.x}
+                cy={point.y}
+                r="6"
+                fill={point.closed ? "rgb(52 211 153)" : point.live ? "rgb(34 211 238)" : "rgb(96 165 250)"}
+                stroke="rgb(5 11 22)"
+                strokeWidth="4"
+                className="transition-all group-hover:r-[8px]"
+              />
+              <text
+                x={point.x}
+                y={height - 24}
+                textAnchor="middle"
+                fill="rgb(148 163 184)"
+                fontSize="11"
+                fontWeight="900"
+              >
+                {shortMonth(point.month).toUpperCase()}
+              </text>
+              <title>{`${formatMonth(point.month)} · ${formatMoney(point.value)}`}</title>
+            </g>
+          ))}
+
+          <text
+            x={left + plotWidth / 2}
+            y={height - 3}
+            textAnchor="middle"
+            fill="rgb(100 116 139)"
+            fontSize="10"
+            fontWeight="900"
+            letterSpacing="1.5"
+          >
+            MIESIĄC
+          </text>
+        </svg>
+
+        <div className="mt-1 flex items-center gap-5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-600">
+          <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-emerald-400" />Closed</span>
+          <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-cyan-400" />Live</span>
+          <span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-blue-400" />Partial</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatAxisMoney(value: number) {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toLocaleString("pl-PL", { maximumFractionDigits: 1 })} mln`;
+  if (abs >= 1_000) return `${Math.round(value / 1_000).toLocaleString("pl-PL")}k`;
+  return Math.round(value).toLocaleString("pl-PL");
+}
+
 function SummaryCard({
   label,
   value,
@@ -294,7 +476,7 @@ function SummaryCard({
   icon: ReactNode;
 }) {
   return (
-    <div className="rounded-3xl border border-slate-800 bg-[#08111f] p-5">
+    <div className="group rounded-3xl border border-slate-800 bg-[#08111f] p-5 transition hover:-translate-y-1 hover:border-slate-700 hover:bg-[#0a1525] hover:shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
       <div className="flex items-center justify-between">
         <p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-600">{label}</p>
         <div className="text-cyan-400">{icon}</div>

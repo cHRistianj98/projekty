@@ -2,7 +2,6 @@ import type { Asset } from "../../types/Asset";
 import type { Goal, GoalPriority } from "../../types/Goal";
 import type { Liability } from "../../types/Liability";
 import type { MonthlyBudget } from "../../types/Cashflow";
-import { calculateFreedomEngine } from "../freedom/freedomEngine";
 import {
   analyzeDebts,
   type DebtAction,
@@ -52,70 +51,8 @@ export function routeMoney(
   let remaining = amount;
   const routes: MoneyRoute[] = [];
 
-  const engine =
-    calculateFreedomEngine(input);
-
-  // 1. EMERGENCY FUND / SAFETY SHIELD
-  // Typed emergency goal is canonical, so we never finance
-  // the same safety buffer twice.
-  const emergencyGoal = input.goals
-    .filter(
-      (goal) =>
-        goal.type === "EMERGENCY_FUND" &&
-        goal.targetAmount > goal.currentAmount
-    )
-    .sort(compareGoals)[0];
-
-  const systemShieldTarget = Math.max(
-    engine.averageExpenses * 6,
-    0
-  );
-
-  const shieldTarget = emergencyGoal
-    ? Math.max(
-        emergencyGoal.targetAmount,
-        systemShieldTarget
-      )
-    : systemShieldTarget;
-
-  const shieldCurrent = emergencyGoal
-    ? emergencyGoal.currentAmount
-    : engine.liquidAssets;
-
-  const shieldGap = Math.max(
-    shieldTarget - shieldCurrent,
-    0
-  );
-
-  if (remaining > 0 && shieldGap > 0) {
-    const allocation = Math.min(
-      remaining,
-      shieldGap
-    );
-
-    routes.push({
-      kind: "shield",
-      title: emergencyGoal
-        ? emergencyGoal.name
-        : "Safety Shield",
-      amount: allocation,
-      priority:
-        emergencyGoal?.priority ??
-        "HIGH",
-      goalId: emergencyGoal?.id,
-      reason: emergencyGoal
-        ? `Cel typu Poduszka bezpieczeństwa zastępuje systemowy Safety Shield. Do docelowej poduszki brakuje ${formatMoney(
-            shieldGap
-          )}.`
-        : `Domknij 6 miesięcy bezpieczeństwa. Brakowało ${formatMoney(
-            shieldGap
-          )}.`,
-    });
-
-    remaining -= allocation;
-  }
-
-  // 2. DEBT INTELLIGENCE
+  // 1. DEBT INTELLIGENCE
+  // Real goals are handled below. There is no synthetic Safety Shield allocation.
   // Instead of one abstract Debt Attack bucket, allocate the
   // debt budget to concrete liabilities in intelligence order.
   const totalDebt =
@@ -205,7 +142,7 @@ export function routeMoney(
     debtBudget -= allocation;
   }
 
-  // 3. GOAL DEADLINE INTELLIGENCE
+  // 2. GOAL DEADLINE INTELLIGENCE
   // Router 3.1 treats the entered amount as this month's available surplus.
   // For goals with a deadline, it first reserves the monthly amount required
   // to stay on schedule. If cash is insufficient, priority decides who gets
@@ -213,7 +150,6 @@ export function routeMoney(
   const activeGoals = input.goals
     .filter(
       (goal) =>
-        goal.type !== "EMERGENCY_FUND" &&
         goal.targetAmount >
           goal.currentAmount
     );

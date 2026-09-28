@@ -205,12 +205,6 @@ export function FreedomEngine(props: FreedomEngineProps) {
         mission.status === "ACTIVE"
     );
 
-  const completedMissions =
-    missions.filter(
-      (mission) =>
-        mission.status === "COMPLETE"
-    );
-
 
 
 
@@ -326,11 +320,11 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-            płynnej poduszce i zadłużeniu — bez 1364 miesięcy
+            cashflow, strukturze aktywów, płynności i zadłużeniu. Cele użytkownika
 
 
 
-            bezpieczeństwa z całego net worth xD.
+            są teraz źródłem misji — bez sztucznego Safety Shield.
 
 
 
@@ -622,11 +616,11 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-              miesięcy danych. Safety liczy wyłącznie kategorię
+              miesięcy danych. Płynność pokazuje wyłącznie kategorię
 
 
 
-              „Gotówka / konto”.
+              „Gotówka / konto” i nie tworzy osobnego celu.
 
 
 
@@ -794,7 +788,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-          label="Płynna poduszka"
+          label="Płynność"
 
 
 
@@ -1038,116 +1032,82 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-      <section className="mt-5 rounded-3xl border border-blue-500/20 bg-gradient-to-br from-blue-500/5 via-[#0b1322] to-[#0b1322] p-7">
+      <section className="mt-5 overflow-hidden rounded-3xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 via-[#0b1322] to-violet-500/5 p-7">
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>
             <div className="flex items-center gap-2">
               <Target size={19} className="text-blue-400" />
-              <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-400">
-                Missions 2.0
-              </p>
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-400">Missions 3.0 · Goal Driven</p>
             </div>
-
-            <h2 className="mt-2 text-2xl font-black">
-              Co robimy teraz?
-            </h2>
-
+            <h2 className="mt-2 text-2xl font-black">Co robimy teraz?</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              Engine wybiera priorytety automatycznie. Ty wybierasz jedną misję
-              jako główny fokus — jej postęp zmienia się razem z realnymi danymi.
+              Misje są teraz warstwą działania nad Twoimi prawdziwymi celami. Engine może dorzucić dług lub cashflow,
+              ale nie tworzy już osobnej wirtualnej poduszki.
             </p>
           </div>
-
           <div className="flex flex-wrap gap-3">
             <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-400">
-                Mission queue
-              </p>
-              <p className="mt-1 text-lg font-black">
-                {activeMissions.length} ACTIVE
-              </p>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-400">Mission queue</p>
+              <p className="mt-1 text-lg font-black">{activeMissions.length} ACTIVE</p>
             </div>
-
-            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-400">
-                Completed
-              </p>
-              <p className="mt-1 text-lg font-black">
-                {completedMissions.length}
-              </p>
+            <div className="rounded-xl border border-violet-500/20 bg-violet-500/10 px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-400">Goal missions</p>
+              <p className="mt-1 text-lg font-black">{missions.filter((mission) => mission.source === "GOAL").length}</p>
             </div>
           </div>
         </div>
 
         {focusedMission ? (
-          <div className="mt-6 rounded-2xl border border-cyan-500/30 bg-cyan-500/5 p-5">
-            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-              <div className="flex items-start gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-cyan-500/10 text-cyan-400">
-                  <Target size={22} />
-                </div>
-
-                <div>
+          <div className="relative mt-6 min-h-64 overflow-hidden rounded-3xl border border-cyan-500/30 bg-[#07101d]">
+            {focusedMission.imageUrl && (
+              <>
+                <img
+                  src={focusedMission.imageUrl}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover opacity-40"
+                  style={{ objectPosition: focusedMission.imagePosition ?? "center" }}
+                />
+                <div className="absolute inset-0 bg-gradient-to-r from-[#06101d] via-[#06101d]/90 to-[#06101d]/35" />
+              </>
+            )}
+            <div className="relative flex min-h-64 flex-col justify-between p-6 lg:p-7">
+              <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
+                <div className="max-w-2xl">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-400">
-                      Primary mission
-                    </p>
-                    <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-[10px] font-black uppercase text-cyan-300">
-                      Focus
-                    </span>
+                    <span className="rounded-full border border-cyan-400/20 bg-cyan-500/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-300">Primary mission</span>
+                    <span className="rounded-full border border-slate-700 bg-slate-950/50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-300">{focusedMission.source}</span>
                   </div>
-
-                  <p className="mt-2 text-xl font-black">
-                    {focusedMission.title}
-                  </p>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {focusedMission.description}
-                  </p>
+                  <h3 className="mt-4 text-3xl font-black tracking-tight">{focusedMission.title}</h3>
+                  <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300/80">{focusedMission.description}</p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setFocusedMissionId(null)}
+                  className="cursor-pointer shrink-0 rounded-xl border border-slate-700 bg-slate-950/60 px-4 py-2.5 text-xs font-black text-slate-300 backdrop-blur transition hover:border-slate-500 hover:text-white"
+                >
+                  Usuń z fokusu
+                </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setFocusedMissionId(null)}
-                className="shrink-0 rounded-xl border border-slate-700 bg-slate-900/60 px-4 py-2.5 text-xs font-black text-slate-300 transition hover:border-slate-600 hover:text-white"
-              >
-                Usuń z fokusu
-              </button>
-            </div>
-
-            <div className="mt-5 flex items-end justify-between gap-4 text-xs">
-              <span className="text-slate-500">
-                {formatMissionValue(focusedMission.current, focusedMission.unit)}
-              </span>
-              <span className="font-black text-cyan-400">
-                {formatMissionValue(focusedMission.target, focusedMission.unit)}
-              </span>
-            </div>
-
-            <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-800">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-700"
-                style={{ width: `${focusedMission.progress}%` }}
-              />
-            </div>
-
-            <div className="mt-3 flex items-center justify-between gap-4">
-              <p className="text-xs text-slate-600">
-                {focusedMission.footer}
-              </p>
-              <p className="text-sm font-black text-cyan-400">
-                {focusedMission.progress.toFixed(0)}%
-              </p>
+              <div className="mt-8 max-w-3xl">
+                <div className="flex items-end justify-between gap-4 text-xs">
+                  <span className="font-bold text-slate-300">{formatMissionValue(focusedMission.current, focusedMission.unit)}</span>
+                  <span className="font-black text-cyan-300">{formatMissionValue(focusedMission.target, focusedMission.unit)}</span>
+                </div>
+                <div className="mt-2 h-3 overflow-hidden rounded-full border border-white/5 bg-slate-950/70">
+                  <div className="h-full rounded-full bg-gradient-to-r from-blue-500 via-cyan-400 to-emerald-400 transition-all duration-700" style={{ width: `${focusedMission.progress}%` }} />
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-4">
+                  <p className="text-xs text-slate-400">{focusedMission.footer}</p>
+                  <p className="text-sm font-black text-cyan-300">{focusedMission.progress.toFixed(0)}%</p>
+                </div>
+              </div>
             </div>
           </div>
         ) : (
           <div className="mt-6 rounded-2xl border border-dashed border-slate-700 bg-slate-900/20 p-5">
-            <p className="font-black text-slate-300">
-              Nie masz jeszcze głównej misji.
-            </p>
-            <p className="mt-1 text-sm text-slate-600">
-              Wybierz „Ustaw jako fokus” na jednej z aktywnych misji poniżej.
-            </p>
+            <p className="font-black text-slate-300">Wybierz swoją główną misję.</p>
+            <p className="mt-1 text-sm text-slate-600">Najlepiej cel, który faktycznie chcesz teraz dowieźć. Engine podpowiada kolejkę poniżej.</p>
           </div>
         )}
 
@@ -1157,25 +1117,16 @@ export function FreedomEngine(props: FreedomEngineProps) {
               key={mission.id}
               mission={mission}
               focused={focusedMissionId === mission.id}
-              onFocus={() =>
-                setFocusedMissionId(
-                  focusedMissionId === mission.id
-                    ? null
-                    : mission.id
-                )
-              }
+              onFocus={() => setFocusedMissionId(focusedMissionId === mission.id ? null : mission.id)}
             />
           ))}
         </div>
 
         <div className="mt-5 rounded-2xl border border-violet-500/15 bg-violet-500/5 px-5 py-4">
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-violet-400">
-            Mission rewards
-          </p>
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-violet-400">Jak działa kolejka?</p>
           <p className="mt-1 text-sm leading-6 text-slate-500">
-            Misje są warstwą działania nad danymi finansowymi. XP gracza nadal
-            pochodzi wyłącznie z Achievements, więc nie naliczamy tutaj sztucznego
-            XP drugi raz za ten sam postęp.
+            Najpierw realny cel o najwyższym priorytecie. Pozostałe miejsca mogą dostać redukcja długu,
+            utrzymanie cashflow albo kolejny cel. XP nadal pochodzi wyłącznie z Achievements.
           </p>
         </div>
       </section>
@@ -1186,7 +1137,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
             <div className="flex items-center gap-2">
               <BrainCircuit size={20} className="text-violet-400" />
               <p className="text-xs font-black uppercase tracking-[0.2em] text-violet-400">
-                Freedom Intelligence 3.3
+                Freedom Intelligence 3.2
               </p>
             </div>
             <h2 className="mt-2 text-2xl font-black">Money Router</h2>
@@ -1384,134 +1335,6 @@ export function FreedomEngine(props: FreedomEngineProps) {
                 </span>
               </div>
             </div>
-          </div>
-        )}
-
-        {moneyPlan.deadlineSummary.requiredMonthly > 0 && (
-          <div
-            className={`mt-5 rounded-2xl border p-5 ${
-              moneyPlan.deadlineSummary.onTrack
-                ? "border-emerald-500/20 bg-emerald-500/5"
-                : "border-amber-500/20 bg-amber-500/5"
-            }`}
-          >
-            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-              <div>
-                <p
-                  className={`text-[10px] font-black uppercase tracking-[0.16em] ${
-                    moneyPlan.deadlineSummary.onTrack
-                      ? "text-emerald-400"
-                      : "text-amber-400"
-                  }`}
-                >
-                  Scenario Advisor
-                </p>
-                <p className="mt-1 text-lg font-black">
-                  {moneyPlan.deadlineSummary.onTrack
-                    ? "Plan deadline'ów jest wykonalny"
-                    : "Plan wymaga korekty"}
-                </p>
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-                  {moneyPlan.deadlineSummary.onTrack
-                    ? `Po zabezpieczeniu miesięcznego minimum wszystkich deadline'ów zostaje ${formatMoney(
-                        Math.max(
-                          moneyPlan.amount -
-                            moneyPlan.deadlineSummary.allocatedMonthly,
-                          0
-                        )
-                      )} w całym planie do obsługi pozostałych priorytetów.`
-                    : `Do utrzymania wszystkich obecnych deadline'ów brakuje ${formatMoney(
-                        moneyPlan.deadlineSummary.shortfall
-                      )} miesięcznie. Poniżej masz konkretne warianty dla niedofinansowanych celów.`}
-                </p>
-              </div>
-
-              <div
-                className={`shrink-0 rounded-xl border px-4 py-3 ${
-                  moneyPlan.deadlineSummary.onTrack
-                    ? "border-emerald-500/20 bg-emerald-500/10"
-                    : "border-rose-500/20 bg-rose-500/10"
-                }`}
-              >
-                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
-                  Monthly gap
-                </p>
-                <p
-                  className={`mt-1 text-xl font-black ${
-                    moneyPlan.deadlineSummary.onTrack
-                      ? "text-emerald-400"
-                      : "text-rose-400"
-                  }`}
-                >
-                  {moneyPlan.deadlineSummary.onTrack
-                    ? "0 zł"
-                    : `-${formatMoney(
-                        moneyPlan.deadlineSummary.shortfall
-                      )}`}
-                </p>
-              </div>
-            </div>
-
-            {!moneyPlan.deadlineSummary.onTrack && (
-              <div className="mt-5 grid grid-cols-1 gap-3 xl:grid-cols-2">
-                {moneyPlan.deadlineAdvisor
-                  .filter((item) => !item.onTrack)
-                  .map((item) => (
-                    <div
-                      key={item.goalId}
-                      className="rounded-xl border border-slate-800 bg-[#08111f] p-4"
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-black">{item.goalName}</p>
-                            <span className="rounded-full border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[9px] font-black uppercase text-violet-400">
-                              {item.priority}
-                            </span>
-                          </div>
-                          <p className="mt-1 text-xs text-slate-600">
-                            wymagane {formatMoney(item.requiredMonthly)} / mies. • przydzielone {formatMoney(item.allocatedMonthly)}
-                          </p>
-                        </div>
-
-                        <p className="shrink-0 font-black text-rose-400">
-                          -{formatMoney(item.shortfall)}
-                        </p>
-                      </div>
-
-                      <div className="mt-4 space-y-2 text-xs leading-5 text-slate-400">
-                        <p>
-                          <span className="font-black text-cyan-400">A.</span>{" "}
-                          Zwiększ miesięczną nadwyżkę o{" "}
-                          <span className="font-black text-white">
-                            {formatMoney(item.shortfall)}
-                          </span>.
-                        </p>
-
-                        {item.suggestedDeadline && (
-                          <p>
-                            <span className="font-black text-violet-400">B.</span>{" "}
-                            Przy obecnym przydziale przesuń deadline mniej więcej na{" "}
-                            <span className="font-black text-white">
-                              {formatRouterDeadline(item.suggestedDeadline)}
-                            </span>.
-                          </p>
-                        )}
-
-                        {item.suggestedTarget !== undefined && (
-                          <p>
-                            <span className="font-black text-amber-400">C.</span>{" "}
-                            Przy obecnym deadline ustaw cel około{" "}
-                            <span className="font-black text-white">
-                              {formatMoney(item.suggestedTarget)}
-                            </span>.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            )}
           </div>
         )}
 
@@ -1995,16 +1818,6 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-
-function formatRouterDeadline(value: string) {
-  return new Date(`${value}T12:00:00`).toLocaleDateString(
-    "pl-PL",
-    {
-      month: "long",
-      year: "numeric",
-    }
-  );
-}
 
 function MoneyRouteCard({
   route,
@@ -2572,105 +2385,56 @@ function MissionCard({
   focused: boolean;
   onFocus: () => void;
 }) {
-  const style =
-    missionAccentStyles[
-      mission.accent
-    ];
-
-  const complete =
-    mission.status === "COMPLETE";
+  const style = missionAccentStyles[mission.accent];
+  const complete = mission.status === "COMPLETE";
 
   return (
-    <div
-      className={`relative overflow-hidden rounded-2xl border p-5 transition ${
-        focused
-          ? "ring-2 ring-cyan-400/40"
-          : ""
-      } ${style.card}`}
-    >
+    <div className={`group relative overflow-hidden rounded-2xl border transition duration-300 hover:-translate-y-0.5 hover:border-cyan-400/30 hover:shadow-[0_18px_55px_rgba(8,145,178,0.10)] ${focused ? "ring-2 ring-cyan-400/40" : ""} ${style.card}`}>
+      {mission.imageUrl && (
+        <div className="relative h-32 overflow-hidden border-b border-white/5">
+          <img src={mission.imageUrl} alt="" className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]" style={{ objectPosition: mission.imagePosition ?? "center" }} />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#09111f] via-transparent to-transparent" />
+        </div>
+      )}
+
       {focused && (
-        <div className="absolute right-0 top-0 rounded-bl-xl bg-cyan-500 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-950">
-          Primary
-        </div>
+        <div className="absolute right-0 top-0 z-10 rounded-bl-xl bg-cyan-500 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-950">Primary</div>
       )}
 
-      <div className="flex items-start justify-between gap-4">
-        <div
-          className={`flex h-11 w-11 items-center justify-center rounded-xl ${style.icon}`}
-        >
-          {mission.icon}
+      <div className="p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${style.icon}`}>{mission.icon}</div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-lg border border-slate-700/70 bg-slate-950/40 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-slate-500">{mission.source}</span>
+            <PriorityBadge priority={mission.priority} complete={complete} />
+          </div>
         </div>
 
-        <PriorityBadge
-          priority={mission.priority}
-          complete={complete}
-        />
+        <p className="mt-5 text-lg font-black">{mission.title}</p>
+        <p className="mt-1 min-h-10 text-sm leading-5 text-slate-500">{mission.description}</p>
+
+        <div className="mt-5 flex items-end justify-between gap-3 text-xs">
+          <span className="text-slate-500">{formatMissionValue(mission.current, mission.unit)}</span>
+          <span className={`font-black ${style.text}`}>{complete ? "COMPLETE" : formatMissionValue(mission.target, mission.unit)}</span>
+        </div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800">
+          <div className={`h-full rounded-full transition-all duration-700 ${style.bar}`} style={{ width: `${mission.progress}%` }} />
+        </div>
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <p className="text-xs leading-5 text-slate-600">{mission.footer}</p>
+          <p className={`shrink-0 text-xs font-black ${style.text}`}>{mission.progress.toFixed(0)}%</p>
+        </div>
+
+        {!complete && (
+          <button
+            type="button"
+            onClick={onFocus}
+            className={`mt-5 w-full cursor-pointer rounded-xl border px-4 py-2.5 text-xs font-black transition ${focused ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/15" : "border-slate-700 bg-slate-900/50 text-slate-300 hover:border-cyan-500/30 hover:text-cyan-300"}`}
+          >
+            {focused ? "✓ Główna misja" : "Ustaw jako fokus"}
+          </button>
+        )}
       </div>
-
-      <p className="mt-5 text-lg font-black">
-        {mission.title}
-      </p>
-
-      <p className="mt-1 min-h-10 text-sm leading-5 text-slate-500">
-        {mission.description}
-      </p>
-
-      <div className="mt-5 flex items-end justify-between gap-3 text-xs">
-        <span className="text-slate-500">
-          {formatMissionValue(
-            mission.current,
-            mission.unit
-          )}
-        </span>
-
-        <span
-          className={`font-black ${style.text}`}
-        >
-          {complete
-            ? "COMPLETE"
-            : formatMissionValue(
-                mission.target,
-                mission.unit
-              )}
-        </span>
-      </div>
-
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800">
-        <div
-          className={`h-full rounded-full transition-all duration-700 ${style.bar}`}
-          style={{
-            width: `${mission.progress}%`,
-          }}
-        />
-      </div>
-
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <p className="text-xs leading-5 text-slate-600">
-          {mission.footer}
-        </p>
-
-        <p
-          className={`shrink-0 text-xs font-black ${style.text}`}
-        >
-          {mission.progress.toFixed(0)}%
-        </p>
-      </div>
-
-      {!complete && (
-        <button
-          type="button"
-          onClick={onFocus}
-          className={`mt-5 w-full rounded-xl border px-4 py-2.5 text-xs font-black transition ${
-            focused
-              ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/15"
-              : "border-slate-700 bg-slate-900/50 text-slate-300 hover:border-cyan-500/30 hover:text-cyan-300"
-          }`}
-        >
-          {focused
-            ? "✓ Główna misja"
-            : "Ustaw jako fokus"}
-        </button>
-      )}
     </div>
   );
 }

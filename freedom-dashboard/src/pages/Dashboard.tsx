@@ -443,6 +443,7 @@ export function Dashboard({
     getFreedomMissions({
       netWorth,
       portfolio,
+      goals,
       liabilities,
       monthlyBudget,
     });
@@ -662,7 +663,7 @@ export function Dashboard({
     );
 
   return (
-    <main className="min-h-screen bg-[#050b16] p-8">
+    <main className="min-h-screen bg-[#050b16] p-8 [&_a]:cursor-pointer [&_button:not(:disabled)]:cursor-pointer">
       <Header
         level={playerLevel.level}
         levelName={playerLevel.name}

@@ -1,15 +1,10 @@
-const API_BASE_URL =
+const API_URL =
   import.meta.env.VITE_API_URL ??
   "http://localhost:8080";
 
 const TOKEN_KEY = "freedom-auth-token";
 
-export type AuthUser = {
-  id: number;
-  email: string;
-};
-
-export type LoginResponse = {
+type LoginResponse = {
   token: string;
   tokenType: string;
   userId: number;
@@ -17,6 +12,11 @@ export type LoginResponse = {
 };
 
 type RegisterResponse = {
+  id: number;
+  email: string;
+};
+
+type CurrentUserResponse = {
   id: number;
   email: string;
 };
@@ -38,44 +38,17 @@ async function readJson<T>(
 }
 
 export const authApi = {
-  async login(
-    email: string,
-    password: string
-  ): Promise<LoginResponse> {
-    const response = await fetch(
-      `${API_BASE_URL}/api/auth/login`,
-      {
-        method: "POST",
-
-        headers: {
-          "Content-Type": "application/json",
-        },
-
-        body: JSON.stringify({
-          email,
-          password,
-        }),
-      }
-    );
-
-    return readJson<LoginResponse>(
-      response
-    );
-  },
-
   async register(
     email: string,
     password: string
   ): Promise<RegisterResponse> {
     const response = await fetch(
-      `${API_BASE_URL}/api/auth/register`,
+      `${API_URL}/api/auth/register`,
       {
         method: "POST",
-
         headers: {
           "Content-Type": "application/json",
         },
-
         body: JSON.stringify({
           email,
           password,
@@ -88,27 +61,46 @@ export const authApi = {
     );
   },
 
-  async me(): Promise<AuthUser> {
-    const token =
-      authApi.getToken();
+  async login(
+    email: string,
+    password: string
+  ): Promise<LoginResponse> {
+    const response = await fetch(
+      `${API_URL}/api/auth/login`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      }
+    );
+
+    return readJson<LoginResponse>(
+      response
+    );
+  },
+
+  async me(): Promise<CurrentUserResponse> {
+    const token = this.getToken();
 
     if (!token) {
-      throw new Error(
-        "Brak tokena użytkownika."
-      );
+      throw new Error("Brak tokenu JWT");
     }
 
     const response = await fetch(
-      `${API_BASE_URL}/api/auth/me`,
+      `${API_URL}/api/auth/me`,
       {
         headers: {
-          Authorization:
-            `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
       }
     );
 
-    return readJson<AuthUser>(
+    return readJson<CurrentUserResponse>(
       response
     );
   },
@@ -134,7 +126,7 @@ export const authApi = {
 
   isLoggedIn(): boolean {
     return Boolean(
-      authApi.getToken()
+      localStorage.getItem(TOKEN_KEY)
     );
   },
 };

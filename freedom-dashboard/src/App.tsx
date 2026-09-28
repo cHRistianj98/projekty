@@ -39,6 +39,7 @@ import type { Asset } from "./types/Asset";
 import type { Goal } from "./types/Goal";
 import { goalApi } from "./api/goalApi";
 import { assetApi } from "./api/assetApi";
+import { goalAllocationApi } from "./api/goalAllocationApi";
 import { liabilityApi } from "./api/liabilityApi";
 import { authApi } from "./api/authApi";
 import { transactionApi } from "./api/transactionApi";
@@ -379,6 +380,43 @@ function App() {
     } catch (error) {
       console.error("Nie udało się zaktualizować celu:", error);
       window.alert("Nie udało się zaktualizować celu w backendzie.");
+    }
+  }
+
+  async function handleAllocateGoalMoney(
+    goalId: number,
+    request: {
+      amount: number;
+      mode: "ALLOCATE_EXISTING" | "TRANSFER_AND_ALLOCATE";
+      sourceAssetId?: number | null;
+      targetAssetId: number;
+    }
+  ) {
+    try {
+      await goalAllocationApi.allocate(
+        goalId,
+        request
+      );
+
+      // Backend wykonuje całość w jednej transakcji:
+      // allocation + ewentualny transfer assetów + currentAmount celu.
+      // Po sukcesie odświeżamy oba źródła prawdy.
+      const [
+        refreshedGoals,
+        refreshedAssets,
+      ] = await Promise.all([
+        goalApi.getAll(),
+        assetApi.getAll(),
+      ]);
+
+      setGoals(refreshedGoals);
+      setPortfolio(refreshedAssets);
+    } catch (error) {
+      console.error(
+        "Nie udało się zaalokować pieniędzy do celu:",
+        error
+      );
+      throw error;
     }
   }
 
@@ -1045,6 +1083,7 @@ function App() {
               element={
                 <Goals
                   goals={goals}
+                  portfolio={portfolio}
                   onAddGoal={
                     handleAddGoal
                   }
@@ -1053,6 +1092,9 @@ function App() {
                   }
                   onDeleteGoal={
                     handleDeleteGoal
+                  }
+                  onAllocateMoney={
+                    handleAllocateGoalMoney
                   }
                 />
               }
