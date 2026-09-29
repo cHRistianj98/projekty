@@ -32,6 +32,13 @@ export type Asset = {
   color: string;
   category?: AssetCategory;
   iconKey?: AssetIconKey;
+
+  /**
+   * Systemowa Gotówka jest tworzona automatycznie.
+   * Nie można jej usunąć.
+   */
+  systemCash?: boolean;
+  portfolioId?: number;
 };
 
 export const assetCategoryLabels: Record<AssetCategory, string> = {

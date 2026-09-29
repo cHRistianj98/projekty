@@ -184,6 +184,69 @@ public class GoalAllocationService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public MoneyFlowOverviewResponse getOverview(User user) {
+        Long uid=user.getId();
+        List<PortfolioAllocationResponse> rows=jdbc.query("""
+            SELECT ga.goal_id,g.name goal_name,ga.asset_id,ga.asset_name_snapshot,ga.amount
+            FROM goal_allocations ga JOIN goals g ON g.id=ga.goal_id
+            WHERE ga.user_id=? AND ga.amount>0 ORDER BY g.name,ga.amount DESC
+            """,(rs,n)->new PortfolioAllocationResponse(rs.getLong("goal_id"),rs.getString("goal_name"),
+                nullableLong(rs,"asset_id"),rs.getString("asset_name_snapshot"),rs.getBigDecimal("amount")),uid);
+        BigDecimal total=rows.stream().map(PortfolioAllocationResponse::amount).reduce(BigDecimal.ZERO,BigDecimal::add);
+        List<Long> executed=jdbc.query("SELECT goal_id FROM goal_executions WHERE user_id=?",
+                (rs,n)->rs.getLong("goal_id"),uid);
+        return new MoneyFlowOverviewResponse(total,rows,executed);
+    }
+
+    public MoneyFlowOverviewResponse executeGoal(Long goalId,User user) {
+        Long uid=user.getId();
+        GoalRow goal=requireGoal(goalId,uid);
+        Integer done=jdbc.queryForObject("SELECT COUNT(*) FROM goal_executions WHERE user_id=? AND goal_id=?",
+                Integer.class,uid,goalId);
+        if(done!=null&&done>0) throw new IllegalArgumentException("Cel został już wykonany.");
+        if(goal.currentAmount().compareTo(goal.targetAmount())<0)
+            throw new IllegalArgumentException("Cel musi być w 100% sfinansowany.");
+
+        List<GoalAllocationItemResponse> rows=jdbc.query("""
+            SELECT id,goal_id,asset_id,asset_name_snapshot,amount FROM goal_allocations
+            WHERE user_id=? AND goal_id=? AND amount>0
+            """,(rs,n)->new GoalAllocationItemResponse(rs.getLong("id"),rs.getLong("goal_id"),
+                nullableLong(rs,"asset_id"),rs.getString("asset_name_snapshot"),rs.getBigDecimal("amount")),uid,goalId);
+        if(rows.isEmpty()) throw new IllegalArgumentException("Cel nie ma przypisanego kapitału.");
+
+        BigDecimal spent=BigDecimal.ZERO;
+        for(GoalAllocationItemResponse a:rows){
+            if(a.assetId()==null) throw new IllegalArgumentException("Cel ma środki Legacy / nieprzypisane.");
+            AssetRow asset=requireAsset(a.assetId(),uid);
+            if(asset.value().compareTo(a.amount())<0)
+                throw new IllegalArgumentException("Za mało środków w aktywie "+asset.name());
+            jdbc.update("UPDATE assets SET value=value-? WHERE id=? AND user_id=?",a.amount(),a.assetId(),uid);
+            spent=spent.add(a.amount());
+        }
+        jdbc.update("INSERT INTO goal_executions(user_id,goal_id,spent_amount) VALUES(?,?,?)",uid,goalId,spent);
+        jdbc.update("DELETE FROM goal_allocations WHERE user_id=? AND goal_id=?",uid,goalId);
+        return getOverview(user);
+    }
+
+    public GoalAllocationSummaryResponse release(Long goalId, Long assetId, BigDecimal amount, User user) {
+        Long uid = user.getId();
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) throw new IllegalArgumentException("Kwota musi być większa od zera.");
+        requireGoal(goalId, uid);
+        List<GoalAllocationItemResponse> rows = jdbc.query("""
+            SELECT id,goal_id,asset_id,asset_name_snapshot,amount FROM goal_allocations
+            WHERE user_id=? AND goal_id=? AND asset_id=?
+            """,(rs,n)->new GoalAllocationItemResponse(rs.getLong("id"),rs.getLong("goal_id"),nullableLong(rs,"asset_id"),rs.getString("asset_name_snapshot"),rs.getBigDecimal("amount")),uid,goalId,assetId);
+        if(rows.isEmpty()) throw new IllegalArgumentException("Brak takiej alokacji.");
+        GoalAllocationItemResponse row=rows.getFirst();
+        if(amount.compareTo(row.amount())>0) throw new IllegalArgumentException("Nie można cofnąć więcej niż przypisano.");
+        jdbc.update("UPDATE goal_allocations SET amount=amount-?,updated_at=NOW() WHERE id=?",amount,row.id());
+        jdbc.update("DELETE FROM goal_allocations WHERE id=? AND amount=0",row.id());
+        jdbc.update("INSERT INTO goal_allocation_releases(user_id,goal_id,asset_id,asset_name_snapshot,amount) VALUES(?,?,?,?,?)",uid,goalId,assetId,row.assetName(),amount);
+        jdbc.update("UPDATE goals g SET current_amount=(SELECT COALESCE(SUM(amount),0) FROM goal_allocations WHERE user_id=? AND goal_id=g.id) WHERE g.id=? AND g.user_id=?",uid,goalId,uid);
+        return buildSummary(goalId,uid);
+    }
+
     private void upsertAllocation(
             Long goalId,
             AssetRow asset,

@@ -19,6 +19,8 @@ type BackendAsset = {
   color: string;
   category: BackendAssetCategory;
   iconKey?: AssetIconKey | null;
+  systemCash?: boolean;
+  portfolioId: number;
 };
 
 function authHeaders(): HeadersInit {
@@ -69,6 +71,8 @@ function fromBackend(row: BackendAsset): Asset {
     color: row.color,
     category: fromBackendCategory(row.category),
     ...(row.iconKey ? { iconKey: row.iconKey } : {}),
+    systemCash: Boolean(row.systemCash),
+    portfolioId: row.portfolioId,
   };
 }
 
@@ -79,6 +83,7 @@ function body(asset: Asset) {
     color: asset.color,
     category: toBackendCategory(asset.category),
     iconKey: asset.iconKey ?? null,
+    portfolioId: asset.portfolioId ?? null,
   };
 }
 

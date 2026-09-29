@@ -165,6 +165,11 @@ function App() {
     };
   }, [isAuthenticated]);
 
+  async function refreshPortfolio() {
+    const loadedAssets = await assetApi.getAll();
+    setPortfolio(loadedAssets);
+  }
+
   const totalAssets =
     calculateNetWorth(
       portfolio
@@ -420,6 +425,13 @@ function App() {
     }
   }
 
+
+  async function handleReleaseGoalMoney(goalId:number,assetId:number,amount:number){
+    await goalAllocationApi.release(goalId,assetId,amount);
+    const [refreshedGoals,refreshedAssets]=await Promise.all([goalApi.getAll(),assetApi.getAll()]);
+    setGoals(refreshedGoals); setPortfolio(refreshedAssets);
+  }
+
   async function handleDeleteGoal(id: number) {
     try {
       await goalApi.remove(id);
@@ -584,6 +596,7 @@ function App() {
           ...current,
           expenses: [...current.expenses, created],
         }));
+        await refreshPortfolio();
         return;
       }
 
@@ -593,6 +606,7 @@ function App() {
           ...current,
           expenses: [...current.expenses, created],
         }));
+        await refreshPortfolio();
         return;
       }
 
@@ -617,6 +631,7 @@ function App() {
         ...current,
         expenses: [...current.expenses, created],
       }));
+      await refreshPortfolio();
     } catch (error) {
       console.error("Nie udało się dodać wydatku:", error);
       window.alert("Nie udało się zapisać wydatku w backendzie.");
@@ -630,6 +645,7 @@ function App() {
         ...current,
         expenses: current.expenses.filter((expense) => expense.id !== id),
       }));
+      await refreshPortfolio();
     } catch (error) {
       console.error("Nie udało się usunąć wydatku:", error);
     }
@@ -644,6 +660,7 @@ function App() {
           expense.id === saved.id ? saved : expense
         ),
       }));
+      await refreshPortfolio();
     } catch (error) {
       console.error("Nie udało się zaktualizować wydatku:", error);
     }
@@ -663,6 +680,7 @@ function App() {
           ...current,
           incomes: [...current.incomes, created],
         }));
+        await refreshPortfolio();
         return;
       }
 
@@ -672,6 +690,7 @@ function App() {
           ...current,
           incomes: [...current.incomes, created],
         }));
+        await refreshPortfolio();
         return;
       }
 
@@ -697,6 +716,7 @@ function App() {
         ...current,
         incomes: [...current.incomes, created],
       }));
+      await refreshPortfolio();
     } catch (error) {
       console.error("Nie udało się dodać przychodu:", error);
       window.alert("Nie udało się zapisać przychodu w backendzie.");
@@ -710,6 +730,7 @@ function App() {
         ...current,
         incomes: current.incomes.filter((income) => income.id !== id),
       }));
+      await refreshPortfolio();
     } catch (error) {
       console.error("Nie udało się usunąć przychodu:", error);
     }
@@ -724,6 +745,7 @@ function App() {
           income.id === saved.id ? saved : income
         ),
       }));
+      await refreshPortfolio();
     } catch (error) {
       console.error("Nie udało się zaktualizować przychodu:", error);
     }
@@ -1074,6 +1096,7 @@ function App() {
                   onDeleteAsset={
                     handleDeleteAsset
                   }
+                  onPortfolioChanged={refreshPortfolio}
                 />
               }
             />
@@ -1096,6 +1119,7 @@ function App() {
                   onAllocateMoney={
                     handleAllocateGoalMoney
                   }
+                  onReleaseMoney={handleReleaseGoalMoney}
                 />
               }
             />

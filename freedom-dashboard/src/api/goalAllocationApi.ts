@@ -2,6 +2,7 @@ import { authApi } from "./authApi";
 import type {
   AllocateGoalMoneyRequest,
   GoalAllocationSummary,
+  MoneyFlowOverview,
 } from "../types/GoalAllocation";
 
 const API_BASE_URL =
@@ -51,6 +52,19 @@ export const goalAllocationApi = {
     );
   },
 
+  async getOverview(): Promise<MoneyFlowOverview> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/goal-allocations/overview`,
+      {
+        headers: authHeaders(),
+      }
+    );
+
+    return readJson<MoneyFlowOverview>(
+      response
+    );
+  },
+
   async allocate(
     goalId: number,
     request: AllocateGoalMoneyRequest
@@ -65,6 +79,27 @@ export const goalAllocationApi = {
     );
 
     return readJson<GoalAllocationSummary>(
+      response
+    );
+  },
+
+  async release(goalId: number, assetId: number, amount: number): Promise<GoalAllocationSummary> {
+    const response = await fetch(`${API_BASE_URL}/api/goals/${goalId}/allocations/${assetId}?amount=${encodeURIComponent(amount)}`, { method: "DELETE", headers: authHeaders() });
+    return readJson<GoalAllocationSummary>(response);
+  },
+
+  async executeGoal(
+    goalId: number
+  ): Promise<MoneyFlowOverview> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/goals/${goalId}/execute`,
+      {
+        method: "POST",
+        headers: authHeaders(),
+      }
+    );
+
+    return readJson<MoneyFlowOverview>(
       response
     );
   },

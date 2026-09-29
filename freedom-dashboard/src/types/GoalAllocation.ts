@@ -16,7 +16,7 @@ export type GoalContribution = {
   amount: number;
   mode: GoalAllocationMode;
   sourceAssetId: number | null;
-  targetAssetId: number;
+  targetAssetId: number | null;
   createdAt: string;
 };
 
@@ -33,3 +33,6 @@ export type AllocateGoalMoneyRequest = {
   sourceAssetId?: number | null;
   targetAssetId: number;
 };
+
+export type PortfolioAllocation={goalId:number;goalName:string;assetId:number|null;assetName:string;amount:number};
+export type MoneyFlowOverview={totalAllocated:number;allocations:PortfolioAllocation[];executedGoalIds:number[]};

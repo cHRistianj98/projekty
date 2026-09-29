@@ -1,6 +1,7 @@
 package com.freedom.freedom_backend.auth;
 
 import com.freedom.freedom_backend.security.JwtService;
+import com.freedom.freedom_backend.asset.SystemCashService;
 import com.freedom.freedom_backend.user.User;
 import com.freedom.freedom_backend.user.UserRepository;
 
@@ -14,11 +15,13 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final SystemCashService systemCashService;
 
     public AuthService(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
-            JwtService jwtService
+            JwtService jwtService,
+            SystemCashService systemCashService
     ) {
         this.userRepository =
                 userRepository;
@@ -28,6 +31,9 @@ public class AuthService {
 
         this.jwtService =
                 jwtService;
+
+        this.systemCashService =
+                systemCashService;
     }
 
     @Transactional
@@ -62,6 +68,8 @@ public class AuthService {
 
         User savedUser =
                 userRepository.save(user);
+
+        systemCashService.ensureExists(savedUser);
 
         return new RegisterResponse(
                 savedUser.getId(),

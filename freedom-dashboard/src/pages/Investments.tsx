@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ChartNoAxesCombined,
   Coins,
@@ -9,6 +9,8 @@ import {
   Trash2,
   TrendingUp,
   WalletCards,
+  ArrowRightLeft,
+  FolderPlus,
 } from "lucide-react";
 
 import type {
@@ -21,6 +23,10 @@ import {
   getAssetIconKey,
 } from "../types/Asset";
 import { AssetIcon } from "../components/investments/assetIcons";
+import { goalAllocationApi } from "../api/goalAllocationApi";
+import type { MoneyFlowOverview } from "../types/GoalAllocation";
+import type { PortfolioWallet } from "../types/Portfolio";
+import { portfolioApi } from "../api/portfolioApi";
 
 import { AddAssetModal } from "../components/investments/AddAssetModal";
 import { EditAssetModal } from "../components/investments/EditAssetModal";
@@ -30,6 +36,7 @@ type InvestmentsProps = {
   onAddAsset: (asset: Asset) => void;
   onUpdateAsset: (asset: Asset) => void;
   onDeleteAsset: (id: number) => void;
+  onPortfolioChanged: () => Promise<void>;
 };
 
 export function Investments({
@@ -37,10 +44,34 @@ export function Investments({
   onAddAsset,
   onUpdateAsset,
   onDeleteAsset,
+  onPortfolioChanged,
 }: InvestmentsProps) {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingAsset, setEditingAsset] =
     useState<Asset | null>(null);
+
+  const [moneyFlow,setMoneyFlow]=useState<MoneyFlowOverview|null>(null);
+  const [wallets,setWallets]=useState<PortfolioWallet[]>([]);
+  const [isWalletOpen,setIsWalletOpen]=useState(false);
+  const [isTransferOpen,setIsTransferOpen]=useState(false);
+  async function refreshWallets(){try{setWallets(await portfolioApi.getAll());}catch(e){console.error("Portfele:",e);}}
+  useEffect(()=>{void refreshWallets();},[portfolio,moneyFlow?.totalAllocated]);
+
+  useEffect(()=>{
+    let cancelled=false;
+    goalAllocationApi.getOverview().then(x=>{if(!cancelled)setMoneyFlow(x);})
+      .catch(e=>console.error("Money Flow overview:",e));
+    return()=>{cancelled=true;};
+  },[portfolio]);
+
+  const allocatedByAsset=new Map<number,number>();
+  for(const a of moneyFlow?.allocations??[]){
+    if(a.assetId!==null) allocatedByAsset.set(a.assetId,(allocatedByAsset.get(a.assetId)??0)+a.amount);
+  }
+  const availablePortfolio=portfolio.map(asset=>({
+    ...asset,
+    availableValue:Math.max(asset.value-(allocatedByAsset.get(asset.id)??0),0),
+  }));
 
   const total = useMemo(
     () =>
@@ -92,6 +123,9 @@ export function Investments({
             </div>
           </div>
 
+          <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setIsWalletOpen(true)} className="flex cursor-pointer items-center gap-2 rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 py-3 text-sm font-bold text-violet-200 transition hover:bg-violet-500/15"><FolderPlus size={18}/>Nowy portfel</button>
+          <button type="button" onClick={() => setIsTransferOpen(true)} className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-blue-500/40"><ArrowRightLeft size={18}/>Transfer</button>
           <button
             type="button"
             onClick={() => setIsAddOpen(true)}
@@ -100,6 +134,7 @@ export function Investments({
             <Plus size={18} />
             Dodaj aktywo
           </button>
+          </div>
         </header>
 
         <section className="mt-8 grid gap-4 xl:grid-cols-3">
@@ -134,6 +169,31 @@ export function Investments({
             art={<OrbArt />}
             compact
           />
+        </section>
+
+        <section className="mt-6">
+          <div className="mb-3 flex items-end justify-between"><div><p className="text-[10px] font-black uppercase tracking-[.18em] text-blue-400">Portfolio Engine</p><h2 className="mt-1 text-xl font-black">Twoje portfele</h2></div><p className="text-xs text-slate-500">Transfery między aktywami nie zmieniają Net Worth</p></div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {wallets.map(w=>{const pct=total>0?(w.value/total)*100:0; const isGoals=w.type==="GOALS"; return <div key={w.id} className={`relative overflow-hidden rounded-2xl border p-5 ${isGoals?"border-violet-500/30 bg-violet-500/[.07]":"border-slate-800 bg-slate-900/70"}`}>
+              <div className="flex items-center justify-between"><span className="rounded-lg px-2 py-1 text-[9px] font-black uppercase tracking-[.12em]" style={{color:w.color,backgroundColor:`${w.color}18`}}>{w.type==="MAIN"?"SYSTEM":w.type==="GOALS"?"LOCKED":"PORTFEL"}</span><span className="text-xs font-bold text-slate-500">{pct.toFixed(1)}%</span></div>
+              <h3 className="mt-4 text-lg font-black">{w.name}</h3><p className="mt-1 text-2xl font-black" style={{color:w.color}}>{formatMoney(w.value)}</p>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full" style={{width:`${Math.min(100,pct)}%`,backgroundColor:w.color}}/></div>
+              <div className="mt-4 flex h-2 overflow-hidden rounded-full bg-slate-800">
+                {(isGoals
+                  ? (moneyFlow?.allocations??[]).reduce<{name:string;value:number;color:string}[]>((acc,a)=>{const found=acc.find(x=>x.name===a.goalName);if(found)found.value+=a.amount;else acc.push({name:a.goalName,value:a.amount,color:["#8b5cf6","#22c55e","#f59e0b","#3b82f6"][acc.length%4]});return acc;},[])
+                  : portfolio.filter(a=>a.portfolioId===w.id).map(a=>({name:a.name,value:Math.max(a.value-(allocatedByAsset.get(a.id)??0),0),color:a.color})))
+                  .filter(x=>x.value>0).map(x=><div key={x.name} title={`${x.name}: ${formatMoney(x.value)}`} style={{width:`${w.value>0?(x.value/w.value)*100:0}%`,backgroundColor:x.color}} />)}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500">
+                {(isGoals
+                  ? (moneyFlow?.allocations??[]).reduce<{name:string;value:number;color:string}[]>((acc,a)=>{const found=acc.find(x=>x.name===a.goalName);if(found)found.value+=a.amount;else acc.push({name:a.goalName,value:a.amount,color:["#8b5cf6","#22c55e","#f59e0b","#3b82f6"][acc.length%4]});return acc;},[])
+                  : portfolio.filter(a=>a.portfolioId===w.id).map(a=>({name:a.name,value:Math.max(a.value-(allocatedByAsset.get(a.id)??0),0),color:a.color})))
+                  .filter(x=>x.value>0).slice(0,4).map(x=><span key={x.name}><i className="mr-1 inline-block h-1.5 w-1.5 rounded-full" style={{backgroundColor:x.color}}/>{x.name} {w.value>0?((x.value/w.value)*100).toFixed(0):0}%</span>)}
+              </div>
+              {w.allocatedOut>0&&<p className="mt-3 text-[11px] text-slate-500">Do Celów: <b className="text-violet-300">{formatMoney(w.allocatedOut)}</b></p>}
+              {isGoals&&<p className="mt-3 text-[11px] text-slate-500">Skład procentowy wynika automatycznie z aktywnych celów.</p>}
+            </div>})}
+          </div>
         </section>
 
         <section className="mt-6 overflow-hidden rounded-3xl border border-blue-500/20 bg-slate-900/65 shadow-[0_20px_60px_rgba(0,0,0,.22)]">
@@ -181,7 +241,7 @@ export function Investments({
               </div>
 
               <div className="space-y-2 p-3">
-                {portfolio.map((asset) => {
+                {availablePortfolio.map((asset) => {
                   const category =
                     getAssetCategory(asset);
                   const share =
@@ -225,8 +285,15 @@ export function Investments({
                           </div>
 
                           <div className="min-w-0">
-                            <div className="truncate text-base font-black text-slate-50">
-                              {asset.name}
+                            <div className="flex items-center gap-2">
+                              <div className="truncate text-base font-black text-slate-50">
+                                {asset.name}
+                              </div>
+                              {asset.systemCash && (
+                                <span className="shrink-0 rounded-full border border-blue-400/20 bg-blue-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[.12em] text-blue-300">
+                                  SYSTEM
+                                </span>
+                              )}
                             </div>
                             <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
                               <span
@@ -237,6 +304,7 @@ export function Investments({
                                 }}
                               />
                               {visual.subtitle}
+                              {wallets.length>0 && !asset.systemCash && <select value={asset.portfolioId ?? ""} onChange={async e=>{onUpdateAsset({...asset,portfolioId:Number(e.target.value)});}} onClick={e=>e.stopPropagation()} className="ml-2 rounded-md border border-slate-700 bg-slate-950 px-1.5 py-0.5 text-[10px] text-slate-400">{wallets.filter(w=>w.type!=="GOALS").map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select>}
                             </div>
                           </div>
                         </div>
@@ -275,26 +343,37 @@ export function Investments({
                         </div>
 
                         <div className="flex justify-end gap-1">
-                          <button
-                            type="button"
-                            title="Edytuj"
-                            onClick={() =>
-                              setEditingAsset(asset)
-                            }
-                            className="cursor-pointer rounded-xl p-2.5 text-slate-500 transition hover:bg-blue-500/10 hover:text-blue-300"
-                          >
-                            <Pencil size={17} />
-                          </button>
-                          <button
-                            type="button"
-                            title="Usuń"
-                            onClick={() =>
-                              onDeleteAsset(asset.id)
-                            }
-                            className="cursor-pointer rounded-xl p-2.5 text-slate-500 transition hover:bg-red-500/10 hover:text-red-300"
-                          >
-                            <Trash2 size={17} />
-                          </button>
+                          {asset.systemCash ? (
+                            <div
+                              title="Gotówka systemowa jest sterowana przez przychody i wydatki"
+                              className="rounded-xl border border-blue-400/15 bg-blue-500/[0.06] px-2.5 py-2 text-[9px] font-black uppercase tracking-[.12em] text-blue-300"
+                            >
+                              AUTO
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                title="Edytuj"
+                                onClick={() =>
+                                  setEditingAsset(asset)
+                                }
+                                className="cursor-pointer rounded-xl p-2.5 text-slate-500 transition hover:bg-blue-500/10 hover:text-blue-300"
+                              >
+                                <Pencil size={17} />
+                              </button>
+                              <button
+                                type="button"
+                                title="Usuń"
+                                onClick={() =>
+                                  onDeleteAsset(asset.id)
+                                }
+                                className="cursor-pointer rounded-xl p-2.5 text-slate-500 transition hover:bg-red-500/10 hover:text-red-300"
+                              >
+                                <Trash2 size={17} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -313,6 +392,30 @@ export function Investments({
         />
       )}
 
+      {(moneyFlow?.allocations.length ?? 0) > 0 && (
+        <section className="mt-6 overflow-hidden rounded-3xl border border-violet-500/20 bg-[#0b1322]">
+          <div className="border-b border-slate-800 px-6 py-5">
+            <p className="text-[10px] font-black uppercase tracking-[.18em] text-violet-400">Kapitał przypisany do celów</p>
+            <h2 className="mt-1 text-xl font-black text-white">Pieniądze pracujące na konkretne plany</h2>
+            <p className="mt-1 text-xs text-slate-500">Są częścią Net Worth, ale nie są już dostępne do swobodnego wydania.</p>
+          </div>
+          <div className="grid gap-3 p-5 lg:grid-cols-2">
+            {(moneyFlow?.allocations ?? []).map((a,i)=>(
+              <div key={`${a.goalId}-${a.assetId}-${i}`} className="rounded-2xl border border-violet-500/15 bg-violet-500/[0.05] p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div><p className="font-black text-white">🎯 {a.goalName}</p><p className="mt-1 text-xs text-slate-500">{a.assetName}</p></div>
+                  <p className="text-lg font-black text-violet-300">{a.amount.toLocaleString("pl-PL")} zł</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+
+      {isWalletOpen && <WalletModal onClose={()=>setIsWalletOpen(false)} onCreate={async name=>{await portfolioApi.create({name,color:"#8b5cf6",iconKey:"wallet"});await refreshWallets();setIsWalletOpen(false);}}/>}
+      {isTransferOpen && <TransferModal assets={portfolio} onClose={()=>setIsTransferOpen(false)} onTransfer={async(s,t,a)=>{await portfolioApi.transfer(s,t,a);await onPortfolioChanged();await refreshWallets();setIsTransferOpen(false);}}/>}
+
       {editingAsset && (
         <EditAssetModal
           asset={editingAsset}
@@ -323,6 +426,10 @@ export function Investments({
     </main>
   );
 }
+
+
+function WalletModal({onClose,onCreate}:{onClose:()=>void;onCreate:(name:string)=>Promise<void>}){const[name,setName]=useState("");const[saving,setSaving]=useState(false);return <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"><div className="w-full max-w-md rounded-3xl border border-violet-500/20 bg-[#0b1322] p-6"><p className="text-[10px] font-black uppercase tracking-[.16em] text-violet-400">Nowy portfel</p><h2 className="mt-1 text-xl font-black">Oddziel kapitał według przeznaczenia</h2><input autoFocus value={name} onChange={e=>setName(e.target.value)} placeholder="np. Poduszka" className="mt-5 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-violet-400/50"/><div className="mt-5 flex justify-end gap-2"><button onClick={onClose} className="rounded-xl border border-slate-700 px-4 py-2">Anuluj</button><button disabled={!name.trim()||saving} onClick={async()=>{setSaving(true);await onCreate(name.trim());}} className="rounded-xl bg-violet-500 px-4 py-2 font-black text-white disabled:opacity-40">UTWÓRZ</button></div></div></div>}
+function TransferModal({assets,onClose,onTransfer}:{assets:Asset[];onClose:()=>void;onTransfer:(s:number,t:number,a:number)=>Promise<void>}){const[s,setS]=useState(assets[0]?.id??0);const[t,setT]=useState(assets[1]?.id??assets[0]?.id??0);const[a,setA]=useState("1000");const[saving,setSaving]=useState(false);const amount=Number(a.replace(",","."));return <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"><div className="w-full max-w-lg rounded-3xl border border-blue-500/20 bg-[#0b1322] p-6"><p className="text-[10px] font-black uppercase tracking-[.16em] text-blue-400">Transfer majątku</p><h2 className="mt-1 text-xl font-black">Przenieś kapitał bez zmiany Net Worth</h2><div className="mt-5 grid gap-3"><select value={s} onChange={e=>setS(Number(e.target.value))} className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3">{assets.map(x=><option key={x.id} value={x.id}>Z: {x.name} · {formatMoney(x.value)}</option>)}</select><select value={t} onChange={e=>setT(Number(e.target.value))} className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3">{assets.map(x=><option key={x.id} value={x.id}>Do: {x.name}</option>)}</select><input value={a} onChange={e=>setA(e.target.value)} className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-xl font-black"/></div><p className="mt-3 text-xs text-slate-500">To nie jest przychód ani wydatek. Zmienia się tylko struktura Twojego majątku.</p><div className="mt-5 flex justify-end gap-2"><button onClick={onClose} className="rounded-xl border border-slate-700 px-4 py-2">Anuluj</button><button disabled={s===t||!Number.isFinite(amount)||amount<=0||saving} onClick={async()=>{setSaving(true);try{await onTransfer(s,t,amount);}catch(e){setSaving(false);alert(e instanceof Error?e.message:"Transfer nieudany");}}} className="rounded-xl bg-blue-600 px-4 py-2 font-black disabled:opacity-40">TRANSFER</button></div></div></div>}
 
 type Accent = "emerald" | "violet" | "amber";
 

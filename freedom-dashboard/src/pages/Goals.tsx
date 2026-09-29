@@ -20,7 +20,7 @@ import { EditGoalModal } from "../components/goals/EditGoalModal";
 import type { Goal } from "../types/Goal";
 import type { Asset } from "../types/Asset";
 import { goalAllocationApi } from "../api/goalAllocationApi";
-import type { AllocateGoalMoneyRequest, GoalAllocationSummary } from "../types/GoalAllocation";
+import type { AllocateGoalMoneyRequest, GoalAllocationSummary, MoneyFlowOverview } from "../types/GoalAllocation";
 
 import {
   calculateGoalProgress,
@@ -39,6 +39,7 @@ type GoalsProps = {
     goalId: number,
     request: AllocateGoalMoneyRequest
   ) => Promise<void>;
+  onReleaseMoney: (goalId:number,assetId:number,amount:number)=>Promise<void>;
 };
 
 export function Goals({
@@ -48,6 +49,7 @@ export function Goals({
   onUpdateGoal,
   onDeleteGoal,
   onAllocateMoney,
+  onReleaseMoney,
 }: GoalsProps) {
   const [
     isAddModalOpen,
@@ -68,6 +70,24 @@ export function Goals({
     fundingGoal,
     setFundingGoal,
   ] = useState<Goal | null>(null);
+
+  const [moneyFlow,setMoneyFlow]=useState<MoneyFlowOverview|null>(null);
+  async function refreshMoneyFlow(){
+    try{setMoneyFlow(await goalAllocationApi.getOverview());}
+    catch(e){console.error("Money Flow:",e);}
+  }
+  useEffect(()=>{void refreshMoneyFlow();},[goals]);
+
+  async function executeGoal(goal:Goal){
+    if(!window.confirm(`Wykonać cel "${goal.name}"? Przypisany kapitał zostanie faktycznie wydany.`))return;
+    try{
+      setMoneyFlow(await goalAllocationApi.executeGoal(goal.id));
+      window.location.reload();
+    }catch(e){
+      console.error("Execute goal:",e);
+      window.alert("Cel musi być w 100% sfinansowany i mieć środki przypisane do aktywów.");
+    }
+  }
 
   function handleDelete(
     goal: Goal
@@ -419,7 +439,17 @@ export function Goals({
                   </button>
                 )}
 
-                {completed ? (
+                {completed && !moneyFlow?.executedGoalIds.includes(goal.id) && (
+                  <button type="button" onClick={()=>void executeGoal(goal)}
+                    className="mt-4 flex w-full cursor-pointer items-center justify-center rounded-xl border border-amber-400/25 bg-amber-500/10 px-4 py-3 text-sm font-black text-amber-300 hover:bg-amber-500/15">
+                    ✓ WYKONAJ CEL / UŻYJ ŚRODKÓW
+                  </button>
+                )}
+                {moneyFlow?.executedGoalIds.includes(goal.id) ? (
+                  <div className="mt-4 flex items-center gap-2 border-t border-slate-800 pt-4 text-sm font-black text-violet-300">
+                    ✓ CEL WYKONANY · KAPITAŁ ZUŻYTY
+                  </div>
+                ) : completed ? (
                   <div className="mt-4 flex items-center gap-2 border-t border-slate-800 pt-4 text-sm font-bold text-emerald-400">
                     <Target size={17} />
                     Cel w pełni sfinansowany! 🎉
@@ -494,11 +524,13 @@ export function Goals({
           goal={fundingGoal}
           portfolio={portfolio}
           onClose={() => setFundingGoal(null)}
+          onRelease={async(assetId,amount)=>{await onReleaseMoney(fundingGoal.id,assetId,amount);}}
           onAllocate={async (request) => {
             await onAllocateMoney(
               fundingGoal.id,
               request
             );
+            await refreshMoneyFlow();
             setFundingGoal(null);
           }}
         />
@@ -530,6 +562,7 @@ type GoalFundingModalProps = {
   onAllocate: (
     request: AllocateGoalMoneyRequest
   ) => Promise<void>;
+  onRelease:(assetId:number,amount:number)=>Promise<void>;
 };
 
 function GoalFundingModal({
@@ -537,6 +570,7 @@ function GoalFundingModal({
   portfolio,
   onClose,
   onAllocate,
+  onRelease,
 }: GoalFundingModalProps) {
   const remaining = Math.max(
     goal.targetAmount - goal.currentAmount,
@@ -925,9 +959,7 @@ function GoalFundingModal({
                         <span className="text-slate-400">
                           {allocation.assetName}
                         </span>
-                        <span className="font-black text-white">
-                          {allocation.amount.toLocaleString("pl-PL")} zł
-                        </span>
+                        <div className="flex items-center gap-2"><span className="font-black text-white">{allocation.amount.toLocaleString("pl-PL")} zł</span>{allocation.assetId!==null&&<button type="button" onClick={async()=>{const raw=window.prompt("Ile zł cofnąć z celu?",String(allocation.amount));if(!raw)return;const value=Number(raw.replace(",","."));if(!Number.isFinite(value)||value<=0)return;await onRelease(allocation.assetId!,value);setSummary(await goalAllocationApi.getSummary(goal.id));}} className="rounded-lg border border-slate-700 px-2 py-1 text-[10px] font-black text-slate-400 hover:border-amber-400/40 hover:text-amber-300">COFNIJ</button>}</div>
                       </div>
                     )
                   )}
