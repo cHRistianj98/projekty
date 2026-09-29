@@ -1,13 +1,13 @@
 package com.freedom.freedom_backend.transaction;
 
-import com.freedom.freedom_backend.asset.SystemCashService;
 import com.freedom.freedom_backend.category.Category;
 import com.freedom.freedom_backend.category.CategoryService;
 import com.freedom.freedom_backend.category.CategoryType;
+import com.freedom.freedom_backend.ledger.MoneyLedgerService;
 import com.freedom.freedom_backend.user.User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.math.BigDecimal;
+
 import java.util.List;
 
 @Service
@@ -15,13 +15,13 @@ import java.util.List;
 public class TransactionService {
     private final TransactionRepository repository;
     private final CategoryService categoryService;
-    private final SystemCashService systemCashService;
+    private final MoneyLedgerService ledger;
 
     public TransactionService(TransactionRepository repository, CategoryService categoryService,
-                              SystemCashService systemCashService) {
+                              MoneyLedgerService ledger) {
         this.repository = repository;
         this.categoryService = categoryService;
-        this.systemCashService = systemCashService;
+        this.ledger = ledger;
     }
 
     @Transactional(readOnly = true)
@@ -33,10 +33,18 @@ public class TransactionService {
     public TransactionResponse create(TransactionRequest request, User user) {
         Category detailed = resolveCategory(request, user);
         validate(request, detailed);
+        Long assetId = ledger.resolveAsset(request.assetId(), user);
+
         Transaction transaction = new Transaction(user, request.type(), request.name(), request.amount(),
-                legacyCategory(request, detailed), detailed, request.recurring(), request.date(), request.recurringRuleId());
-        Transaction saved = repository.save(transaction);
-        systemCashService.applyDelta(user, signedAmount(saved.getType(), saved.getAmount()));
+                legacyCategory(request, detailed), detailed, request.recurring(), request.date(),
+                request.recurringRuleId(), assetId);
+        Transaction saved = repository.saveAndFlush(transaction);
+
+        if (saved.getType() == TransactionType.INCOME) {
+            ledger.recordIncome(saved.getId(), assetId, saved.getAmount(), user);
+        } else {
+            ledger.recordExpense(saved.getId(), assetId, saved.getAmount(), user);
+        }
         return TransactionResponse.from(saved);
     }
 
@@ -44,20 +52,35 @@ public class TransactionService {
         Category detailed = resolveCategory(request, user);
         validate(request, detailed);
         Transaction transaction = find(id, user);
-        BigDecimal before = signedAmount(transaction.getType(), transaction.getAmount());
 
+        // Reverse the old financial event first. The whole method is transactional,
+        // so a failed replacement restores the original state automatically.
+        if (transaction.getType() == TransactionType.INCOME) {
+            ledger.reverseIncome(transaction.getId(), transaction.getAssetId(), transaction.getAmount(), user);
+        } else {
+            ledger.reverseExpense(transaction.getId(), transaction.getAssetId(), transaction.getAmount(), user);
+        }
+
+        Long assetId = ledger.resolveAsset(request.assetId(), user);
         transaction.update(request.type(), request.name(), request.amount(), legacyCategory(request, detailed),
-                detailed, request.recurring(), request.date(), request.recurringRuleId());
+                detailed, request.recurring(), request.date(), request.recurringRuleId(), assetId);
+        repository.flush();
 
-        BigDecimal after = signedAmount(transaction.getType(), transaction.getAmount());
-        systemCashService.applyDelta(user, after.subtract(before));
+        if (transaction.getType() == TransactionType.INCOME) {
+            ledger.recordIncome(transaction.getId(), assetId, transaction.getAmount(), user);
+        } else {
+            ledger.recordExpense(transaction.getId(), assetId, transaction.getAmount(), user);
+        }
         return TransactionResponse.from(transaction);
     }
 
     public void delete(Long id, User user) {
         Transaction transaction = find(id, user);
-        systemCashService.applyDelta(user,
-                signedAmount(transaction.getType(), transaction.getAmount()).negate());
+        if (transaction.getType() == TransactionType.INCOME) {
+            ledger.reverseIncome(transaction.getId(), transaction.getAssetId(), transaction.getAmount(), user);
+        } else {
+            ledger.reverseExpense(transaction.getId(), transaction.getAssetId(), transaction.getAmount(), user);
+        }
         repository.delete(transaction);
     }
 
@@ -90,9 +113,5 @@ public class TransactionService {
             case GOALS -> ExpenseCategory.GOAL;
             default -> ExpenseCategory.LIVING;
         };
-    }
-
-    private BigDecimal signedAmount(TransactionType type, BigDecimal amount) {
-        return type == TransactionType.INCOME ? amount : amount.negate();
     }
 }

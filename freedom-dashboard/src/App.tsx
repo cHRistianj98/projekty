@@ -726,10 +726,7 @@ function App() {
   async function handleDeleteIncome(id: number) {
     try {
       await transactionApi.remove(id);
-      setMonthlyBudget((current) => ({
-        ...current,
-        incomes: current.incomes.filter((income) => income.id !== id),
-      }));
+      setMonthlyBudget(await transactionApi.getAll());
       await refreshPortfolio();
     } catch (error) {
       console.error("Nie udało się usunąć przychodu:", error);
@@ -738,13 +735,8 @@ function App() {
 
   async function handleUpdateIncome(updatedIncome: Income) {
     try {
-      const saved = await transactionApi.updateIncome(updatedIncome);
-      setMonthlyBudget((current) => ({
-        ...current,
-        incomes: current.incomes.map((income) =>
-          income.id === saved.id ? saved : income
-        ),
-      }));
+      await transactionApi.updateIncome(updatedIncome);
+      setMonthlyBudget(await transactionApi.getAll());
       await refreshPortfolio();
     } catch (error) {
       console.error("Nie udało się zaktualizować przychodu:", error);
@@ -1040,6 +1032,7 @@ function App() {
               path="/finances"
               element={
                 <Finances
+                  assets={portfolio}
                   budget={
                     monthlyBudget
                   }

@@ -20,6 +20,7 @@ export type Expense = TransactionCategoryDetails & {
   recurring: boolean;
   date: string;
   recurringRuleId?: number;
+  assetId?: number;
 };
 
 export type Income = TransactionCategoryDetails & {
@@ -29,6 +30,7 @@ export type Income = TransactionCategoryDetails & {
   recurring: boolean;
   date: string;
   recurringRuleId?: number;
+  assetId?: number;
 };
 
 export type MonthlyBudget = {

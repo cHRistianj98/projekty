@@ -4,9 +4,10 @@ import type { Expense, ExpenseCategory } from "../../types/Cashflow";
 import type { Category } from "../../types/Category";
 import { categoryApi } from "../../api/categoryApi";
 import { CategoryPicker } from "../categories/CategoryPicker";
+import type { Asset } from "../../types/Asset";
 
 type AddExpenseModalProps = {
-  
+  assets: Asset[];
   onClose: () => void;
   onAdd: (expense: Expense) => void;
 };
@@ -19,7 +20,7 @@ function groupToLegacyCategory(group?: string): ExpenseCategory {
 }
 
 export function AddExpenseModal({
-  
+  assets,
   onClose,
   onAdd,
 }: AddExpenseModalProps) {
@@ -31,6 +32,9 @@ export function AddExpenseModal({
   const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [error, setError] = useState("");
+  const [assetId, setAssetId] = useState<number | undefined>(
+    assets.find((asset) => asset.systemCash)?.id ?? assets[0]?.id
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -61,6 +65,7 @@ export function AddExpenseModal({
     if (!Number.isFinite(numericAmount) || numericAmount <= 0) return setError("Kwota musi być większa od 0.");
     if (!date) return setError("Wybierz datę wydatku.");
     if (!categoryId) return setError("Wybierz kategorię.");
+    if (!assetId) return setError("Wybierz źródło środków.");
 
     const selectedCategory = categories.find((item) => item.id === categoryId);
 
@@ -76,6 +81,7 @@ export function AddExpenseModal({
       categoryGroup: selectedCategory?.group,
       recurring,
       date,
+      assetId,
     });
 
     onClose();
@@ -119,6 +125,23 @@ export function AddExpenseModal({
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-300">Data</label>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full cursor-pointer rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 outline-none focus:border-blue-500" />
+          </div>
+
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-300">Źródło środków</label>
+            <select
+              value={assetId ?? ""}
+              onChange={(event) => setAssetId(Number(event.target.value))}
+              className="w-full cursor-pointer rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 outline-none focus:border-blue-500"
+            >
+              {assets.map((asset) => (
+                <option key={asset.id} value={asset.id}>
+                  {asset.systemCash ? "Gotówka (system)" : asset.name} — {asset.value.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} zł
+                </option>
+              ))}
+            </select>
+            <p className="mt-2 text-xs text-slate-500">Wydatek zostanie pobrany właśnie z tego aktywa. Backend nie pozwoli zejść poniżej zera ani wydać środków przypisanych do celów.</p>
           </div>
 
           <div>

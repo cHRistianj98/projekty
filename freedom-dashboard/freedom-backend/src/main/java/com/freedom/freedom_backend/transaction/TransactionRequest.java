@@ -14,5 +14,6 @@ public record TransactionRequest(
         Long categoryId,
         boolean recurring,
         @NotNull LocalDate date,
-        Long recurringRuleId
+        Long recurringRuleId,
+        Long assetId
 ) {}

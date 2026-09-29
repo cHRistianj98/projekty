@@ -1818,6 +1818,7 @@ export function Dashboard({
 
       {isAddExpenseOpen && (
         <AddExpenseModal
+          assets={portfolio}
           onClose={() =>
             setIsAddExpenseOpen(
               false

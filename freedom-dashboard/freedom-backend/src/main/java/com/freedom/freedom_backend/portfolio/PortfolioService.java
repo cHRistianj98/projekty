@@ -1,6 +1,7 @@
 package com.freedom.freedom_backend.portfolio;
 
 import com.freedom.freedom_backend.user.User;
+import com.freedom.freedom_backend.ledger.MoneyLedgerService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,7 +11,8 @@ import java.util.List;
 @Service @Transactional
 public class PortfolioService {
     private final JdbcTemplate jdbc;
-    public PortfolioService(JdbcTemplate jdbc){this.jdbc=jdbc;}
+    private final MoneyLedgerService ledger;
+    public PortfolioService(JdbcTemplate jdbc,MoneyLedgerService ledger){this.jdbc=jdbc;this.ledger=ledger;}
 
     @Transactional(readOnly=true)
     public List<PortfolioResponse> getAll(User user){
@@ -52,11 +54,7 @@ public class PortfolioService {
     public void transfer(PortfolioTransferRequest r,User user){
         if(r.sourceAssetId().equals(r.targetAssetId())) throw new IllegalArgumentException("Źródło i cel muszą być różne.");
         AssetRow s=asset(r.sourceAssetId(),user.getId()); AssetRow t=asset(r.targetAssetId(),user.getId());
-        BigDecimal allocated=jdbc.queryForObject("SELECT COALESCE(SUM(amount),0) FROM goal_allocations WHERE user_id=? AND asset_id=?",BigDecimal.class,user.getId(),s.id());
-        BigDecimal available=s.value().subtract(allocated==null?BigDecimal.ZERO:allocated);
-        if(r.amount().compareTo(available)>0) throw new IllegalArgumentException("Za mało wolnych środków w aktywie źródłowym.");
-        jdbc.update("UPDATE assets SET value=value-? WHERE id=? AND user_id=?",r.amount(),s.id(),user.getId());
-        jdbc.update("UPDATE assets SET value=value+? WHERE id=? AND user_id=?",r.amount(),t.id(),user.getId());
+        ledger.transfer(s.id(),t.id(),r.amount(),user);
         jdbc.update("INSERT INTO portfolio_transfers(user_id,source_asset_id,target_asset_id,source_name_snapshot,target_name_snapshot,amount) VALUES(?,?,?,?,?,?)",user.getId(),s.id(),t.id(),s.name(),t.name(),r.amount());
     }
 

@@ -1,6 +1,7 @@
 package com.freedom.freedom_backend.goalallocation;
 
 import com.freedom.freedom_backend.user.User;
+import com.freedom.freedom_backend.ledger.MoneyLedgerService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,11 +17,14 @@ import java.util.List;
 public class GoalAllocationService {
 
     private final JdbcTemplate jdbc;
+    private final MoneyLedgerService ledger;
 
     public GoalAllocationService(
-            JdbcTemplate jdbc
+            JdbcTemplate jdbc,
+            MoneyLedgerService ledger
     ) {
         this.jdbc = jdbc;
+        this.ledger = ledger;
     }
 
     @Transactional(readOnly = true)
@@ -101,35 +105,7 @@ public class GoalAllocationService {
                     userId
             );
 
-            if (
-                    amount.compareTo(source.value()) > 0
-            ) {
-                throw new IllegalArgumentException(
-                        "Za mało środków w aktywie źródłowym."
-                );
-            }
-
-            jdbc.update(
-                    """
-                    UPDATE assets
-                    SET value = value - ?
-                    WHERE id = ? AND user_id = ?
-                    """,
-                    amount,
-                    source.id(),
-                    userId
-            );
-
-            jdbc.update(
-                    """
-                    UPDATE assets
-                    SET value = value + ?
-                    WHERE id = ? AND user_id = ?
-                    """,
-                    amount,
-                    target.id(),
-                    userId
-            );
+            ledger.transfer(source.id(), target.id(), amount, user);
         }
 
         upsertAllocation(
@@ -221,7 +197,7 @@ public class GoalAllocationService {
             AssetRow asset=requireAsset(a.assetId(),uid);
             if(asset.value().compareTo(a.amount())<0)
                 throw new IllegalArgumentException("Za mało środków w aktywie "+asset.name());
-            jdbc.update("UPDATE assets SET value=value-? WHERE id=? AND user_id=?",a.amount(),a.assetId(),uid);
+            ledger.consumeAssetValue(a.assetId(),a.amount(),user,"GOAL_EXECUTION");
             spent=spent.add(a.amount());
         }
         jdbc.update("INSERT INTO goal_executions(user_id,goal_id,spent_amount) VALUES(?,?,?)",uid,goalId,spent);

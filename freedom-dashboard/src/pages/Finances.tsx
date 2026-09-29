@@ -44,9 +44,11 @@ import type {
 import type {
   RecurringTransaction,
 } from "../types/RecurringTransaction";
+import type { Asset } from "../types/Asset";
 
 type FinancesProps = {
   budget: MonthlyBudget;
+  assets: Asset[];
 
   recurringTransactions:
     RecurringTransaction[];
@@ -141,6 +143,7 @@ const categories = [
 
 export function Finances({
   budget,
+  assets,
   recurringTransactions,
   onAddIncome,
   onDeleteIncome,
@@ -698,6 +701,7 @@ export function Finances({
 
       {isAddExpenseOpen && (
         <AddExpenseModal
+          assets={assets}
           onClose={() =>
             setIsAddExpenseOpen(
               false
