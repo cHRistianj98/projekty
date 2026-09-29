@@ -187,7 +187,7 @@ function App() {
       ]);
     } catch (error) {
       console.error("Nie udało się dodać aktywa:", error);
-      window.alert("Nie udało się zapisać aktywa w backendzie.");
+      throw error;
     }
   }
 
@@ -209,7 +209,7 @@ function App() {
       );
     } catch (error) {
       console.error("Nie udało się zaktualizować aktywa:", error);
-      window.alert("Nie udało się zaktualizować aktywa w backendzie.");
+      throw error;
     }
   }
 
@@ -224,7 +224,7 @@ function App() {
       );
     } catch (error) {
       console.error("Nie udało się usunąć aktywa:", error);
-      window.alert("Nie udało się usunąć aktywa z backendu.");
+      throw error;
     }
   }
 
@@ -973,7 +973,7 @@ function App() {
           onLogout={handleLogout}
         />
 
-        <button
+        {import.meta.env.DEV && <button
           type="button"
           onClick={handleLoadDemoData}
           className="
@@ -1000,9 +1000,9 @@ function App() {
           title="Zastąp obecne dane zestawem testowym"
         >
           DEV: Load demo data
-        </button>
+        </button>}
 
-        <div className="ml-64">
+        <div className="freedom-content">
           <Routes>
             <Route
               path="/"
@@ -1097,6 +1097,9 @@ function App() {
                     handleDeleteAsset
                   }
                   onPortfolioChanged={refreshPortfolio}
+                  goals={goals}
+                  monthlySnapshots={monthlySnapshots}
+                  onReleaseMoney={handleReleaseGoalMoney}
                 />
               }
             />

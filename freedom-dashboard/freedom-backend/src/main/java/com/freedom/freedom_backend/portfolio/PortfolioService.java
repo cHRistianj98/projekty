@@ -15,7 +15,7 @@ public class PortfolioService {
     @Transactional(readOnly=true)
     public List<PortfolioResponse> getAll(User user){
         return jdbc.query("""
-          SELECT p.id,p.name,p.type,p.color,p.icon_key,p.system_portfolio,
+          SELECT p.id,p.name,p.type,p.color,p.icon_key,p.system_portfolio,p.target_amount,p.monthly_contribution,
                  CASE WHEN p.type='GOALS' THEN 0 ELSE COALESCE(SUM(a.value),0) END gross_value,
                  CASE WHEN p.type='GOALS' THEN 0 ELSE COALESCE((SELECT SUM(ga.amount) FROM goal_allocations ga JOIN assets aa ON aa.id=ga.asset_id WHERE aa.portfolio_id=p.id AND ga.user_id=p.user_id),0) END allocated_out,
                  CASE WHEN p.type='GOALS'
@@ -24,19 +24,19 @@ public class PortfolioService {
                  END display_value
           FROM portfolios p LEFT JOIN assets a ON a.portfolio_id=p.id
           WHERE p.user_id=? GROUP BY p.id ORDER BY p.sort_order,p.id
-        """,(rs,n)->new PortfolioResponse(rs.getLong("id"),rs.getString("name"),PortfolioType.valueOf(rs.getString("type")),rs.getString("color"),rs.getString("icon_key"),rs.getBoolean("system_portfolio"),rs.getBigDecimal("gross_value"),rs.getBigDecimal("allocated_out"),rs.getBigDecimal("display_value")),user.getId());
+        """,(rs,n)->new PortfolioResponse(rs.getLong("id"),rs.getString("name"),PortfolioType.valueOf(rs.getString("type")),rs.getString("color"),rs.getString("icon_key"),rs.getBoolean("system_portfolio"),rs.getBigDecimal("gross_value"),rs.getBigDecimal("allocated_out"),rs.getBigDecimal("display_value"),rs.getBigDecimal("target_amount"),rs.getBigDecimal("monthly_contribution")),user.getId());
     }
 
     public PortfolioResponse create(PortfolioRequest r,User user){
         ensureSystemPortfolios(user.getId());
-        Long id=jdbc.queryForObject("INSERT INTO portfolios(user_id,name,type,color,icon_key,system_portfolio,sort_order) VALUES(?,?,'CUSTOM',?,?,FALSE,100) RETURNING id",Long.class,user.getId(),r.name().trim(),color(r.color()),icon(r.iconKey()));
+        Long id=jdbc.queryForObject("INSERT INTO portfolios(user_id,name,type,color,icon_key,system_portfolio,sort_order,target_amount,monthly_contribution) VALUES(?,?,'CUSTOM',?,?,FALSE,100,?,?) RETURNING id",Long.class,user.getId(),r.name().trim(),color(r.color()),icon(r.iconKey()),r.targetAmount(),contribution(r.monthlyContribution()));
         return getAll(user).stream().filter(x->x.id().equals(id)).findFirst().orElseThrow();
     }
 
     public PortfolioResponse update(Long id,PortfolioRequest r,User user){
         Integer sys=jdbc.queryForObject("SELECT COUNT(*) FROM portfolios WHERE id=? AND user_id=? AND system_portfolio=TRUE",Integer.class,id,user.getId());
         if(sys!=null&&sys>0) throw new IllegalArgumentException("Portfela systemowego nie można edytować.");
-        int n=jdbc.update("UPDATE portfolios SET name=?,color=?,icon_key=? WHERE id=? AND user_id=?",r.name().trim(),color(r.color()),icon(r.iconKey()),id,user.getId());
+        int n=jdbc.update("UPDATE portfolios SET name=?,color=?,icon_key=?,target_amount=?,monthly_contribution=? WHERE id=? AND user_id=?",r.name().trim(),color(r.color()),icon(r.iconKey()),r.targetAmount(),contribution(r.monthlyContribution()),id,user.getId());
         if(n==0) throw new IllegalArgumentException("Nie znaleziono portfela.");
         return getAll(user).stream().filter(x->x.id().equals(id)).findFirst().orElseThrow();
     }
@@ -70,6 +70,7 @@ public class PortfolioService {
         jdbc.update("INSERT INTO portfolios(user_id,name,type,color,icon_key,system_portfolio,sort_order) SELECT ?,'Cele','GOALS','#8b5cf6','target',TRUE,999 WHERE NOT EXISTS(SELECT 1 FROM portfolios WHERE user_id=? AND type='GOALS' AND system_portfolio=TRUE)",uid,uid);
     }
     private AssetRow asset(Long id,Long uid){return jdbc.query("SELECT id,name,value FROM assets WHERE id=? AND user_id=?",rs->{if(!rs.next())throw new IllegalArgumentException("Nie znaleziono aktywa.");return new AssetRow(rs.getLong(1),rs.getString(2),rs.getBigDecimal(3));},id,uid);}
+    private BigDecimal contribution(BigDecimal value){return value==null?BigDecimal.ZERO:value;}
     private String color(String x){return x==null||x.isBlank()?"#3b82f6":x;}
     private String icon(String x){return x==null||x.isBlank()?"wallet":x;}
     private record AssetRow(Long id,String name,BigDecimal value){}

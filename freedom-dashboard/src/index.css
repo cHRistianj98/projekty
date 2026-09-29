@@ -17,3 +17,19 @@ body {
   color: #ffffff;
   font-family: Inter, Arial, sans-serif;
 }
+.freedom-content { margin-left: 196px; }
+.freedom-sidebar { background: linear-gradient(160deg, #071220, #050e1a); overflow-y: auto; gap: 0; }
+.freedom-sidebar .sidebar-player { padding: 12px; margin-top: auto; }
+.freedom-sidebar .sidebar-player > div:last-child { font-size: 9px; line-height: 1.45; }
+.freedom-sidebar nav { margin-bottom: 22px; }
+.freedom-sidebar nav a[aria-current="page"] { background: linear-gradient(110deg, #0668ff, #0753f9); box-shadow: inset 0 0 0 1px #4583ff55; }
+@media (max-width: 640px) {
+  .freedom-sidebar { width: 60px; padding: 10px 6px; }
+  .freedom-content { margin-left: 60px; }
+  .freedom-sidebar .sidebar-brand { justify-content: center; margin-bottom: 18px; }
+  .freedom-sidebar .sidebar-brand > div:last-child, .freedom-sidebar nav a span, .freedom-sidebar .sidebar-player { display: none; }
+  .freedom-sidebar nav a { justify-content: center; padding: 11px; }
+  .freedom-sidebar .sidebar-account { margin-top: auto; padding: 0; border: 0; background: transparent; }
+  .freedom-sidebar .sidebar-account > div { justify-content: center; }
+  .freedom-sidebar .sidebar-account > div > div { display: none; }
+}

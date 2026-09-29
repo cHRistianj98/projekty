@@ -7,7 +7,6 @@ import {
   CircleDollarSign,
   Gauge,
   PiggyBank,
-  TrendingDown,
   TrendingUp,
   WalletCards,
 } from "lucide-react";

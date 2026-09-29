@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, LoaderCircle, X } from "lucide-react";
-import type { Income, ExpenseCategory } from "../../types/Cashflow";
+import type { Income } from "../../types/Cashflow";
 import type { Category } from "../../types/Category";
 import { categoryApi } from "../../api/categoryApi";
 import { CategoryPicker } from "../categories/CategoryPicker";
@@ -11,12 +11,6 @@ type AddIncomeModalProps = {
   onAdd: (income: Income) => void;
 };
 
-function groupToLegacyCategory(group?: string): ExpenseCategory {
-  if (group === "FIXED") return "fixed";
-  if (group === "WEALTH") return "investment";
-  if (group === "GOALS") return "goal";
-  return "living";
-}
 
 export function AddIncomeModal({
   

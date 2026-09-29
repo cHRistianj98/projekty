@@ -123,20 +123,20 @@ export function Sidebar({
   return (
     <aside
       className="
-        fixed left-0 top-0
-        flex h-screen w-64
+        freedom-sidebar fixed left-0 top-0 z-40
+        flex h-dvh w-[196px]
         flex-col
         border-r border-slate-800
         bg-[#08111f]
-        p-5
+        p-3
       "
     >
       {/* LOGO */}
 
-      <div className="mb-10 flex items-center gap-3">
+      <div className="sidebar-brand mb-6 flex items-center gap-2">
         <div
           className="
-            flex h-12 w-12
+            flex h-10 w-10 shrink-0
             items-center justify-center
             rounded-xl
             bg-blue-600
@@ -146,7 +146,7 @@ export function Sidebar({
         </div>
 
         <div>
-          <h1 className="text-xl font-bold tracking-wider">
+          <h1 className="text-lg font-bold tracking-tight">
             FREEDOM
           </h1>
 
@@ -158,7 +158,7 @@ export function Sidebar({
 
       {/* MENU */}
 
-      <nav className="space-y-2">
+      <nav className="space-y-1">
         {menuItems.map((item) => {
           const Icon = item.icon;
 
@@ -167,11 +167,12 @@ export function Sidebar({
               key={item.name}
               to={item.path}
               end={item.path === "/"}
+              title={item.name}
               className={({ isActive }) => `
                 flex w-full items-center gap-3
                 rounded-xl
-                px-4 py-3
-                text-left text-sm
+                px-3 py-2.5
+                text-left text-xs
                 transition
 
                 ${
@@ -183,7 +184,7 @@ export function Sidebar({
             >
               <Icon size={19} />
 
-              {item.name}
+              <span>{item.name}</span>
             </NavLink>
           );
         })}
@@ -193,7 +194,7 @@ export function Sidebar({
 
       <div
         className="
-          mt-auto
+          sidebar-player mt-auto
           rounded-2xl
           border border-slate-800
           bg-slate-900
@@ -309,7 +310,7 @@ export function Sidebar({
 
       <div
         className="
-          mt-3
+          sidebar-account mt-3
           rounded-2xl
           border border-slate-800
           bg-[#0a1525]

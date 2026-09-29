@@ -273,8 +273,8 @@ export function Budget({
           <div className="grid gap-3 p-4 lg:grid-cols-2">
             {planRows.map((row) => (
               <BudgetCategoryCard
-                key={row.key}
                 {...row}
+                key={row.key}
               />
             ))}
           </div>
@@ -922,7 +922,7 @@ function buildPlanRows(
     const group =
       category?.group ??
       limit.categoryGroup ??
-      legacyGroupLabel(limit.category);
+      ({ fixed: "FIXED", living: "LIVING", investment: "WEALTH", goal: "GOALS" }[limit.category ?? "living"]);
 
     const spent =
       limit.categoryId != null

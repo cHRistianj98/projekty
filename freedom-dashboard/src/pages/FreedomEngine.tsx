@@ -2581,7 +2581,7 @@ function formatMissionValue(value: number, unit: FreedomMission["unit"]) {
 
   if (unit === "percent") return `${value.toFixed(1)}%`;
 
-  if (unit === "months") return `${value.toFixed(1)} mies.`;
+
 
   return Math.round(value).toLocaleString("pl-PL");
 

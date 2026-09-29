@@ -14,7 +14,7 @@ import { AssetIcon, assetIconOptions } from "./assetIcons";
 
 type AddAssetModalProps = {
   onClose: () => void;
-  onAdd: (asset: Asset) => void;
+  onAdd: (asset: Asset) => Promise<void>;
 };
 
 const availableColors = [
@@ -31,20 +31,26 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
   const [color, setColor] = useState("#3b82f6");
   const [iconKey, setIconKey] = useState<AssetIconKey>("landmark");
 
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
   function handleCategoryChange(nextCategory: AssetCategory) {
     setCategory(nextCategory);
     setIconKey(defaultAssetIconByCategory[nextCategory]);
   }
 
-  function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const numericValue = Number(value);
 
-    if (name.trim() === "" || numericValue <= 0 || Number.isNaN(numericValue)) {
+    if (name.trim() === "" || numericValue < 0 || !Number.isFinite(numericValue)) {
       return;
     }
 
-    onAdd({
+    setSaving(true);
+    setError("");
+    try {
+    await onAdd({
       id: Date.now(),
       name: name.trim(),
       value: numericValue,
@@ -53,6 +59,8 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
       iconKey,
     });
     onClose();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Nie udało się zapisać aktywa."); }
+    finally { setSaving(false); }
   }
 
   return (
@@ -73,12 +81,13 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
               <p className="mt-1 text-sm text-slate-500">Zbuduj kolejną pozycję swojego portfela</p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="cursor-pointer rounded-xl p-2.5 text-slate-500 transition hover:bg-slate-800 hover:text-white">
+          <button type="button" disabled={saving} onClick={onClose} className="cursor-pointer rounded-xl p-2.5 text-slate-500 transition hover:bg-slate-800 hover:text-white">
             <X size={20} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="relative space-y-6 p-7">
+          {error && <p role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p>}
           <div className="grid gap-5 md:grid-cols-2">
             <Field label="Nazwa aktywa">
               <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="np. S&P 500 ETF" className={inputClass} />
@@ -135,8 +144,8 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
           </div>
 
           <div className="flex justify-end gap-3 pt-1">
-            <button type="button" onClick={onClose} className="cursor-pointer rounded-xl border border-slate-700 px-5 py-3 text-sm font-bold text-slate-300 transition hover:bg-slate-800">Anuluj</button>
-            <button type="submit" className="cursor-pointer rounded-xl bg-blue-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-blue-950/30 transition hover:-translate-y-0.5 hover:bg-blue-500">Dodaj aktywo</button>
+            <button type="button" disabled={saving} onClick={onClose} className="cursor-pointer rounded-xl border border-slate-700 px-5 py-3 text-sm font-bold text-slate-300 transition hover:bg-slate-800">Anuluj</button>
+            <button type="submit" disabled={saving} className="cursor-pointer rounded-xl bg-blue-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-blue-950/30 transition hover:-translate-y-0.5 hover:bg-blue-500">Dodaj aktywo</button>
           </div>
         </form>
       </div>

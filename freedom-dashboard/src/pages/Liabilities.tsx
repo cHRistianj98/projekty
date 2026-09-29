@@ -162,7 +162,6 @@ function getLiabilityAccent(type?:LiabilityType){
   }
 }
 
-function Info({label,value,accent}:{label:string;value:string;accent:string}){return <div className="rounded-xl border border-slate-800/70 bg-slate-950/45 p-4"><p className="text-xs text-slate-500">{label}</p><p className={`mt-1 text-lg font-black ${accent}`}>{value}</p></div>}
 function formatLiabilityType(type?:LiabilityType){return {MORTGAGE:"Hipoteka",CASH_LOAN:"Gotówkowy",CAR_LOAN:"Samochodowy",LEASING:"Leasing",INSTALLMENTS:"Raty",CREDIT_CARD:"Karta",OTHER:"Inne"}[type??"OTHER"]}
 function formatDebtAction(action:DebtAction){return {ATTACK:"AGGRESSIVE PAYDOWN",CONSIDER:"CONSIDER OVERPAYMENT",NORMAL:"NORMAL PAYDOWN",KEEP:"LOW-COST DEBT"}[action]}
 function debtActionClasses(action:DebtAction){return {ATTACK:"border-rose-500/20 bg-rose-500/5 text-rose-400",CONSIDER:"border-amber-500/20 bg-amber-500/5 text-amber-400",NORMAL:"border-blue-500/20 bg-blue-500/5 text-blue-400",KEEP:"border-emerald-500/20 bg-emerald-500/5 text-emerald-400"}[action]}

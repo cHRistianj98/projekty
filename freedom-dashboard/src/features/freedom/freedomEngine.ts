@@ -332,7 +332,6 @@ function buildMonthlyStats(monthlyBudget: MonthlyBudget) {
 }
 
 function buildIntelligence({
-  netWorth,
   averageSurplus,
   savingsRate,
   liquidAssets,

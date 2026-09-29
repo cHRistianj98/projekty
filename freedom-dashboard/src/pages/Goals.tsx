@@ -5,7 +5,6 @@ import {
   Flag,
   Image,
   ImageOff,
-  Landmark,
   Pencil,
   Plus,
   Target,

@@ -1,11 +1,8 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
-  ArrowDownRight,
-  ArrowUpRight,
   ChevronDown,
   ChevronUp,
-  CircleDollarSign,
   History,
   LockKeyhole,
   Sparkles,

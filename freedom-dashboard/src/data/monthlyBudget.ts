@@ -6,6 +6,7 @@ export const initialMonthlyBudget: MonthlyBudget = {
       id: 1,
       name: "Kontrakt IT",
       amount: 15_000,
+      date: "2026-01-01",
       recurring: true,
     },
   ],
@@ -16,6 +17,7 @@ export const initialMonthlyBudget: MonthlyBudget = {
       name: "Mieszkanie",
       amount: 2_000,
       category: "fixed",
+      date: "2026-01-01",
       recurring: true,
     },
     {
@@ -23,6 +25,7 @@ export const initialMonthlyBudget: MonthlyBudget = {
       name: "Telefon",
       amount: 70,
       category: "fixed",
+      date: "2026-01-01",
       recurring: true,
     },
     {
@@ -30,6 +33,7 @@ export const initialMonthlyBudget: MonthlyBudget = {
       name: "Siłownia",
       amount: 150,
       category: "fixed",
+      date: "2026-01-01",
       recurring: true,
     },
     {
@@ -37,6 +41,7 @@ export const initialMonthlyBudget: MonthlyBudget = {
       name: "Subskrypcje",
       amount: 100,
       category: "fixed",
+      date: "2026-01-01",
       recurring: true,
     },
     {
@@ -44,6 +49,7 @@ export const initialMonthlyBudget: MonthlyBudget = {
       name: "Jedzenie",
       amount: 1_800,
       category: "living",
+      date: "2026-01-01",
       recurring: false,
     },
     {
@@ -51,6 +57,7 @@ export const initialMonthlyBudget: MonthlyBudget = {
       name: "Transport",
       amount: 600,
       category: "living",
+      date: "2026-01-01",
       recurring: false,
     },
     {
@@ -58,6 +65,7 @@ export const initialMonthlyBudget: MonthlyBudget = {
       name: "Rozrywka",
       amount: 500,
       category: "living",
+      date: "2026-01-01",
       recurring: false,
     },
     {
@@ -65,6 +73,7 @@ export const initialMonthlyBudget: MonthlyBudget = {
       name: "Inwestycje",
       amount: 2_000,
       category: "investment",
+      date: "2026-01-01",
       recurring: true,
     },
     {
@@ -72,6 +81,7 @@ export const initialMonthlyBudget: MonthlyBudget = {
       name: "BMW Fund",
       amount: 5_000,
       category: "goal",
+      date: "2026-01-01",
       recurring: true,
     },
   ],
