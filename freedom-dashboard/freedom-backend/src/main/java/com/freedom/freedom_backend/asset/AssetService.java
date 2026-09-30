@@ -3,6 +3,8 @@ package com.freedom.freedom_backend.asset;
 import com.freedom.freedom_backend.ledger.MoneyLedgerService;
 import com.freedom.freedom_backend.market.MetalPricingService;
 import com.freedom.freedom_backend.market.MetalQuoteResponse;
+import com.freedom.freedom_backend.market.RealEstatePricingService;
+import com.freedom.freedom_backend.market.RealEstateQuoteResponse;
 import com.freedom.freedom_backend.user.User;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -25,17 +27,20 @@ public class AssetService {
     private final JdbcTemplate jdbc;
     private final MoneyLedgerService ledger;
     private final MetalPricingService metalPricing;
+    private final RealEstatePricingService realEstatePricing;
 
     public AssetService(
             AssetRepository repo,
             JdbcTemplate jdbc,
             MoneyLedgerService ledger,
-            MetalPricingService metalPricing
+            MetalPricingService metalPricing,
+            RealEstatePricingService realEstatePricing
     ) {
         this.repo = repo;
         this.jdbc = jdbc;
         this.ledger = ledger;
         this.metalPricing = metalPricing;
+        this.realEstatePricing = realEstatePricing;
     }
 
     @Transactional(readOnly = true)
@@ -51,8 +56,8 @@ public class AssetService {
     public AssetResponse createAsset(AssetRequest r, User u) {
         AssetCategory category = r.category() != null ? r.category() : AssetCategory.OTHER;
         Long portfolioId = resolvePortfolio(r.portfolioId(), u.getId());
-        MarketSetup market = marketSetup(r, category);
-        BigDecimal value = market.enabled() ? market.value() : r.value();
+        PricingSetup pricing = pricingSetup(r, category);
+        BigDecimal value = pricing.value() != null ? pricing.value() : r.value();
 
         Asset asset = new Asset(
                 u,
@@ -60,18 +65,10 @@ public class AssetService {
                 value,
                 r.color(),
                 category,
-                icon(r.iconKey(), category, market.symbol()),
+                icon(r.iconKey(), category, pricing.metalSymbol()),
                 portfolioId
         );
-        asset.configureMarketPricing(
-                market.enabled(),
-                market.symbol(),
-                market.quantity(),
-                market.unit(),
-                market.quote() == null ? null : market.quote().priceUsdPerTroyOunce(),
-                market.quote() == null ? null : market.quote().usdPlnRate(),
-                market.quote() == null ? null : market.quote().metalUpdatedAt()
-        );
+        configurePricing(asset, pricing, r);
 
         Asset saved = repo.saveAndFlush(asset);
         ledger.recordAssetCreation(saved.getId(), saved.getValue(), u);
@@ -89,12 +86,12 @@ public class AssetService {
             throw new IllegalArgumentException("Systemowa Gotówka jest sterowana przez przychody i wydatki.");
         }
 
-        MarketSetup market = asset.isSystemCash() ? MarketSetup.manual() : marketSetup(r, category);
+        PricingSetup pricing = asset.isSystemCash() ? PricingSetup.manual() : pricingSetup(r, category);
         BigDecimal before = asset.getValue();
-        BigDecimal nextValue = market.enabled() ? market.value() : r.value();
+        BigDecimal nextValue = pricing.value() != null ? pricing.value() : r.value();
 
         if (!asset.isSystemCash()
-                && !market.enabled()
+                && !pricing.enabled()
                 && nextValue.compareTo(before) < 0
                 && nextValue.compareTo(ledger.reserved(id, u)) < 0) {
             throw new IllegalArgumentException(
@@ -108,18 +105,10 @@ public class AssetService {
                 nextValue,
                 r.color(),
                 category,
-                icon(r.iconKey(), category, market.symbol()),
+                icon(r.iconKey(), category, pricing.metalSymbol()),
                 portfolioId
         );
-        asset.configureMarketPricing(
-                market.enabled(),
-                market.symbol(),
-                market.quantity(),
-                market.unit(),
-                market.quote() == null ? null : market.quote().priceUsdPerTroyOunce(),
-                market.quote() == null ? null : market.quote().usdPlnRate(),
-                market.quote() == null ? null : market.quote().metalUpdatedAt()
-        );
+        configurePricing(asset, pricing, r);
 
         if (!asset.isSystemCash() && before.compareTo(nextValue) != 0) {
             jdbc.update(
@@ -129,7 +118,7 @@ public class AssetService {
             ledger.recordValuation(asset.getId(), before, nextValue, u);
         }
 
-        if (market.enabled()) {
+        if (pricing.enabled()) {
             repo.flush();
             ledger.clampReservationsForAsset(asset.getId(), u);
         }
@@ -147,23 +136,111 @@ public class AssetService {
         repo.delete(asset);
     }
 
-    private MarketSetup marketSetup(AssetRequest request, AssetCategory category) {
+    private PricingSetup pricingSetup(AssetRequest request, AssetCategory category) {
         boolean enabled = Boolean.TRUE.equals(request.marketPriced());
-        if (!enabled) return MarketSetup.manual();
+        if (!enabled) return PricingSetup.manual();
 
-        if (category != AssetCategory.METALS) {
-            throw new IllegalArgumentException("Automatyczna wycena metalu jest dostępna tylko dla kategorii Metale szlachetne.");
-        }
-        if (request.metalSymbol() == null || request.metalQuantity() == null || request.metalUnit() == null) {
-            throw new IllegalArgumentException("Wybierz metal, ilość i jednostkę.");
-        }
-        if (request.metalQuantity().signum() <= 0) {
-            throw new IllegalArgumentException("Ilość metalu musi być większa od zera.");
+        if (category == AssetCategory.METALS) {
+            if (request.metalSymbol() == null || request.metalQuantity() == null || request.metalUnit() == null) {
+                throw new IllegalArgumentException("Wybierz metal, ilość i jednostkę.");
+            }
+            if (request.metalQuantity().signum() <= 0) {
+                throw new IllegalArgumentException("Ilość metalu musi być większa od zera.");
+            }
+            MetalQuoteResponse quote = metalPricing.quote(request.metalSymbol());
+            BigDecimal value = metalPricing.valuePln(quote, request.metalQuantity(), request.metalUnit());
+            return PricingSetup.metal(request.metalSymbol(), request.metalQuantity(), request.metalUnit(), quote, value);
         }
 
-        MetalQuoteResponse quote = metalPricing.quote(request.metalSymbol());
-        BigDecimal value = metalPricing.valuePln(quote, request.metalQuantity(), request.metalUnit());
-        return new MarketSetup(true, request.metalSymbol(), request.metalQuantity(), request.metalUnit(), quote, value);
+        if (category == AssetCategory.REAL_ESTATE) {
+            RealEstateType type = request.realEstateType() == null ? RealEstateType.APARTMENT : request.realEstateType();
+            if (type != RealEstateType.APARTMENT) {
+                throw new IllegalArgumentException("Automatyczna wycena obsługuje obecnie mieszkania.");
+            }
+            if (request.realEstateCity() == null || request.realEstateCity().isBlank()) {
+                throw new IllegalArgumentException("Podaj miasto mieszkania.");
+            }
+            if (request.realEstateAreaSqm() == null || request.realEstateAreaSqm().signum() <= 0) {
+                throw new IllegalArgumentException("Podaj powierzchnię mieszkania.");
+            }
+
+            RealEstateValuationMode mode = request.realEstateValuationMode() == null
+                    ? RealEstateValuationMode.MARKET_MEDIAN
+                    : request.realEstateValuationMode();
+
+            RealEstateMarketSegment segment = request.realEstateMarketSegment() == null
+                    ? RealEstateMarketSegment.ALL
+                    : request.realEstateMarketSegment();
+
+            if (mode == RealEstateValuationMode.MARKET_ANCHORED) {
+                if (request.realEstatePurchasePrice() == null || request.realEstatePurchasePrice().signum() <= 0) {
+                    throw new IllegalArgumentException("Podaj cenę zakupu mieszkania.");
+                }
+                if (request.realEstatePurchaseDate() == null) {
+                    throw new IllegalArgumentException("Podaj datę zakupu mieszkania.");
+                }
+            }
+
+            RealEstateQuoteResponse quote = realEstatePricing.quoteApartment(
+                    request.realEstateCity(),
+                    request.realEstateDistrict(),
+                    request.realEstateAreaSqm(),
+                    segment,
+                    mode,
+                    request.realEstatePurchasePrice(),
+                    request.realEstatePurchaseDate()
+            );
+            return PricingSetup.realEstate(type, quote);
+        }
+
+        throw new IllegalArgumentException("Automatyczna wycena jest dostępna dla metali szlachetnych i mieszkań.");
+    }
+
+    private void configurePricing(Asset asset, PricingSetup pricing, AssetRequest request) {
+        if (pricing.kind() == PricingKind.METAL) {
+            MetalQuoteResponse quote = pricing.metalQuote();
+            asset.configureRealEstatePricing(
+                    false, null, null, null, null,
+                    null, null, null, null, null
+            );
+            asset.configureMarketPricing(
+                    true,
+                    pricing.metalSymbol(),
+                    pricing.metalQuantity(),
+                    pricing.metalUnit(),
+                    quote.priceUsdPerTroyOunce(),
+                    quote.usdPlnRate(),
+                    quote.metalUpdatedAt()
+            );
+            return;
+        }
+
+        if (pricing.kind() == PricingKind.REAL_ESTATE) {
+            asset.configureMarketPricing(false, null, null, null, null, null, null);
+            asset.configureRealEstatePricing(
+                    true,
+                    pricing.realEstateType(),
+                    request.realEstateCity().trim(),
+                    request.realEstateDistrict(),
+                    request.realEstateAreaSqm(),
+                    request.realEstateValuationMode() == null
+                            ? RealEstateValuationMode.MARKET_MEDIAN
+                            : request.realEstateValuationMode(),
+                    request.realEstateMarketSegment() == null
+                            ? RealEstateMarketSegment.ALL
+                            : request.realEstateMarketSegment(),
+                    request.realEstatePurchasePrice(),
+                    request.realEstatePurchaseDate(),
+                    pricing.realEstateQuote()
+            );
+            return;
+        }
+
+        asset.configureMarketPricing(false, null, null, null, null, null, null);
+        asset.configureRealEstatePricing(
+                false, null, null, null, null,
+                null, null, null, null, null
+        );
     }
 
     private Asset find(Long id, User u) {
@@ -201,16 +278,36 @@ public class AssetService {
         };
     }
 
-    private record MarketSetup(
-            boolean enabled,
-            MetalSymbol symbol,
-            BigDecimal quantity,
-            MetalUnit unit,
-            MetalQuoteResponse quote,
+    private enum PricingKind { MANUAL, METAL, REAL_ESTATE }
+
+    private record PricingSetup(
+            PricingKind kind,
+            MetalSymbol metalSymbol,
+            BigDecimal metalQuantity,
+            MetalUnit metalUnit,
+            MetalQuoteResponse metalQuote,
+            RealEstateType realEstateType,
+            RealEstateQuoteResponse realEstateQuote,
             BigDecimal value
     ) {
-        private static MarketSetup manual() {
-            return new MarketSetup(false, null, null, null, null, null);
+        private static PricingSetup manual() {
+            return new PricingSetup(PricingKind.MANUAL, null, null, null, null, null, null, null);
         }
+
+        private static PricingSetup metal(
+                MetalSymbol symbol,
+                BigDecimal quantity,
+                MetalUnit unit,
+                MetalQuoteResponse quote,
+                BigDecimal value
+        ) {
+            return new PricingSetup(PricingKind.METAL, symbol, quantity, unit, quote, null, null, value);
+        }
+
+        private static PricingSetup realEstate(RealEstateType type, RealEstateQuoteResponse quote) {
+            return new PricingSetup(PricingKind.REAL_ESTATE, null, null, null, null, type, quote, quote.estimatedValue());
+        }
+
+        private boolean enabled() { return kind != PricingKind.MANUAL; }
     }
 }

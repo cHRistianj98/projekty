@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Pencil, RefreshCw, X } from "lucide-react";
 
-import type { Asset, AssetCategory, AssetIconKey, MetalSymbol, MetalUnit } from "../../types/Asset";
+import type {
+  Asset,
+  AssetCategory,
+  AssetIconKey,
+  MetalSymbol,
+  MetalUnit,
+  RealEstateValuationMode,
+  RealEstateMarketSegment,
+} from "../../types/Asset";
 import { assetCategoryLabels, defaultAssetIconByCategory, getAssetCategory, getAssetIconKey } from "../../types/Asset";
-import { marketPriceApi, type MetalQuote } from "../../api/marketPriceApi";
+import { marketPriceApi, type MetalQuote, type RealEstateQuote } from "../../api/marketPriceApi";
 import { AssetIcon, assetIconOptions } from "./assetIcons";
+import { RealEstateValuationPanel } from "./RealEstateValuationPanel";
 
 type EditAssetModalProps = {
   asset: Asset;
@@ -30,6 +39,45 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
   const [quotes, setQuotes] = useState<MetalQuote[]>([]);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState("");
+
+  const [realEstateCity, setRealEstateCity] = useState(asset.realEstateCity ?? "");
+  const [realEstateDistrict, setRealEstateDistrict] = useState(asset.realEstateDistrict ?? "");
+  const [realEstateAreaSqm, setRealEstateAreaSqm] = useState(String(asset.realEstateAreaSqm ?? ""));
+  const [realEstateValuationMode, setRealEstateValuationMode] = useState<RealEstateValuationMode>(asset.realEstateValuationMode ?? "MARKET_MEDIAN");
+  const [realEstateMarketSegment, setRealEstateMarketSegment] = useState<RealEstateMarketSegment>(asset.realEstateMarketSegment ?? "ALL");
+  const [realEstatePurchasePrice, setRealEstatePurchasePrice] = useState(String(asset.realEstatePurchasePrice ?? ""));
+  const [realEstatePurchaseDate, setRealEstatePurchaseDate] = useState(asset.realEstatePurchaseDate ?? "");
+  const [realEstateQuote, setRealEstateQuote] = useState<RealEstateQuote | null>(asset.realEstateMedianPriceSqm != null && asset.realEstateAreaSqm != null ? {
+    city: asset.realEstateCity ?? "",
+    requestedDistrict: asset.realEstateDistrict ?? null,
+    resolvedArea: asset.realEstateResolvedArea ?? asset.realEstateDistrict ?? asset.realEstateCity ?? "—",
+    scope: asset.realEstateScope ?? "miasto",
+    medianPricePerSqm: asset.realEstateMedianPriceSqm,
+    areaSqm: asset.realEstateAreaSqm,
+    estimatedValue: asset.value,
+    estimatedPricePerSqm: asset.realEstateEstimatedPriceSqm ?? asset.realEstateMedianPriceSqm,
+    recordCount: asset.realEstateRecordCount ?? null,
+    periodFrom: asset.realEstatePeriodFrom ?? null,
+    periodTo: asset.realEstatePeriodTo ?? null,
+    valuationMode: asset.realEstateValuationMode ?? "MARKET_MEDIAN",
+    marketSegment: asset.realEstateMarketSegment ?? "ALL",
+    dataMarketSegment: asset.realEstateMarketSegment ?? "ALL",
+    purchasePrice: asset.realEstatePurchasePrice ?? null,
+    purchaseDate: asset.realEstatePurchaseDate ?? null,
+    anchorMedianPricePerSqm: asset.realEstateAnchorMedianPriceSqm ?? null,
+    qualityFactor: asset.realEstateQualityFactor ?? null,
+    anchorResolvedArea: asset.realEstateAnchorResolvedArea ?? null,
+    anchorScope: asset.realEstateAnchorScope ?? null,
+    anchorMarketSegment: asset.realEstateMarketSegment ?? null,
+    anchorRecordCount: asset.realEstateAnchorRecordCount ?? null,
+    anchorPeriodFrom: asset.realEstateAnchorPeriodFrom ?? null,
+    anchorPeriodTo: asset.realEstateAnchorPeriodTo ?? null,
+    source: "mScanner — dane z Rejestru Cen Nieruchomości (RCN)",
+    citation: "mScanner (dane: Rejestr Cen Nieruchomości), https://mscanner.pl",
+    fetchedAt: asset.realEstateUpdatedAt ?? new Date().toISOString(),
+  } : null);
+  const [realEstateLoading, setRealEstateLoading] = useState(false);
+  const [realEstateError, setRealEstateError] = useState("");
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -67,8 +115,44 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
       setMetalUnit("TROY_OUNCE");
       setColor("#d4af37");
       setIconKey("goldBars");
+    } else if (nextCategory === "realEstate" && category !== "realEstate") {
+      setMarketPriced(true);
+      setColor("#10b981");
+      setIconKey("building");
+      setRealEstateQuote(null);
+    } else if (nextCategory !== "metals" && nextCategory !== "realEstate") {
+      setMarketPriced(false);
     }
-    if (nextCategory !== "metals") setMarketPriced(false);
+  }
+
+  async function checkRealEstateQuote() {
+    const area = Number(realEstateAreaSqm);
+    if (!realEstateCity.trim() || !Number.isFinite(area) || area <= 0) return;
+    setRealEstateLoading(true);
+    setRealEstateError("");
+    try {
+      const next = await marketPriceApi.getApartmentQuote(
+        realEstateCity.trim(),
+        realEstateDistrict.trim(),
+        area,
+        {
+          marketSegment: realEstateMarketSegment,
+          valuationMode: realEstateValuationMode,
+          ...(realEstateValuationMode === "MARKET_ANCHORED"
+            ? {
+                purchasePrice: Number(realEstatePurchasePrice),
+                purchaseDate: realEstatePurchaseDate,
+              }
+            : {}),
+        },
+      );
+      setRealEstateQuote(next);
+    } catch (cause) {
+      setRealEstateQuote(null);
+      setRealEstateError(cause instanceof Error ? cause.message : "Nie udało się pobrać wyceny mieszkania.");
+    } finally {
+      setRealEstateLoading(false);
+    }
   }
 
   function handleMetalChange(symbol: MetalSymbol) {
@@ -85,11 +169,31 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const liveMetal = category === "metals" && marketPriced;
-    const numericValue = liveMetal ? (estimatedValue ?? asset.value) : Number(value);
+    const liveRealEstate = category === "realEstate" && marketPriced;
+    const numericValue = liveMetal
+      ? (estimatedValue ?? asset.value)
+      : liveRealEstate
+        ? (realEstateQuote?.estimatedValue ?? asset.value)
+        : Number(value);
     const quantity = Number(metalQuantity);
+    const area = Number(realEstateAreaSqm);
     if (name.trim() === "" || numericValue < 0 || !Number.isFinite(numericValue)) return;
     if (liveMetal && (!Number.isFinite(quantity) || quantity <= 0)) {
       setError("Podaj poprawną ilość metalu.");
+      return;
+    }
+    if (liveRealEstate && (!realEstateCity.trim() || !Number.isFinite(area) || area <= 0)) {
+      setError("Podaj miasto i poprawny metraż mieszkania.");
+      return;
+    }
+    if (
+      liveRealEstate &&
+      realEstateValuationMode === "MARKET_ANCHORED" &&
+      (!Number.isFinite(Number(realEstatePurchasePrice)) ||
+        Number(realEstatePurchasePrice) <= 0 ||
+        !realEstatePurchaseDate)
+    ) {
+      setError("Dla wyceny zakotwiczonej podaj cenę i datę zakupu.");
       return;
     }
 
@@ -103,11 +207,37 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
         color,
         category,
         iconKey,
-        marketPriced: liveMetal,
+        marketPriced: liveMetal || liveRealEstate,
         ...(liveMetal ? { metalSymbol, metalQuantity: quantity, metalUnit } : {
           metalSymbol: undefined,
           metalQuantity: undefined,
           metalUnit: undefined,
+        }),
+        ...(liveRealEstate ? {
+          realEstateType: "APARTMENT" as const,
+          realEstateCity: realEstateCity.trim(),
+          realEstateDistrict: realEstateDistrict.trim() || undefined,
+          realEstateAreaSqm: area,
+          realEstateValuationMode,
+          realEstateMarketSegment,
+          ...(realEstateValuationMode === "MARKET_ANCHORED"
+            ? {
+                realEstatePurchasePrice: Number(realEstatePurchasePrice),
+                realEstatePurchaseDate,
+              }
+            : {
+                realEstatePurchasePrice: undefined,
+                realEstatePurchaseDate: undefined,
+              }),
+        } : {
+          realEstateType: undefined,
+          realEstateCity: undefined,
+          realEstateDistrict: undefined,
+          realEstateAreaSqm: undefined,
+          realEstateValuationMode: undefined,
+          realEstateMarketSegment: undefined,
+          realEstatePurchasePrice: undefined,
+          realEstatePurchaseDate: undefined,
         }),
       });
       onClose();
@@ -137,6 +267,8 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
             <Field label="Nazwa aktywa"><input autoFocus value={name} onChange={(e) => setName(e.target.value)} className={inputClass} /></Field>
             {category === "metals" && marketPriced ? (
               <Field label="Wartość rynkowa"><div className="rounded-xl border border-amber-500/20 bg-amber-500/8 px-4 py-3.5"><div className="text-lg font-black text-white">{estimatedValue == null ? "—" : `${Math.round(estimatedValue).toLocaleString("pl-PL")} zł`}</div><div className="mt-1 text-[11px] font-semibold text-slate-500">sterowana automatycznie przez cenę spot</div></div></Field>
+            ) : category === "realEstate" && marketPriced ? (
+              <Field label="Wartość rynkowa"><div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[.07] px-4 py-3.5"><div className="text-lg font-black text-white">{realEstateQuote ? `${Math.round(realEstateQuote.estimatedValue).toLocaleString("pl-PL")} zł` : `${Math.round(asset.value).toLocaleString("pl-PL")} zł`}</div><div className="mt-1 text-[11px] font-semibold text-slate-500">{realEstateValuationMode === "MARKET_ANCHORED" ? "rynek skorygowany historyczną ceną Twojego lokalu" : "mediana RCN × metraż mieszkania"}</div></div></Field>
             ) : (
               <Field label="Aktualna wartość"><div className="relative"><input type="number" min="0" step="0.01" value={value} onChange={(e) => setValue(e.target.value)} className={`${inputClass} pr-14`} /><span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-600">zł</span></div></Field>
             )}
@@ -170,12 +302,41 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
             </div>
           )}
 
+          {category === "realEstate" && (
+            <RealEstateValuationPanel
+              enabled={marketPriced}
+              onEnabledChange={(enabled) => { setMarketPriced(enabled); if (!enabled) setRealEstateQuote(null); }}
+              city={realEstateCity}
+              onCityChange={(next) => { setRealEstateCity(next); setRealEstateQuote(null); }}
+              district={realEstateDistrict}
+              onDistrictChange={(next) => { setRealEstateDistrict(next); setRealEstateQuote(null); }}
+              areaSqm={realEstateAreaSqm}
+              onAreaSqmChange={(next) => { setRealEstateAreaSqm(next); setRealEstateQuote(null); }}
+              valuationMode={realEstateValuationMode}
+              onValuationModeChange={(next) => { setRealEstateValuationMode(next); setRealEstateQuote(null); }}
+              marketSegment={realEstateMarketSegment}
+              onMarketSegmentChange={(next) => { setRealEstateMarketSegment(next); setRealEstateQuote(null); }}
+              purchasePrice={realEstatePurchasePrice}
+              onPurchasePriceChange={(next) => { setRealEstatePurchasePrice(next); setRealEstateQuote(null); }}
+              purchaseDate={realEstatePurchaseDate}
+              onPurchaseDateChange={(next) => { setRealEstatePurchaseDate(next); setRealEstateQuote(null); }}
+              quote={realEstateQuote}
+              loading={realEstateLoading}
+              error={realEstateError}
+              onCheck={() => void checkRealEstateQuote()}
+            />
+          )}
+
           <Field label="Ikona"><div className="grid grid-cols-9 gap-2 max-sm:grid-cols-4">{assetIconOptions.map((option) => <button key={option.key} type="button" title={option.label} onClick={() => setIconKey(option.key)} className={`group flex aspect-square cursor-pointer items-center justify-center rounded-xl border transition hover:-translate-y-0.5 ${iconKey === option.key ? "border-white/35 bg-white/10" : "border-slate-800 bg-slate-900/55 hover:border-slate-700"}`} style={iconKey === option.key ? { color, boxShadow: `inset 0 0 22px ${color}18, 0 0 18px ${color}12` } : undefined}><option.icon size={20} className={iconKey === option.key ? "" : "text-slate-500 transition group-hover:text-slate-300"} /></button>)}</div></Field>
 
           <Field label="Kolor"><div className="flex flex-wrap gap-3">{availableColors.map((item) => <button key={item} type="button" title={item} onClick={() => setColor(item)} className={`h-9 w-9 cursor-pointer rounded-full transition hover:scale-110 ${color === item ? "scale-110 ring-2 ring-white ring-offset-2 ring-offset-[#08111f]" : ""}`} style={{ backgroundColor: item, boxShadow: color === item ? `0 0 22px ${item}70` : undefined }} />)}</div></Field>
 
           <div className="relative overflow-hidden rounded-2xl border p-4" style={{ borderColor: `${color}38`, background: `linear-gradient(90deg, ${color}18, rgba(15,23,42,.7) 45%, rgba(15,23,42,.5))` }}>
-            <div className="flex items-center justify-between gap-4"><div className="flex min-w-0 items-center gap-3"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1 ring-white/10" style={{ color, backgroundColor: `${color}22`, boxShadow: `0 8px 25px ${color}20` }}><AssetIcon iconKey={iconKey} size={23} /></div><div className="min-w-0"><div className="truncate font-black text-white">{name || "Aktywo"}</div><div className="mt-1 text-xs font-medium" style={{ color }}>{assetCategoryLabels[category]}</div></div></div><div className="shrink-0 text-lg font-black text-white">{Math.round(category === "metals" && marketPriced ? (estimatedValue ?? asset.value) : Number(value || 0)).toLocaleString("pl-PL")} zł</div></div>
+            <div className="flex items-center justify-between gap-4"><div className="flex min-w-0 items-center gap-3"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1 ring-white/10" style={{ color, backgroundColor: `${color}22`, boxShadow: `0 8px 25px ${color}20` }}><AssetIcon iconKey={iconKey} size={23} /></div><div className="min-w-0"><div className="truncate font-black text-white">{name || "Aktywo"}</div><div className="mt-1 text-xs font-medium" style={{ color }}>{assetCategoryLabels[category]}</div></div></div><div className="shrink-0 text-lg font-black text-white">{Math.round(category === "metals" && marketPriced
+              ? (estimatedValue ?? asset.value)
+              : category === "realEstate" && marketPriced
+                ? (realEstateQuote?.estimatedValue ?? asset.value)
+                : Number(value || 0)).toLocaleString("pl-PL")} zł</div></div>
           </div>
 
           <div className="flex justify-end gap-3 pt-1"><button type="button" disabled={saving} onClick={onClose} className="cursor-pointer rounded-xl border border-slate-700 px-5 py-3 text-sm font-bold text-slate-300 transition hover:bg-slate-800">Anuluj</button><button type="submit" disabled={saving} className="cursor-pointer rounded-xl bg-blue-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-blue-950/30 transition hover:-translate-y-0.5 hover:bg-blue-500">Zapisz zmiany</button></div>

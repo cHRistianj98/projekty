@@ -2,6 +2,7 @@ package com.freedom.freedom_backend.asset;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 
 public record AssetResponse(
         Long id,
@@ -18,7 +19,30 @@ public record AssetResponse(
         MetalUnit metalUnit,
         BigDecimal marketPriceUsd,
         BigDecimal usdPlnRate,
-        Instant marketUpdatedAt
+        Instant marketUpdatedAt,
+        RealEstateType realEstateType,
+        String realEstateCity,
+        String realEstateDistrict,
+        BigDecimal realEstateAreaSqm,
+        RealEstateValuationMode realEstateValuationMode,
+        RealEstateMarketSegment realEstateMarketSegment,
+        BigDecimal realEstatePurchasePrice,
+        LocalDate realEstatePurchaseDate,
+        BigDecimal realEstateMedianPriceSqm,
+        BigDecimal realEstateEstimatedPriceSqm,
+        String realEstateScope,
+        String realEstateResolvedArea,
+        Integer realEstateRecordCount,
+        LocalDate realEstatePeriodFrom,
+        LocalDate realEstatePeriodTo,
+        BigDecimal realEstateAnchorMedianPriceSqm,
+        BigDecimal realEstateQualityFactor,
+        String realEstateAnchorResolvedArea,
+        String realEstateAnchorScope,
+        Integer realEstateAnchorRecordCount,
+        LocalDate realEstateAnchorPeriodFrom,
+        LocalDate realEstateAnchorPeriodTo,
+        Instant realEstateUpdatedAt
 ) {
     public static AssetResponse from(Asset a) {
         return new AssetResponse(
@@ -36,7 +60,30 @@ public record AssetResponse(
                 a.getMetalUnit(),
                 a.getMarketPriceUsd(),
                 a.getUsdPlnRate(),
-                a.getMarketUpdatedAt()
+                a.getMarketUpdatedAt(),
+                a.getRealEstateType(),
+                a.getRealEstateCity(),
+                a.getRealEstateDistrict(),
+                a.getRealEstateAreaSqm(),
+                a.getRealEstateValuationMode(),
+                a.getRealEstateMarketSegment(),
+                a.getRealEstatePurchasePrice(),
+                a.getRealEstatePurchaseDate(),
+                a.getRealEstateMedianPriceSqm(),
+                a.getRealEstateEstimatedPriceSqm(),
+                a.getRealEstateScope(),
+                a.getRealEstateResolvedArea(),
+                a.getRealEstateRecordCount(),
+                a.getRealEstatePeriodFrom(),
+                a.getRealEstatePeriodTo(),
+                a.getRealEstateAnchorMedianPriceSqm(),
+                a.getRealEstateQualityFactor(),
+                a.getRealEstateAnchorResolvedArea(),
+                a.getRealEstateAnchorScope(),
+                a.getRealEstateAnchorRecordCount(),
+                a.getRealEstateAnchorPeriodFrom(),
+                a.getRealEstateAnchorPeriodTo(),
+                a.getRealEstateUpdatedAt()
         );
     }
 }

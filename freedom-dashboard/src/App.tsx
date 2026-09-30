@@ -173,6 +173,31 @@ function App() {
     };
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let cancelled = false;
+
+    async function refreshRealEstatePrices() {
+      try {
+        const loadedAssets = await marketPriceApi.refreshRealEstateAssets();
+        if (!cancelled) setPortfolio(loadedAssets);
+      } catch (error) {
+        console.warn("Nie udało się odświeżyć wycen nieruchomości; zostawiam ostatnie zapisane wartości:", error);
+      }
+    }
+
+    void refreshRealEstatePrices();
+    const timer = window.setInterval(() => {
+      void refreshRealEstatePrices();
+    }, 60 * 60 * 1000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isAuthenticated]);
+
   async function refreshPortfolio() {
     const loadedAssets = await assetApi.getAll();
     setPortfolio(loadedAssets);

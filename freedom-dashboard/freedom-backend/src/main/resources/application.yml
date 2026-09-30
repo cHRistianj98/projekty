@@ -32,3 +32,5 @@ app:
     gold-api-base-url: "https://api.gold-api.com"
     fx-api-base-url: "https://api.frankfurter.dev"
     cache-minutes: 10
+    real-estate-api-base-url: "https://api.mscanner.pl/api"
+    real-estate-cache-minutes: 60

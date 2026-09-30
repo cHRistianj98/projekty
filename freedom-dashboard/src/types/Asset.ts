@@ -30,6 +30,9 @@ export type AssetIconKey =
 
 export type MetalSymbol = "XAU" | "XAG";
 export type MetalUnit = "TROY_OUNCE" | "GRAM";
+export type RealEstateType = "APARTMENT";
+export type RealEstateValuationMode = "MARKET_MEDIAN" | "MARKET_ANCHORED";
+export type RealEstateMarketSegment = "ALL" | "PRIMARY" | "SECONDARY";
 
 export type Asset = {
   id: number;
@@ -48,6 +51,30 @@ export type Asset = {
   marketPriceUsd?: number;
   usdPlnRate?: number;
   marketUpdatedAt?: string;
+
+  realEstateType?: RealEstateType;
+  realEstateCity?: string;
+  realEstateDistrict?: string;
+  realEstateAreaSqm?: number;
+  realEstateValuationMode?: RealEstateValuationMode;
+  realEstateMarketSegment?: RealEstateMarketSegment;
+  realEstatePurchasePrice?: number;
+  realEstatePurchaseDate?: string;
+  realEstateMedianPriceSqm?: number;
+  realEstateEstimatedPriceSqm?: number;
+  realEstateScope?: string;
+  realEstateResolvedArea?: string;
+  realEstateRecordCount?: number;
+  realEstatePeriodFrom?: string;
+  realEstatePeriodTo?: string;
+  realEstateAnchorMedianPriceSqm?: number;
+  realEstateQualityFactor?: number;
+  realEstateAnchorResolvedArea?: string;
+  realEstateAnchorScope?: string;
+  realEstateAnchorRecordCount?: number;
+  realEstateAnchorPeriodFrom?: string;
+  realEstateAnchorPeriodTo?: string;
+  realEstateUpdatedAt?: string;
 };
 
 export const assetCategoryLabels: Record<AssetCategory, string> = {

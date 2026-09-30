@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 public record AssetRequest(
         @NotBlank String name,
@@ -16,5 +17,13 @@ public record AssetRequest(
         Boolean marketPriced,
         MetalSymbol metalSymbol,
         @DecimalMin(value = "0.000001", inclusive = true) BigDecimal metalQuantity,
-        MetalUnit metalUnit
+        MetalUnit metalUnit,
+        RealEstateType realEstateType,
+        String realEstateCity,
+        String realEstateDistrict,
+        @DecimalMin(value = "1.0", inclusive = true) BigDecimal realEstateAreaSqm,
+        RealEstateValuationMode realEstateValuationMode,
+        RealEstateMarketSegment realEstateMarketSegment,
+        @DecimalMin(value = "0.01", inclusive = true) BigDecimal realEstatePurchasePrice,
+        LocalDate realEstatePurchaseDate
 ) {}

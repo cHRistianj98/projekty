@@ -1,4 +1,13 @@
-import type { Asset, AssetCategory, AssetIconKey, MetalSymbol, MetalUnit } from "../types/Asset";
+import type {
+  Asset,
+  AssetCategory,
+  AssetIconKey,
+  MetalSymbol,
+  MetalUnit,
+  RealEstateType,
+  RealEstateValuationMode,
+  RealEstateMarketSegment,
+} from "../types/Asset";
 import { authApi } from "./authApi";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
@@ -29,6 +38,29 @@ type BackendAsset = {
   marketPriceUsd?: number | null;
   usdPlnRate?: number | null;
   marketUpdatedAt?: string | null;
+  realEstateType?: RealEstateType | null;
+  realEstateCity?: string | null;
+  realEstateDistrict?: string | null;
+  realEstateAreaSqm?: number | null;
+  realEstateValuationMode?: RealEstateValuationMode | null;
+  realEstateMarketSegment?: RealEstateMarketSegment | null;
+  realEstatePurchasePrice?: number | null;
+  realEstatePurchaseDate?: string | null;
+  realEstateMedianPriceSqm?: number | null;
+  realEstateEstimatedPriceSqm?: number | null;
+  realEstateScope?: string | null;
+  realEstateResolvedArea?: string | null;
+  realEstateRecordCount?: number | null;
+  realEstatePeriodFrom?: string | null;
+  realEstatePeriodTo?: string | null;
+  realEstateAnchorMedianPriceSqm?: number | null;
+  realEstateQualityFactor?: number | null;
+  realEstateAnchorResolvedArea?: string | null;
+  realEstateAnchorScope?: string | null;
+  realEstateAnchorRecordCount?: number | null;
+  realEstateAnchorPeriodFrom?: string | null;
+  realEstateAnchorPeriodTo?: string | null;
+  realEstateUpdatedAt?: string | null;
 };
 
 function authHeaders(): HeadersInit {
@@ -90,10 +122,35 @@ export function fromBackendAsset(row: BackendAsset): Asset {
     ...(row.marketPriceUsd != null ? { marketPriceUsd: Number(row.marketPriceUsd) } : {}),
     ...(row.usdPlnRate != null ? { usdPlnRate: Number(row.usdPlnRate) } : {}),
     ...(row.marketUpdatedAt ? { marketUpdatedAt: row.marketUpdatedAt } : {}),
+    ...(row.realEstateType ? { realEstateType: row.realEstateType } : {}),
+    ...(row.realEstateCity ? { realEstateCity: row.realEstateCity } : {}),
+    ...(row.realEstateDistrict ? { realEstateDistrict: row.realEstateDistrict } : {}),
+    ...(row.realEstateAreaSqm != null ? { realEstateAreaSqm: Number(row.realEstateAreaSqm) } : {}),
+    ...(row.realEstateValuationMode ? { realEstateValuationMode: row.realEstateValuationMode } : {}),
+    ...(row.realEstateMarketSegment ? { realEstateMarketSegment: row.realEstateMarketSegment } : {}),
+    ...(row.realEstatePurchasePrice != null ? { realEstatePurchasePrice: Number(row.realEstatePurchasePrice) } : {}),
+    ...(row.realEstatePurchaseDate ? { realEstatePurchaseDate: row.realEstatePurchaseDate } : {}),
+    ...(row.realEstateMedianPriceSqm != null ? { realEstateMedianPriceSqm: Number(row.realEstateMedianPriceSqm) } : {}),
+    ...(row.realEstateEstimatedPriceSqm != null ? { realEstateEstimatedPriceSqm: Number(row.realEstateEstimatedPriceSqm) } : {}),
+    ...(row.realEstateScope ? { realEstateScope: row.realEstateScope } : {}),
+    ...(row.realEstateResolvedArea ? { realEstateResolvedArea: row.realEstateResolvedArea } : {}),
+    ...(row.realEstateRecordCount != null ? { realEstateRecordCount: Number(row.realEstateRecordCount) } : {}),
+    ...(row.realEstatePeriodFrom ? { realEstatePeriodFrom: row.realEstatePeriodFrom } : {}),
+    ...(row.realEstatePeriodTo ? { realEstatePeriodTo: row.realEstatePeriodTo } : {}),
+    ...(row.realEstateAnchorMedianPriceSqm != null ? { realEstateAnchorMedianPriceSqm: Number(row.realEstateAnchorMedianPriceSqm) } : {}),
+    ...(row.realEstateQualityFactor != null ? { realEstateQualityFactor: Number(row.realEstateQualityFactor) } : {}),
+    ...(row.realEstateAnchorResolvedArea ? { realEstateAnchorResolvedArea: row.realEstateAnchorResolvedArea } : {}),
+    ...(row.realEstateAnchorScope ? { realEstateAnchorScope: row.realEstateAnchorScope } : {}),
+    ...(row.realEstateAnchorRecordCount != null ? { realEstateAnchorRecordCount: Number(row.realEstateAnchorRecordCount) } : {}),
+    ...(row.realEstateAnchorPeriodFrom ? { realEstateAnchorPeriodFrom: row.realEstateAnchorPeriodFrom } : {}),
+    ...(row.realEstateAnchorPeriodTo ? { realEstateAnchorPeriodTo: row.realEstateAnchorPeriodTo } : {}),
+    ...(row.realEstateUpdatedAt ? { realEstateUpdatedAt: row.realEstateUpdatedAt } : {}),
   };
 }
 
 function body(asset: Asset) {
+  const liveMetal = asset.category === "metals" && Boolean(asset.marketPriced);
+  const liveApartment = asset.category === "realEstate" && Boolean(asset.marketPriced);
   return {
     name: asset.name,
     value: asset.value,
@@ -101,10 +158,22 @@ function body(asset: Asset) {
     category: toBackendCategory(asset.category),
     iconKey: asset.iconKey ?? null,
     portfolioId: asset.portfolioId ?? null,
-    marketPriced: Boolean(asset.marketPriced),
-    metalSymbol: asset.marketPriced ? asset.metalSymbol ?? null : null,
-    metalQuantity: asset.marketPriced ? asset.metalQuantity ?? null : null,
-    metalUnit: asset.marketPriced ? asset.metalUnit ?? null : null,
+    marketPriced: liveMetal || liveApartment,
+    metalSymbol: liveMetal ? asset.metalSymbol ?? null : null,
+    metalQuantity: liveMetal ? asset.metalQuantity ?? null : null,
+    metalUnit: liveMetal ? asset.metalUnit ?? null : null,
+    realEstateType: liveApartment ? asset.realEstateType ?? "APARTMENT" : null,
+    realEstateCity: liveApartment ? asset.realEstateCity ?? null : null,
+    realEstateDistrict: liveApartment ? asset.realEstateDistrict ?? null : null,
+    realEstateAreaSqm: liveApartment ? asset.realEstateAreaSqm ?? null : null,
+    realEstateValuationMode: liveApartment ? asset.realEstateValuationMode ?? "MARKET_MEDIAN" : null,
+    realEstateMarketSegment: liveApartment ? asset.realEstateMarketSegment ?? "ALL" : null,
+    realEstatePurchasePrice: liveApartment && asset.realEstateValuationMode === "MARKET_ANCHORED"
+      ? asset.realEstatePurchasePrice ?? null
+      : null,
+    realEstatePurchaseDate: liveApartment && asset.realEstateValuationMode === "MARKET_ANCHORED"
+      ? asset.realEstatePurchaseDate ?? null
+      : null,
   };
 }
 

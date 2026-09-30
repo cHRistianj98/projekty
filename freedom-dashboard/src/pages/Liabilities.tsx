@@ -91,8 +91,16 @@ export function Liabilities({
     }
   }
 
-  function allocationsFor(liabilityId: number) {
-    return (allocationOverview?.allocations ?? []).filter(row => row.liabilityId === liabilityId);
+  function allocationsFor(liabilityId: number): LiabilityAllocation[] {
+    return (allocationOverview?.allocations ?? [])
+      .filter(row => row.liabilityId === liabilityId)
+      .map((row, index) => ({
+        id: row.assetId ?? -(index + 1),
+        liabilityId: row.liabilityId,
+        assetId: row.assetId,
+        assetName: row.assetName,
+        amount: row.amount,
+      }));
   }
 
   return <main className="min-h-screen bg-[#050b16] p-8">
