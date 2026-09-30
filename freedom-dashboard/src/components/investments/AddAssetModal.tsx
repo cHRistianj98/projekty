@@ -17,6 +17,7 @@ import {
 import { marketPriceApi, type MetalQuote, type RealEstateQuote } from "../../api/marketPriceApi";
 import { AssetIcon, assetIconOptions } from "./assetIcons";
 import { RealEstateValuationPanel } from "./RealEstateValuationPanel";
+import { RetailBondValuationPanel, calculateRetailBondValuation } from "./RetailBondValuationPanel";
 
 type AddAssetModalProps = {
   onClose: () => void;
@@ -58,6 +59,9 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
   const [realEstateLoading, setRealEstateLoading] = useState(false);
   const [realEstateError, setRealEstateError] = useState("");
 
+  const [bondPurchaseValue, setBondPurchaseValue] = useState("");
+  const [bondGrossValue, setBondGrossValue] = useState("");
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -74,6 +78,8 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
   }, [category, marketPriced]);
 
   const quote = quotes.find((row) => row.symbol === metalSymbol);
+  const bondValuation = useMemo(() => calculateRetailBondValuation(Number(bondPurchaseValue), Number(bondGrossValue)), [bondPurchaseValue, bondGrossValue]);
+
   const estimatedValue = useMemo(() => {
     if (!quote) return null;
     const quantity = Number(metalQuantity);
@@ -97,6 +103,11 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
       setColor("#10b981");
       setIconKey("building");
       if (!name.trim()) setName("Mieszkanie");
+    } else if (nextCategory === "bonds") {
+      setMarketPriced(false);
+      setColor("#0ea5e9");
+      setIconKey("scrollText");
+      if (!name.trim()) setName("Obligacje detaliczne");
     } else {
       setMarketPriced(false);
     }
@@ -147,15 +158,24 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
     event.preventDefault();
     const liveMetal = category === "metals" && marketPriced;
     const liveRealEstate = category === "realEstate" && marketPriced;
-    const numericValue = liveMetal
-      ? (estimatedValue ?? 0)
-      : liveRealEstate
-        ? (realEstateQuote?.estimatedValue ?? 0)
-        : Number(value);
+    const retailBond = category === "bonds";
+    const purchaseValue = Number(bondPurchaseValue);
+    const grossValue = Number(bondGrossValue);
+    const numericValue = retailBond
+      ? bondValuation.netValue
+      : liveMetal
+        ? (estimatedValue ?? 0)
+        : liveRealEstate
+          ? (realEstateQuote?.estimatedValue ?? 0)
+          : Number(value);
     const quantity = Number(metalQuantity);
     const area = Number(realEstateAreaSqm);
 
     if (name.trim() === "" || numericValue < 0 || !Number.isFinite(numericValue)) return;
+    if (retailBond && (bondPurchaseValue.trim() === "" || bondGrossValue.trim() === "" || !Number.isFinite(purchaseValue) || purchaseValue <= 0 || !Number.isFinite(grossValue) || grossValue < 0)) {
+      setError("Podaj poprawny kapitał początkowy i bieżącą wartość brutto obligacji.");
+      return;
+    }
     if (liveMetal && (!Number.isFinite(quantity) || quantity <= 0)) {
       setError("Podaj poprawną ilość metalu.");
       return;
@@ -186,6 +206,7 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
         category,
         iconKey,
         marketPriced: liveMetal || liveRealEstate,
+        ...(retailBond ? { bondPurchaseValue: purchaseValue, bondGrossValue: grossValue } : {}),
         ...(liveMetal ? {
           metalSymbol,
           metalQuantity: quantity,
@@ -242,7 +263,7 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
 
           <div className="grid gap-5 md:grid-cols-2">
             <Field label="Nazwa aktywa">
-              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={category === "metals" ? "np. Uncja złota" : "np. S&P 500 ETF"} className={inputClass} />
+              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={category === "metals" ? "np. Uncja złota" : category === "bonds" ? "np. EDO 10-letnie" : "np. S&P 500 ETF"} className={inputClass} />
             </Field>
             {category === "metals" && marketPriced ? (
               <Field label="Wartość rynkowa">
@@ -256,6 +277,13 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
                 <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[.07] px-4 py-3.5">
                   <div className="text-lg font-black text-white">{realEstateQuote ? `${Math.round(realEstateQuote.estimatedValue).toLocaleString("pl-PL")} zł` : "—"}</div>
                   <div className="mt-1 text-[11px] font-semibold text-slate-500">{realEstateValuationMode === "MARKET_ANCHORED" ? "rynek skorygowany historyczną ceną Twojego lokalu" : "mediana RCN × metraż mieszkania"}</div>
+                </div>
+              </Field>
+            ) : category === "bonds" ? (
+              <Field label="Wartość netto po podatku">
+                <div className="rounded-xl border border-sky-500/20 bg-sky-500/[.07] px-4 py-3.5">
+                  <div className="text-lg font-black text-emerald-300">{bondValuation.netValue.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</div>
+                  <div className="mt-1 text-[11px] font-semibold text-slate-500">wartość brutto − 19% od dodatniego zysku</div>
                 </div>
               </Field>
             ) : (
@@ -353,6 +381,15 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
             />
           )}
 
+          {category === "bonds" && (
+            <RetailBondValuationPanel
+              purchaseValue={bondPurchaseValue}
+              onPurchaseValueChange={setBondPurchaseValue}
+              grossValue={bondGrossValue}
+              onGrossValueChange={setBondGrossValue}
+            />
+          )}
+
           <Field label="Ikona">
             <div className="grid grid-cols-9 gap-2 max-sm:grid-cols-4">
               {assetIconOptions.map((option) => (
@@ -379,7 +416,9 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
                 ? (estimatedValue ?? 0)
                 : category === "realEstate" && marketPriced
                   ? (realEstateQuote?.estimatedValue ?? 0)
-                  : Number(value || 0)).toLocaleString("pl-PL")} zł</div>
+                  : category === "bonds"
+                    ? bondValuation.netValue
+                    : Number(value || 0)).toLocaleString("pl-PL")} zł</div>
             </div>
           </div>
 

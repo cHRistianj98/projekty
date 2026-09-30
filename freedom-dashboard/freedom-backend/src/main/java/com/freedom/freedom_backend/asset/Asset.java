@@ -136,6 +136,21 @@ public class Asset {
     @Column(name = "real_estate_updated_at")
     private Instant realEstateUpdatedAt;
 
+    @Column(name = "bond_purchase_value", precision = 19, scale = 2)
+    private BigDecimal bondPurchaseValue;
+
+    @Column(name = "bond_gross_value", precision = 19, scale = 2)
+    private BigDecimal bondGrossValue;
+
+    @Column(name = "bond_taxable_gain", precision = 19, scale = 2)
+    private BigDecimal bondTaxableGain;
+
+    @Column(name = "bond_tax_rate", precision = 7, scale = 4)
+    private BigDecimal bondTaxRate;
+
+    @Column(name = "bond_tax_amount", precision = 19, scale = 2)
+    private BigDecimal bondTaxAmount;
+
     protected Asset() {}
 
     public Asset(
@@ -298,6 +313,22 @@ public class Asset {
         this.realEstateUpdatedAt = null;
     }
 
+
+    public void configureRetailBondValuation(
+            boolean enabled,
+            BigDecimal purchaseValue,
+            BigDecimal grossValue,
+            BigDecimal taxableGain,
+            BigDecimal taxRate,
+            BigDecimal taxAmount
+    ) {
+        this.bondPurchaseValue = enabled ? purchaseValue : null;
+        this.bondGrossValue = enabled ? grossValue : null;
+        this.bondTaxableGain = enabled ? taxableGain : null;
+        this.bondTaxRate = enabled ? taxRate : null;
+        this.bondTaxAmount = enabled ? taxAmount : null;
+    }
+
     public Long getId() { return id; }
     public User getUser() { return user; }
     public String getName() { return name; }
@@ -337,4 +368,10 @@ public class Asset {
     public LocalDate getRealEstateAnchorPeriodFrom() { return realEstateAnchorPeriodFrom; }
     public LocalDate getRealEstateAnchorPeriodTo() { return realEstateAnchorPeriodTo; }
     public Instant getRealEstateUpdatedAt() { return realEstateUpdatedAt; }
+
+    public BigDecimal getBondPurchaseValue() { return bondPurchaseValue; }
+    public BigDecimal getBondGrossValue() { return bondGrossValue; }
+    public BigDecimal getBondTaxableGain() { return bondTaxableGain; }
+    public BigDecimal getBondTaxRate() { return bondTaxRate; }
+    public BigDecimal getBondTaxAmount() { return bondTaxAmount; }
 }

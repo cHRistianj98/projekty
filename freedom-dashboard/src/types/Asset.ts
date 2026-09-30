@@ -6,6 +6,7 @@ export type AssetCategory =
   | "business"
   | "vehicle"
   | "metals"
+  | "bonds"
   | "other";
 
 export type AssetIconKey =
@@ -26,7 +27,8 @@ export type AssetIconKey =
   | "gem"
   | "vault"
   | "goldBars"
-  | "silverCoin";
+  | "silverCoin"
+  | "scrollText";
 
 export type MetalSymbol = "XAU" | "XAG";
 export type MetalUnit = "TROY_OUNCE" | "GRAM";
@@ -75,6 +77,12 @@ export type Asset = {
   realEstateAnchorPeriodFrom?: string;
   realEstateAnchorPeriodTo?: string;
   realEstateUpdatedAt?: string;
+
+  bondPurchaseValue?: number;
+  bondGrossValue?: number;
+  bondTaxableGain?: number;
+  bondTaxRate?: number;
+  bondTaxAmount?: number;
 };
 
 export const assetCategoryLabels: Record<AssetCategory, string> = {
@@ -85,6 +93,7 @@ export const assetCategoryLabels: Record<AssetCategory, string> = {
   business: "Biznes",
   vehicle: "Pojazd",
   metals: "Metale szlachetne",
+  bonds: "Obligacje skarbowe",
   other: "Inne",
 };
 
@@ -96,6 +105,7 @@ export const defaultAssetIconByCategory: Record<AssetCategory, AssetIconKey> = {
   business: "briefcase",
   vehicle: "car",
   metals: "goldBars",
+  bonds: "scrollText",
   other: "circleDollar",
 };
 

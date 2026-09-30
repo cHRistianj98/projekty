@@ -14,6 +14,7 @@ import { assetCategoryLabels, defaultAssetIconByCategory, getAssetCategory, getA
 import { marketPriceApi, type MetalQuote, type RealEstateQuote } from "../../api/marketPriceApi";
 import { AssetIcon, assetIconOptions } from "./assetIcons";
 import { RealEstateValuationPanel } from "./RealEstateValuationPanel";
+import { RetailBondValuationPanel, calculateRetailBondValuation } from "./RetailBondValuationPanel";
 
 type EditAssetModalProps = {
   asset: Asset;
@@ -79,6 +80,9 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
   const [realEstateLoading, setRealEstateLoading] = useState(false);
   const [realEstateError, setRealEstateError] = useState("");
 
+  const [bondPurchaseValue, setBondPurchaseValue] = useState(String(asset.bondPurchaseValue ?? ""));
+  const [bondGrossValue, setBondGrossValue] = useState(String(asset.bondGrossValue ?? ""));
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -93,6 +97,8 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
       .finally(() => { if (!cancelled) setQuoteLoading(false); });
     return () => { cancelled = true; };
   }, [category, marketPriced]);
+
+  const bondValuation = useMemo(() => calculateRetailBondValuation(Number(bondPurchaseValue), Number(bondGrossValue)), [bondPurchaseValue, bondGrossValue]);
 
   const quote = quotes.find((row) => row.symbol === metalSymbol);
   const estimatedValue = useMemo(() => {
@@ -120,6 +126,12 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
       setColor("#10b981");
       setIconKey("building");
       setRealEstateQuote(null);
+    } else if (nextCategory === "bonds" && category !== "bonds") {
+      setMarketPriced(false);
+      setColor("#0ea5e9");
+      setIconKey("scrollText");
+      setBondPurchaseValue(asset.bondPurchaseValue != null ? String(asset.bondPurchaseValue) : String(asset.value));
+      setBondGrossValue(asset.bondGrossValue != null ? String(asset.bondGrossValue) : String(asset.value));
     } else if (nextCategory !== "metals" && nextCategory !== "realEstate") {
       setMarketPriced(false);
     }
@@ -170,14 +182,23 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
     event.preventDefault();
     const liveMetal = category === "metals" && marketPriced;
     const liveRealEstate = category === "realEstate" && marketPriced;
-    const numericValue = liveMetal
-      ? (estimatedValue ?? asset.value)
-      : liveRealEstate
-        ? (realEstateQuote?.estimatedValue ?? asset.value)
-        : Number(value);
+    const retailBond = category === "bonds";
+    const purchaseValue = Number(bondPurchaseValue);
+    const grossValue = Number(bondGrossValue);
+    const numericValue = retailBond
+      ? bondValuation.netValue
+      : liveMetal
+        ? (estimatedValue ?? asset.value)
+        : liveRealEstate
+          ? (realEstateQuote?.estimatedValue ?? asset.value)
+          : Number(value);
     const quantity = Number(metalQuantity);
     const area = Number(realEstateAreaSqm);
     if (name.trim() === "" || numericValue < 0 || !Number.isFinite(numericValue)) return;
+    if (retailBond && (bondPurchaseValue.trim() === "" || bondGrossValue.trim() === "" || !Number.isFinite(purchaseValue) || purchaseValue <= 0 || !Number.isFinite(grossValue) || grossValue < 0)) {
+      setError("Podaj poprawny kapitał początkowy i bieżącą wartość brutto obligacji.");
+      return;
+    }
     if (liveMetal && (!Number.isFinite(quantity) || quantity <= 0)) {
       setError("Podaj poprawną ilość metalu.");
       return;
@@ -208,6 +229,8 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
         category,
         iconKey,
         marketPriced: liveMetal || liveRealEstate,
+        bondPurchaseValue: retailBond ? purchaseValue : undefined,
+        bondGrossValue: retailBond ? grossValue : undefined,
         ...(liveMetal ? { metalSymbol, metalQuantity: quantity, metalUnit } : {
           metalSymbol: undefined,
           metalQuantity: undefined,
@@ -269,6 +292,8 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
               <Field label="Wartość rynkowa"><div className="rounded-xl border border-amber-500/20 bg-amber-500/8 px-4 py-3.5"><div className="text-lg font-black text-white">{estimatedValue == null ? "—" : `${Math.round(estimatedValue).toLocaleString("pl-PL")} zł`}</div><div className="mt-1 text-[11px] font-semibold text-slate-500">sterowana automatycznie przez cenę spot</div></div></Field>
             ) : category === "realEstate" && marketPriced ? (
               <Field label="Wartość rynkowa"><div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[.07] px-4 py-3.5"><div className="text-lg font-black text-white">{realEstateQuote ? `${Math.round(realEstateQuote.estimatedValue).toLocaleString("pl-PL")} zł` : `${Math.round(asset.value).toLocaleString("pl-PL")} zł`}</div><div className="mt-1 text-[11px] font-semibold text-slate-500">{realEstateValuationMode === "MARKET_ANCHORED" ? "rynek skorygowany historyczną ceną Twojego lokalu" : "mediana RCN × metraż mieszkania"}</div></div></Field>
+            ) : category === "bonds" ? (
+              <Field label="Wartość netto po podatku"><div className="rounded-xl border border-sky-500/20 bg-sky-500/[.07] px-4 py-3.5"><div className="text-lg font-black text-emerald-300">{bondValuation.netValue.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</div><div className="mt-1 text-[11px] font-semibold text-slate-500">wartość brutto − 19% od dodatniego zysku</div></div></Field>
             ) : (
               <Field label="Aktualna wartość"><div className="relative"><input type="number" min="0" step="0.01" value={value} onChange={(e) => setValue(e.target.value)} className={`${inputClass} pr-14`} /><span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-600">zł</span></div></Field>
             )}
@@ -327,6 +352,15 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
             />
           )}
 
+          {category === "bonds" && (
+            <RetailBondValuationPanel
+              purchaseValue={bondPurchaseValue}
+              onPurchaseValueChange={setBondPurchaseValue}
+              grossValue={bondGrossValue}
+              onGrossValueChange={setBondGrossValue}
+            />
+          )}
+
           <Field label="Ikona"><div className="grid grid-cols-9 gap-2 max-sm:grid-cols-4">{assetIconOptions.map((option) => <button key={option.key} type="button" title={option.label} onClick={() => setIconKey(option.key)} className={`group flex aspect-square cursor-pointer items-center justify-center rounded-xl border transition hover:-translate-y-0.5 ${iconKey === option.key ? "border-white/35 bg-white/10" : "border-slate-800 bg-slate-900/55 hover:border-slate-700"}`} style={iconKey === option.key ? { color, boxShadow: `inset 0 0 22px ${color}18, 0 0 18px ${color}12` } : undefined}><option.icon size={20} className={iconKey === option.key ? "" : "text-slate-500 transition group-hover:text-slate-300"} /></button>)}</div></Field>
 
           <Field label="Kolor"><div className="flex flex-wrap gap-3">{availableColors.map((item) => <button key={item} type="button" title={item} onClick={() => setColor(item)} className={`h-9 w-9 cursor-pointer rounded-full transition hover:scale-110 ${color === item ? "scale-110 ring-2 ring-white ring-offset-2 ring-offset-[#08111f]" : ""}`} style={{ backgroundColor: item, boxShadow: color === item ? `0 0 22px ${item}70` : undefined }} />)}</div></Field>
@@ -336,7 +370,9 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
               ? (estimatedValue ?? asset.value)
               : category === "realEstate" && marketPriced
                 ? (realEstateQuote?.estimatedValue ?? asset.value)
-                : Number(value || 0)).toLocaleString("pl-PL")} zł</div></div>
+                : category === "bonds"
+                  ? bondValuation.netValue
+                  : Number(value || 0)).toLocaleString("pl-PL")} zł</div></div>
           </div>
 
           <div className="flex justify-end gap-3 pt-1"><button type="button" disabled={saving} onClick={onClose} className="cursor-pointer rounded-xl border border-slate-700 px-5 py-3 text-sm font-bold text-slate-300 transition hover:bg-slate-800">Anuluj</button><button type="submit" disabled={saving} className="cursor-pointer rounded-xl bg-blue-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-blue-950/30 transition hover:-translate-y-0.5 hover:bg-blue-500">Zapisz zmiany</button></div>

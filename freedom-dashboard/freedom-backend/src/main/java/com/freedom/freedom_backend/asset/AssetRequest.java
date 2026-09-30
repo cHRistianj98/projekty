@@ -25,5 +25,7 @@ public record AssetRequest(
         RealEstateValuationMode realEstateValuationMode,
         RealEstateMarketSegment realEstateMarketSegment,
         @DecimalMin(value = "0.01", inclusive = true) BigDecimal realEstatePurchasePrice,
-        LocalDate realEstatePurchaseDate
+        LocalDate realEstatePurchaseDate,
+        @DecimalMin(value = "0.01", inclusive = true) BigDecimal bondPurchaseValue,
+        @DecimalMin(value = "0.0", inclusive = true) BigDecimal bondGrossValue
 ) {}

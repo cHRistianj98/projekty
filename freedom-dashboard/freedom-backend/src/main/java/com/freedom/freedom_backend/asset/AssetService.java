@@ -20,7 +20,7 @@ public class AssetService {
     private static final Set<String> ICONS = Set.of(
             "landmark", "wallet", "banknote", "coins", "trendingUp", "chart", "bitcoin",
             "circleDollar", "building", "house", "briefcase", "car", "shield", "piggyBank",
-            "gem", "vault", "goldBars", "silverCoin"
+            "gem", "vault", "goldBars", "silverCoin", "scrollText"
     );
 
     private final AssetRepository repo;
@@ -28,19 +28,22 @@ public class AssetService {
     private final MoneyLedgerService ledger;
     private final MetalPricingService metalPricing;
     private final RealEstatePricingService realEstatePricing;
+    private final RetailBondValuationService retailBondValuation;
 
     public AssetService(
             AssetRepository repo,
             JdbcTemplate jdbc,
             MoneyLedgerService ledger,
             MetalPricingService metalPricing,
-            RealEstatePricingService realEstatePricing
+            RealEstatePricingService realEstatePricing,
+            RetailBondValuationService retailBondValuation
     ) {
         this.repo = repo;
         this.jdbc = jdbc;
         this.ledger = ledger;
         this.metalPricing = metalPricing;
         this.realEstatePricing = realEstatePricing;
+        this.retailBondValuation = retailBondValuation;
     }
 
     @Transactional(readOnly = true)
@@ -57,7 +60,10 @@ public class AssetService {
         AssetCategory category = r.category() != null ? r.category() : AssetCategory.OTHER;
         Long portfolioId = resolvePortfolio(r.portfolioId(), u.getId());
         PricingSetup pricing = pricingSetup(r, category);
-        BigDecimal value = pricing.value() != null ? pricing.value() : r.value();
+        RetailBondValuationService.BondValuation bondValuation = bondValuation(r, category);
+        BigDecimal value = bondValuation != null
+                ? bondValuation.netValue()
+                : (pricing.value() != null ? pricing.value() : r.value());
 
         Asset asset = new Asset(
                 u,
@@ -69,6 +75,7 @@ public class AssetService {
                 portfolioId
         );
         configurePricing(asset, pricing, r);
+        configureBondValuation(asset, bondValuation);
 
         Asset saved = repo.saveAndFlush(asset);
         ledger.recordAssetCreation(saved.getId(), saved.getValue(), u);
@@ -87,8 +94,11 @@ public class AssetService {
         }
 
         PricingSetup pricing = asset.isSystemCash() ? PricingSetup.manual() : pricingSetup(r, category);
+        RetailBondValuationService.BondValuation bondValuation = asset.isSystemCash() ? null : bondValuation(r, category);
         BigDecimal before = asset.getValue();
-        BigDecimal nextValue = pricing.value() != null ? pricing.value() : r.value();
+        BigDecimal nextValue = bondValuation != null
+                ? bondValuation.netValue()
+                : (pricing.value() != null ? pricing.value() : r.value());
 
         if (!asset.isSystemCash()
                 && !pricing.enabled()
@@ -109,6 +119,7 @@ public class AssetService {
                 portfolioId
         );
         configurePricing(asset, pricing, r);
+        configureBondValuation(asset, bondValuation);
 
         if (!asset.isSystemCash() && before.compareTo(nextValue) != 0) {
             jdbc.update(
@@ -137,6 +148,7 @@ public class AssetService {
     }
 
     private PricingSetup pricingSetup(AssetRequest request, AssetCategory category) {
+        if (category == AssetCategory.BONDS) return PricingSetup.manual();
         boolean enabled = Boolean.TRUE.equals(request.marketPriced());
         if (!enabled) return PricingSetup.manual();
 
@@ -194,6 +206,26 @@ public class AssetService {
         }
 
         throw new IllegalArgumentException("Automatyczna wycena jest dostępna dla metali szlachetnych i mieszkań.");
+    }
+
+    private RetailBondValuationService.BondValuation bondValuation(AssetRequest request, AssetCategory category) {
+        if (category != AssetCategory.BONDS) return null;
+        return retailBondValuation.calculate(request.bondPurchaseValue(), request.bondGrossValue());
+    }
+
+    private void configureBondValuation(Asset asset, RetailBondValuationService.BondValuation valuation) {
+        if (valuation == null) {
+            asset.configureRetailBondValuation(false, null, null, null, null, null);
+            return;
+        }
+        asset.configureRetailBondValuation(
+                true,
+                valuation.purchaseValue(),
+                valuation.grossValue(),
+                valuation.taxableGain(),
+                valuation.taxRate(),
+                valuation.taxAmount()
+        );
     }
 
     private void configurePricing(Asset asset, PricingSetup pricing, AssetRequest request) {
@@ -274,6 +306,7 @@ public class AssetService {
             case BUSINESS -> "briefcase";
             case VEHICLE -> "car";
             case METALS -> metalSymbol == MetalSymbol.XAG ? "silverCoin" : "goldBars";
+            case BONDS -> "scrollText";
             case OTHER -> "circleDollar";
         };
     }

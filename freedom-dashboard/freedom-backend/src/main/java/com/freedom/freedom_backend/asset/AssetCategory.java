@@ -8,5 +8,6 @@ public enum AssetCategory {
     BUSINESS,
     VEHICLE,
     METALS,
+    BONDS,
     OTHER
 }

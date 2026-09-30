@@ -42,7 +42,12 @@ public record AssetResponse(
         Integer realEstateAnchorRecordCount,
         LocalDate realEstateAnchorPeriodFrom,
         LocalDate realEstateAnchorPeriodTo,
-        Instant realEstateUpdatedAt
+        Instant realEstateUpdatedAt,
+        BigDecimal bondPurchaseValue,
+        BigDecimal bondGrossValue,
+        BigDecimal bondTaxableGain,
+        BigDecimal bondTaxRate,
+        BigDecimal bondTaxAmount
 ) {
     public static AssetResponse from(Asset a) {
         return new AssetResponse(
@@ -83,7 +88,12 @@ public record AssetResponse(
                 a.getRealEstateAnchorRecordCount(),
                 a.getRealEstateAnchorPeriodFrom(),
                 a.getRealEstateAnchorPeriodTo(),
-                a.getRealEstateUpdatedAt()
+                a.getRealEstateUpdatedAt(),
+                a.getBondPurchaseValue(),
+                a.getBondGrossValue(),
+                a.getBondTaxableGain(),
+                a.getBondTaxRate(),
+                a.getBondTaxAmount()
         );
     }
 }

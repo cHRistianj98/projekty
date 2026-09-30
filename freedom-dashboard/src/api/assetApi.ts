@@ -20,6 +20,7 @@ type BackendAssetCategory =
   | "BUSINESS"
   | "VEHICLE"
   | "METALS"
+  | "BONDS"
   | "OTHER";
 
 type BackendAsset = {
@@ -61,6 +62,11 @@ type BackendAsset = {
   realEstateAnchorPeriodFrom?: string | null;
   realEstateAnchorPeriodTo?: string | null;
   realEstateUpdatedAt?: string | null;
+  bondPurchaseValue?: number | null;
+  bondGrossValue?: number | null;
+  bondTaxableGain?: number | null;
+  bondTaxRate?: number | null;
+  bondTaxAmount?: number | null;
 };
 
 function authHeaders(): HeadersInit {
@@ -88,6 +94,7 @@ function toBackendCategory(category?: AssetCategory): BackendAssetCategory {
     case "business": return "BUSINESS";
     case "vehicle": return "VEHICLE";
     case "metals": return "METALS";
+    case "bonds": return "BONDS";
     default: return "OTHER";
   }
 }
@@ -101,6 +108,7 @@ function fromBackendCategory(category: BackendAssetCategory): AssetCategory {
     case "BUSINESS": return "business";
     case "VEHICLE": return "vehicle";
     case "METALS": return "metals";
+    case "BONDS": return "bonds";
     default: return "other";
   }
 }
@@ -145,12 +153,18 @@ export function fromBackendAsset(row: BackendAsset): Asset {
     ...(row.realEstateAnchorPeriodFrom ? { realEstateAnchorPeriodFrom: row.realEstateAnchorPeriodFrom } : {}),
     ...(row.realEstateAnchorPeriodTo ? { realEstateAnchorPeriodTo: row.realEstateAnchorPeriodTo } : {}),
     ...(row.realEstateUpdatedAt ? { realEstateUpdatedAt: row.realEstateUpdatedAt } : {}),
+    ...(row.bondPurchaseValue != null ? { bondPurchaseValue: Number(row.bondPurchaseValue) } : {}),
+    ...(row.bondGrossValue != null ? { bondGrossValue: Number(row.bondGrossValue) } : {}),
+    ...(row.bondTaxableGain != null ? { bondTaxableGain: Number(row.bondTaxableGain) } : {}),
+    ...(row.bondTaxRate != null ? { bondTaxRate: Number(row.bondTaxRate) } : {}),
+    ...(row.bondTaxAmount != null ? { bondTaxAmount: Number(row.bondTaxAmount) } : {}),
   };
 }
 
 function body(asset: Asset) {
   const liveMetal = asset.category === "metals" && Boolean(asset.marketPriced);
   const liveApartment = asset.category === "realEstate" && Boolean(asset.marketPriced);
+  const retailBond = asset.category === "bonds";
   return {
     name: asset.name,
     value: asset.value,
@@ -174,6 +188,8 @@ function body(asset: Asset) {
     realEstatePurchaseDate: liveApartment && asset.realEstateValuationMode === "MARKET_ANCHORED"
       ? asset.realEstatePurchaseDate ?? null
       : null,
+    bondPurchaseValue: retailBond ? asset.bondPurchaseValue ?? null : null,
+    bondGrossValue: retailBond ? asset.bondGrossValue ?? null : null,
   };
 }
 
