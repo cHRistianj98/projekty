@@ -2,6 +2,7 @@ import type { Asset } from "../../types/Asset";
 import { assetCategoryLabels, getAssetCategory } from "../../types/Asset";
 import type { Goal } from "../../types/Goal";
 import type { MoneyFlowOverview, PortfolioAllocation } from "../../types/GoalAllocation";
+import type { LiabilityAllocationOverview } from "../../types/LiabilityAllocation";
 import type { MonthlySnapshot } from "../../types/MonthlySnapshot";
 import type { PortfolioWallet } from "../../types/Portfolio";
 
@@ -26,6 +27,23 @@ export function allocationsByAsset(overview: MoneyFlowOverview | null) {
   return result;
 }
 
+
+export function liabilityAllocationsByAsset(overview: LiabilityAllocationOverview | null) {
+  const result = new Map<number, number>();
+  for (const allocation of overview?.allocations ?? []) {
+    if (allocation.assetId != null) result.set(allocation.assetId, (result.get(allocation.assetId) ?? 0) + allocation.amount);
+  }
+  return result;
+}
+
+export function reservationsByAsset(goalOverview: MoneyFlowOverview | null, liabilityOverview: LiabilityAllocationOverview | null) {
+  const result = allocationsByAsset(goalOverview);
+  for (const [assetId, amount] of liabilityAllocationsByAsset(liabilityOverview)) {
+    result.set(assetId, (result.get(assetId) ?? 0) + amount);
+  }
+  return result;
+}
+
 export function fundedGoals(overview: MoneyFlowOverview | null, goals: Goal[], assets: Asset[], wallets: PortfolioWallet[]): FundedGoal[] {
   const result = new Map<number, FundedGoal>();
   for (const allocation of overview?.allocations ?? []) {
@@ -44,7 +62,7 @@ export function fundedGoals(overview: MoneyFlowOverview | null, goals: Goal[], a
   return [...result.values()];
 }
 
-export function wealthBreakdown(mode: "portfolios" | "assets" | "goals", assets: Asset[], wallets: PortfolioWallet[], overview: MoneyFlowOverview | null): Breakdown[] {
+export function wealthBreakdown(mode: "portfolios" | "assets" | "goals", assets: Asset[], wallets: PortfolioWallet[], overview: MoneyFlowOverview | null, liabilityOverview: LiabilityAllocationOverview | null = null): Breakdown[] {
   if (mode === "assets") {
     const categories = new Map<string, Breakdown>();
     for (const asset of assets) {
@@ -55,26 +73,32 @@ export function wealthBreakdown(mode: "portfolios" | "assets" | "goals", assets:
     }
     return [...categories.values()];
   }
-  const allocated = allocationsByAsset(overview);
+  const reserved = reservationsByAsset(overview, liabilityOverview);
   // Legacy allocations without an existing asset cannot be counted as wealth.
-  const backed = (overview?.allocations ?? []).filter(row => assets.some(asset => asset.id === row.assetId));
-  const locked = backed.reduce((sum, row) => sum + row.amount, 0);
+  const backedGoals = (overview?.allocations ?? []).filter(row => assets.some(asset => asset.id === row.assetId));
+  const backedLiabilities = (liabilityOverview?.allocations ?? []).filter(row => assets.some(asset => asset.id === row.assetId));
+  const goalsLocked = backedGoals.reduce((sum, row) => sum + row.amount, 0);
+  const liabilitiesLocked = backedLiabilities.reduce((sum, row) => sum + row.amount, 0);
+  const locked = goalsLocked + liabilitiesLocked;
   if (mode === "goals") {
     const rows = new Map<number, Breakdown>();
-    for (const row of backed) {
+    for (const row of backedGoals) {
       const entry = rows.get(row.goalId) ?? { id: String(row.goalId), name: row.goalName, value: 0, color: portfolioColors[(rows.size + 4) % portfolioColors.length] };
       entry.value += row.amount;
       rows.set(row.goalId, entry);
     }
-    return [{ id: "available", name: "Kapitał dostępny", value: assets.reduce((sum, a) => sum + a.value, 0) - locked, color: "#318bff" }, ...rows.values()];
+    const result: Breakdown[] = [{ id: "available", name: "Kapitał dostępny", value: assets.reduce((sum, a) => sum + a.value, 0) - locked, color: "#318bff" }, ...rows.values()];
+    if (liabilitiesLocked > 0) result.push({ id: "liabilities", name: "Na spłatę zobowiązań", value: liabilitiesLocked, color: "#f59e0b" });
+    return result;
   }
   const rows = wallets.filter(w => w.type !== "GOALS").map(wallet => ({
     id: String(wallet.id), name: wallet.name + (wallet.allocatedOut > 0 ? " · dostępne" : ""), color: wallet.color,
-    value: assets.filter(asset => asset.portfolioId === wallet.id).reduce((sum, a) => sum + a.value - (allocated.get(a.id) ?? 0), 0),
+    value: assets.filter(asset => asset.portfolioId === wallet.id).reduce((sum, a) => sum + a.value - (reserved.get(a.id) ?? 0), 0),
   }));
-  const unassigned = assets.filter(a => !wallets.some(w => w.id === a.portfolioId)).reduce((sum, a) => sum + a.value - (allocated.get(a.id) ?? 0), 0);
+  const unassigned = assets.filter(a => !wallets.some(w => w.id === a.portfolioId)).reduce((sum, a) => sum + a.value - (reserved.get(a.id) ?? 0), 0);
   if (unassigned !== 0) rows.push({ id: "unassigned", name: "Bez portfela", value: unassigned, color: "#64748b" });
-  if (locked > 0) rows.push({ id: "locked", name: "Przypisane do celów", value: locked, color: "#8b5cf6" });
+  if (goalsLocked > 0) rows.push({ id: "locked-goals", name: "Przypisane do celów", value: goalsLocked, color: "#8b5cf6" });
+  if (liabilitiesLocked > 0) rows.push({ id: "locked-liabilities", name: "Na spłatę zobowiązań", value: liabilitiesLocked, color: "#f59e0b" });
   return rows;
 }
 

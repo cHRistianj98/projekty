@@ -1141,6 +1141,7 @@ function App() {
                   liabilities={
                     liabilities
                   }
+                  portfolio={portfolio}
                   onAddLiability={
                     handleAddLiability
                   }

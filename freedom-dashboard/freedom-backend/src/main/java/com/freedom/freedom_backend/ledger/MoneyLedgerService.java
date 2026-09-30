@@ -36,10 +36,12 @@ public class MoneyLedgerService {
 
     public BigDecimal available(Long assetId, User user) {
         BigDecimal value = assetValue(assetId, user.getId());
-        BigDecimal allocated = jdbc.queryForObject(
-                "SELECT COALESCE(SUM(amount),0) FROM goal_allocations WHERE user_id=? AND asset_id=?",
-                BigDecimal.class, user.getId(), assetId);
-        return value.subtract(allocated == null ? ZERO : allocated);
+        return value.subtract(totalReserved(assetId, user.getId()));
+    }
+
+    public BigDecimal reserved(Long assetId, User user) {
+        assetValue(assetId, user.getId());
+        return totalReserved(assetId, user.getId());
     }
 
     public void recordIncome(Long transactionId, Long assetId, BigDecimal amount, User user) {
@@ -178,7 +180,7 @@ public class MoneyLedgerService {
                 changeAssetValue(row.assetId(), uid, row.amount().negate());
                 movement(uid, lotId, "INCOME_REVERSAL", row.assetId(), null, transactionId, row.amount());
                 jdbc.update("DELETE FROM money_positions WHERE id=?", row.id());
-                clampGoalAllocations(row.assetId(), uid);
+                clampReservations(row.assetId(), uid);
             }
         }
         jdbc.update("DELETE FROM money_lots WHERE user_id=? AND origin_transaction_id=? AND origin_type='INCOME'", uid, transactionId);
@@ -270,9 +272,7 @@ public class MoneyLedgerService {
             for (Long assetId : assetIds) {
                 if (remaining.signum() == 0) break;
                 reconcileAsset(assetId, uid);
-                BigDecimal allocated = jdbc.queryForObject(
-                        "SELECT COALESCE(SUM(amount),0) FROM goal_allocations WHERE user_id=? AND asset_id=?",
-                        BigDecimal.class, uid, assetId);
+                BigDecimal allocated = totalReserved(assetId, uid);
                 BigDecimal sourceHeldHere = positions(assetId, uid, null).stream()
                         .filter(p -> sourceLots.contains(p.lotId()))
                         .map(Position::amount).reduce(ZERO, BigDecimal::add);
@@ -306,7 +306,7 @@ public class MoneyLedgerService {
         for (Long assetId : assetIds) {
             if (remaining.signum() == 0) break;
             reconcileAsset(assetId, uid);
-            BigDecimal allocated = jdbc.queryForObject("SELECT COALESCE(SUM(amount),0) FROM goal_allocations WHERE user_id=? AND asset_id=?", BigDecimal.class, uid, assetId);
+            BigDecimal allocated = totalReserved(assetId, uid);
             BigDecimal free = assetValue(assetId, uid).subtract(allocated == null ? ZERO : allocated);
             if (free.signum() <= 0) continue;
             BigDecimal take = free.min(remaining);
@@ -418,7 +418,7 @@ public class MoneyLedgerService {
             reconcileAsset(assetId, uid);
             BigDecimal excluded = ZERO;
             for (Position p : positions(assetId, uid, null)) if (excludedLots.contains(p.lotId())) excluded = excluded.add(p.amount());
-            BigDecimal allocated = jdbc.queryForObject("SELECT COALESCE(SUM(amount),0) FROM goal_allocations WHERE user_id=? AND asset_id=?", BigDecimal.class, uid, assetId);
+            BigDecimal allocated = totalReserved(assetId, uid);
             BigDecimal freeOther = assetValue(assetId, uid).subtract(allocated == null ? ZERO : allocated).subtract(excluded);
             if (freeOther.signum() > 0) total = total.add(freeOther);
         }
@@ -461,18 +461,42 @@ public class MoneyLedgerService {
         return rows.getFirst();
     }
 
-    private void clampGoalAllocations(Long assetId, Long uid) {
+    private BigDecimal totalReserved(Long assetId, Long uid) {
+        BigDecimal value = jdbc.queryForObject("""
+                SELECT
+                    COALESCE((SELECT SUM(amount) FROM goal_allocations WHERE user_id=? AND asset_id=?),0) +
+                    COALESCE((SELECT SUM(amount) FROM liability_allocations WHERE user_id=? AND asset_id=?),0)
+                """, BigDecimal.class, uid, assetId, uid, assetId);
+        return value == null ? ZERO : value;
+    }
+
+    private void clampReservations(Long assetId, Long uid) {
         BigDecimal value = assetValue(assetId, uid);
-        List<Allocation> allocations = jdbc.query("SELECT id,goal_id,amount FROM goal_allocations WHERE user_id=? AND asset_id=? ORDER BY updated_at DESC,id DESC",
-                (rs,n)->new Allocation(rs.getLong("id"),rs.getLong("goal_id"),rs.getBigDecimal("amount")), uid, assetId);
-        BigDecimal total = allocations.stream().map(Allocation::amount).reduce(ZERO, BigDecimal::add);
+        List<Reservation> reservations = jdbc.query("""
+                SELECT kind, id, amount
+                FROM (
+                    SELECT 'GOAL' AS kind, id, amount, updated_at
+                    FROM goal_allocations
+                    WHERE user_id=? AND asset_id=? AND amount>0
+                    UNION ALL
+                    SELECT 'LIABILITY' AS kind, id, amount, updated_at
+                    FROM liability_allocations
+                    WHERE user_id=? AND asset_id=? AND amount>0
+                ) r
+                ORDER BY updated_at DESC, id DESC
+                """,
+                (rs,n)->new Reservation(rs.getString("kind"), rs.getLong("id"), rs.getBigDecimal("amount")),
+                uid, assetId, uid, assetId);
+        BigDecimal total = reservations.stream().map(Reservation::amount).reduce(ZERO, BigDecimal::add);
         BigDecimal overflow = total.subtract(value);
         if (overflow.signum() <= 0) return;
-        for (Allocation a : allocations) {
+
+        for (Reservation reservation : reservations) {
             if (overflow.signum() == 0) break;
-            BigDecimal cut = a.amount().min(overflow);
-            jdbc.update("UPDATE goal_allocations SET amount=amount-?,updated_at=NOW() WHERE id=?", cut, a.id());
-            jdbc.update("DELETE FROM goal_allocations WHERE id=? AND amount=0", a.id());
+            BigDecimal cut = reservation.amount().min(overflow);
+            String table = reservation.kind().equals("GOAL") ? "goal_allocations" : "liability_allocations";
+            jdbc.update("UPDATE " + table + " SET amount=amount-?,updated_at=NOW() WHERE id=?", cut, reservation.id());
+            jdbc.update("DELETE FROM " + table + " WHERE id=? AND amount=0", reservation.id());
             overflow = overflow.subtract(cut);
         }
         jdbc.update("UPDATE goals g SET current_amount=(SELECT COALESCE(SUM(amount),0) FROM goal_allocations WHERE user_id=? AND goal_id=g.id) WHERE user_id=?", uid, uid);
@@ -491,5 +515,5 @@ public class MoneyLedgerService {
     private record Usage(Long lotId, Long assetId, BigDecimal amount) {}
     private record UsageRow(Long id, Long transactionId, BigDecimal amount) {}
     private record ExpenseRow(Long id, Long assetId, BigDecimal amount) {}
-    private record Allocation(Long id, Long goalId, BigDecimal amount) {}
+    private record Reservation(String kind, Long id, BigDecimal amount) {}
 }

@@ -141,7 +141,7 @@ export function AddExpenseModal({
                 </option>
               ))}
             </select>
-            <p className="mt-2 text-xs text-slate-500">Wydatek zostanie pobrany właśnie z tego aktywa. Backend nie pozwoli zejść poniżej zera ani wydać środków przypisanych do celów.</p>
+            <p className="mt-2 text-xs text-slate-500">Wydatek zostanie pobrany właśnie z tego aktywa. Backend nie pozwoli zejść poniżej zera ani wydać środków zarezerwowanych na cele lub spłatę zobowiązań.</p>
           </div>
 
           <div>

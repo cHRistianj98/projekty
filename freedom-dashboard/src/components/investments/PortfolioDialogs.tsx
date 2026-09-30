@@ -230,7 +230,7 @@ export function TransferForm({ assets, wallets, allocated, sourceId, onClose, on
             </span>
           </label>
           <div className="transfer-balance"><span><Wallet size={14}/>Dostępne do transferu</span><strong>{money(available)}</strong></div>
-          <p className="transfer-reserved"><LockKeyhole size={12}/>{money(reserved)} zarezerwowane na cele</p>
+          <p className="transfer-reserved"><LockKeyhole size={12}/>{money(reserved)} zarezerwowane na cele lub zobowiązania</p>
         </section>
         <span className="transfer-route-arrow" aria-hidden="true"><ArrowRight size={20}/></span>
         <section className="transfer-side destination">

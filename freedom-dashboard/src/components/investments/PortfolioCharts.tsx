@@ -3,6 +3,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { ChartPie, ChartNoAxesCombined } from "lucide-react";
 import type { Asset } from "../../types/Asset";
 import type { MoneyFlowOverview } from "../../types/GoalAllocation";
+import type { LiabilityAllocationOverview } from "../../types/LiabilityAllocation";
 import type { MonthlySnapshot } from "../../types/MonthlySnapshot";
 import type { PortfolioWallet } from "../../types/Portfolio";
 import { money, percent, portfolioHistory, wealthBreakdown, type Breakdown } from "./portfolioView";
@@ -26,11 +27,11 @@ export function Donut({ rows, total, small = false }: { rows: Breakdown[]; total
   </div>;
 }
 
-export function WealthChart({ assets, wallets, overview, total }: {
-  assets: Asset[]; wallets: PortfolioWallet[]; overview: MoneyFlowOverview | null; total: number;
+export function WealthChart({ assets, wallets, overview, liabilityOverview, total }: {
+  assets: Asset[]; wallets: PortfolioWallet[]; overview: MoneyFlowOverview | null; liabilityOverview?: LiabilityAllocationOverview | null; total: number;
 }) {
   const [mode, setMode] = useState<"portfolios" | "assets" | "goals">("portfolios");
-  const rows = wealthBreakdown(mode, assets, wallets, overview);
+  const rows = wealthBreakdown(mode, assets, wallets, overview, liabilityOverview ?? null);
   const chartTotal = rows.reduce((sum, row) => sum + Math.max(0, row.value), 0);
   return <section className="investment-panel wealth-panel">
     <div className="investment-panel-heading">

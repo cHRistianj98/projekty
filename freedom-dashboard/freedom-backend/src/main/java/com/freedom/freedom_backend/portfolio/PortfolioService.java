@@ -29,10 +29,15 @@ public class PortfolioService {
           SELECT p.id,p.name,p.type,p.color,p.icon_key,p.system_portfolio,p.target_amount,p.monthly_contribution,
                  p.image_url,p.image_position,
                  CASE WHEN p.type='GOALS' THEN 0 ELSE COALESCE(SUM(a.value),0) END gross_value,
-                 CASE WHEN p.type='GOALS' THEN 0 ELSE COALESCE((SELECT SUM(ga.amount) FROM goal_allocations ga JOIN assets aa ON aa.id=ga.asset_id WHERE aa.portfolio_id=p.id AND ga.user_id=p.user_id),0) END allocated_out,
+                 CASE WHEN p.type='GOALS' THEN 0 ELSE
+                      COALESCE((SELECT SUM(ga.amount) FROM goal_allocations ga JOIN assets aa ON aa.id=ga.asset_id WHERE aa.portfolio_id=p.id AND ga.user_id=p.user_id),0) +
+                      COALESCE((SELECT SUM(la.amount) FROM liability_allocations la JOIN assets aa ON aa.id=la.asset_id WHERE aa.portfolio_id=p.id AND la.user_id=p.user_id),0)
+                 END allocated_out,
                  CASE WHEN p.type='GOALS'
                       THEN COALESCE((SELECT SUM(ga.amount) FROM goal_allocations ga WHERE ga.user_id=p.user_id),0)
-                      ELSE COALESCE(SUM(a.value),0)-COALESCE((SELECT SUM(ga.amount) FROM goal_allocations ga JOIN assets aa ON aa.id=ga.asset_id WHERE aa.portfolio_id=p.id AND ga.user_id=p.user_id),0)
+                      ELSE COALESCE(SUM(a.value),0)
+                           - COALESCE((SELECT SUM(ga.amount) FROM goal_allocations ga JOIN assets aa ON aa.id=ga.asset_id WHERE aa.portfolio_id=p.id AND ga.user_id=p.user_id),0)
+                           - COALESCE((SELECT SUM(la.amount) FROM liability_allocations la JOIN assets aa ON aa.id=la.asset_id WHERE aa.portfolio_id=p.id AND la.user_id=p.user_id),0)
                  END display_value
           FROM portfolios p LEFT JOIN assets a ON a.portfolio_id=p.id
           WHERE p.user_id=? GROUP BY p.id ORDER BY p.sort_order,p.id

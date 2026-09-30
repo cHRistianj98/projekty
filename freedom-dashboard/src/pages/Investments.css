@@ -297,3 +297,93 @@
   .transfer-preview strong { font-size: 13px; }
   .transfer-preview small { display: block; }
 }
+
+/* Liability reserves */
+.liability-capital-panel { padding: 11px 11px 6px; margin-bottom: 12px; }
+.liability-capital-panel > .investment-panel-heading { padding: 0 4px 16px 0; }
+.investment-section-icon.amber { color: #f8c66a; background: #5d3a1644; border-color: #7b512777; }
+.liability-capital-row { --portfolio-accent: #f59e0b; border-color: #59411f; background: linear-gradient(110deg, #3a281544, #0c142377); }
+.liability-capital-name > img { width: 52px; height: 52px; flex-shrink: 0; object-fit: cover; border-radius: 11px; border: 1px solid #6a4b2588; box-shadow: 0 7px 20px #0005; }
+.liability-capital-amount { color: #ffd27b; }
+.investment-progress.amber { height: 8px; border-color: #8a642a; }
+.investment-progress.amber > span { background: linear-gradient(90deg, #f6b73c, #f59e0b); box-shadow: 0 0 10px #f59e0b44; }
+.liability-effective-caption { color: #8fa8c4; font-size: 9px; line-height: 1.45; text-align: right; white-space: nowrap; }
+.liability-effective-caption strong { color: #f6cf83; font-size: 11px; }
+
+@media (max-width: 860px) {
+  .liability-effective-caption { text-align: left; }
+}
+
+/* Liability reserve preview inside portfolio cards */
+.portfolio-debt-reservations {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.portfolio-debt-chip {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(16, 185, 129, 0.18);
+  border-radius: 11px;
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.08), rgba(15, 23, 42, 0.35));
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.portfolio-debt-chip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(52, 211, 153, 0.34);
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.12), rgba(15, 23, 42, 0.45));
+}
+
+.portfolio-debt-chip > img {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.portfolio-debt-chip > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.portfolio-debt-chip small {
+  margin-bottom: 3px;
+  color: #34d399;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.portfolio-debt-chip strong {
+  overflow: hidden;
+  color: #dbeafe;
+  font-size: 10px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portfolio-debt-chip b {
+  color: #a7f3d0;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.portfolio-debt-more {
+  padding-left: 4px;
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 800;
+}

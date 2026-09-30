@@ -19,7 +19,9 @@ import { EditGoalModal } from "../components/goals/EditGoalModal";
 import type { Goal } from "../types/Goal";
 import type { Asset } from "../types/Asset";
 import { goalAllocationApi } from "../api/goalAllocationApi";
+import { liabilityAllocationApi } from "../api/liabilityAllocationApi";
 import type { AllocateGoalMoneyRequest, GoalAllocationSummary, MoneyFlowOverview } from "../types/GoalAllocation";
+import type { LiabilityAllocationOverview } from "../types/LiabilityAllocation";
 
 import {
   calculateGoalProgress,
@@ -602,6 +604,8 @@ function GoalFundingModal({
     useState<GoalAllocationSummary | null>(
       null
     );
+  const [allGoalReservations, setAllGoalReservations] = useState<MoneyFlowOverview | null>(null);
+  const [liabilityReservations, setLiabilityReservations] = useState<LiabilityAllocationOverview | null>(null);
 
   const [isLoadingSummary, setIsLoadingSummary] =
     useState(true);
@@ -615,13 +619,16 @@ function GoalFundingModal({
 
     async function loadSummary() {
       try {
-        const loaded =
-          await goalAllocationApi.getSummary(
-            goal.id
-          );
+        const [loaded, allGoals, liabilities] = await Promise.all([
+          goalAllocationApi.getSummary(goal.id),
+          goalAllocationApi.getOverview(),
+          liabilityAllocationApi.getOverview(),
+        ]);
 
         if (!cancelled) {
           setSummary(loaded);
+          setAllGoalReservations(allGoals);
+          setLiabilityReservations(liabilities);
         }
       } catch (caught) {
         console.error(
@@ -654,23 +661,23 @@ function GoalFundingModal({
     (asset) => asset.id === targetAssetId
   );
 
-  const allocatedToTarget =
-    summary?.allocations
-      .filter(
-        (allocation) =>
-          allocation.assetId === targetAssetId
-      )
-      .reduce(
-        (sum, allocation) =>
-          sum + allocation.amount,
-        0
-      ) ?? 0;
+  const reservedByAsset = new Map<number, number>();
+  for (const allocation of allGoalReservations?.allocations ?? []) {
+    if (allocation.assetId != null) {
+      reservedByAsset.set(allocation.assetId, (reservedByAsset.get(allocation.assetId) ?? 0) + allocation.amount);
+    }
+  }
+  for (const allocation of liabilityReservations?.allocations ?? []) {
+    if (allocation.assetId != null) {
+      reservedByAsset.set(allocation.assetId, (reservedByAsset.get(allocation.assetId) ?? 0) + allocation.amount);
+    }
+  }
 
   const targetUnallocated = targetAsset
-    ? Math.max(
-        targetAsset.value - allocatedToTarget,
-        0
-      )
+    ? Math.max(targetAsset.value - (reservedByAsset.get(targetAsset.id) ?? 0), 0)
+    : 0;
+  const sourceAvailable = sourceAsset
+    ? Math.max(sourceAsset.value - (reservedByAsset.get(sourceAsset.id) ?? 0), 0)
     : 0;
 
   const amountIsBasicValid =
@@ -685,7 +692,7 @@ function GoalFundingModal({
           sourceAsset &&
             targetAsset &&
             sourceAsset.id !== targetAsset.id &&
-            parsedAmount <= sourceAsset.value
+            parsedAmount <= sourceAvailable
         );
 
   const valid =
@@ -709,15 +716,15 @@ function GoalFundingModal({
         parsedAmount > targetUnallocated
       ) {
         setError(
-          `W ${targetAsset?.name ?? "aktywie"} masz tylko ${targetUnallocated.toLocaleString("pl-PL")} zł nieprzypisanych do celów.`
+          `W ${targetAsset?.name ?? "aktywie"} masz tylko ${targetUnallocated.toLocaleString("pl-PL")} zł wolnych po wszystkich rezerwacjach.`
         );
       } else if (
         mode === "TRANSFER_AND_ALLOCATE" &&
         sourceAsset &&
-        parsedAmount > sourceAsset.value
+        parsedAmount > sourceAvailable
       ) {
         setError(
-          `Źródło ma tylko ${sourceAsset.value.toLocaleString("pl-PL")} zł.`
+          `Źródło ma tylko ${sourceAvailable.toLocaleString("pl-PL")} zł wolnych po rezerwacjach.`
         );
       } else {
         setError(
@@ -895,7 +902,7 @@ function GoalFundingModal({
                     key={asset.id}
                     value={asset.id}
                   >
-                    {asset.name} · {asset.value.toLocaleString("pl-PL")} zł
+                    {asset.name} · {Math.max(asset.value - (reservedByAsset.get(asset.id) ?? 0), 0).toLocaleString("pl-PL")} zł wolne
                   </option>
                 ))}
               </select>
@@ -922,7 +929,7 @@ function GoalFundingModal({
                   key={asset.id}
                   value={asset.id}
                 >
-                  {asset.name} · {asset.value.toLocaleString("pl-PL")} zł
+                  {asset.name} · {Math.max(asset.value - (reservedByAsset.get(asset.id) ?? 0), 0).toLocaleString("pl-PL")} zł wolne
                 </option>
               ))}
             </select>
@@ -930,7 +937,7 @@ function GoalFundingModal({
             {mode === "ALLOCATE_EXISTING" &&
               targetAsset && (
                 <p className="mt-2 text-xs text-slate-500">
-                  Nieprzypisane do celów w tym aktywie:
+                  Wolne po celach i zobowiązaniach:
                   {" "}
                   <strong className="text-slate-300">
                     {isLoadingSummary

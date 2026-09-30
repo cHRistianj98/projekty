@@ -69,19 +69,11 @@ public class GoalAllocationService {
                 request.mode()
                         == GoalAllocationMode.ALLOCATE_EXISTING
         ) {
-            BigDecimal alreadyAllocated =
-                    totalAllocatedFromAsset(
-                            target.id(),
-                            userId
-                    );
-
-            BigDecimal available =
-                    target.value()
-                            .subtract(alreadyAllocated);
+            BigDecimal available = ledger.available(target.id(), user);
 
             if (amount.compareTo(available) > 0) {
                 throw new IllegalArgumentException(
-                        "Aktywo nie ma tylu nieprzypisanych środków."
+                        "Aktywo nie ma tylu wolnych środków. Część kapitału jest już zarezerwowana."
                 );
             }
         } else {
@@ -265,27 +257,6 @@ public class GoalAllocationService {
                     amount
             );
         }
-    }
-
-    private BigDecimal totalAllocatedFromAsset(
-            Long assetId,
-            Long userId
-    ) {
-        BigDecimal value = jdbc.queryForObject(
-                """
-                SELECT COALESCE(SUM(amount), 0)
-                FROM goal_allocations
-                WHERE user_id = ?
-                  AND asset_id = ?
-                """,
-                BigDecimal.class,
-                userId,
-                assetId
-        );
-
-        return value != null
-                ? value
-                : BigDecimal.ZERO;
     }
 
     private GoalRow requireGoal(
