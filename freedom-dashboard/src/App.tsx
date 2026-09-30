@@ -39,6 +39,7 @@ import type { Asset } from "./types/Asset";
 import type { Goal } from "./types/Goal";
 import { goalApi } from "./api/goalApi";
 import { assetApi } from "./api/assetApi";
+import { marketPriceApi } from "./api/marketPriceApi";
 import { goalAllocationApi } from "./api/goalAllocationApi";
 import { liabilityApi } from "./api/liabilityApi";
 import { authApi } from "./api/authApi";
@@ -146,22 +147,29 @@ function App() {
 
     let cancelled = false;
 
-    async function loadAssets() {
+    async function refreshAssetsWithMarketPrices() {
       try {
-        const loadedAssets = await assetApi.getAll();
-
-        if (!cancelled) {
-          setPortfolio(loadedAssets);
+        const loadedAssets = await marketPriceApi.refreshMetalAssets();
+        if (!cancelled) setPortfolio(loadedAssets);
+      } catch (marketError) {
+        console.warn("Nie udało się odświeżyć notowań metali, używam ostatnich zapisanych wartości:", marketError);
+        try {
+          const loadedAssets = await assetApi.getAll();
+          if (!cancelled) setPortfolio(loadedAssets);
+        } catch (error) {
+          console.error("Nie udało się pobrać aktywów z backendu:", error);
         }
-      } catch (error) {
-        console.error("Nie udało się pobrać aktywów z backendu:", error);
       }
     }
 
-    void loadAssets();
+    void refreshAssetsWithMarketPrices();
+    const timer = window.setInterval(() => {
+      void refreshAssetsWithMarketPrices();
+    }, 10 * 60 * 1000);
 
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
   }, [isAuthenticated]);
 

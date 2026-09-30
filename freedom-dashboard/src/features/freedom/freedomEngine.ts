@@ -95,7 +95,7 @@ export function calculateFreedomEngine({
 
   const investedAssets = portfolio
     .filter((asset) =>
-      ["stocks", "crypto", "realEstate", "business"].includes(
+      ["stocks", "crypto", "realEstate", "business", "metals"].includes(
         getAssetCategory(asset)
       )
     )

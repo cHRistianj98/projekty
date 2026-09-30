@@ -27,3 +27,8 @@ app:
   jwt:
     secret: "freedom-dev-secret-key-change-me-before-production-2026-super-secret"
     expiration-minutes: 60
+
+  market:
+    gold-api-base-url: "https://api.gold-api.com"
+    fx-api-base-url: "https://api.frankfurter.dev"
+    cache-minutes: 10

@@ -17,6 +17,7 @@ type BackendAssetCategory =
   | "REAL_ESTATE"
   | "BUSINESS"
   | "VEHICLE"
+  | "METALS"
   | "OTHER";
 
 type BackendSnapshot = {
@@ -85,6 +86,9 @@ function mapAssetCategory(
 
     case "VEHICLE":
       return "vehicle" as const;
+
+    case "METALS":
+      return "metals" as const;
 
     case "OTHER":
       return "other" as const;

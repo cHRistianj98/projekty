@@ -7,5 +7,6 @@ public enum AssetCategory {
     REAL_ESTATE,
     BUSINESS,
     VEHICLE,
+    METALS,
     OTHER
 }

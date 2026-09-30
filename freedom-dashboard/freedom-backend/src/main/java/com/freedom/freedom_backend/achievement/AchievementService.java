@@ -145,7 +145,8 @@ public class AchievementService {
     private boolean isInvestment(Asset asset) {
         return asset.getCategory() == AssetCategory.STOCKS
                 || asset.getCategory() == AssetCategory.CRYPTO
-                || asset.getCategory() == AssetCategory.BUSINESS;
+                || asset.getCategory() == AssetCategory.BUSINESS
+                || asset.getCategory() == AssetCategory.METALS;
     }
 
     private boolean gte(

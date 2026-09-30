@@ -470,6 +470,10 @@ public class MoneyLedgerService {
         return value == null ? ZERO : value;
     }
 
+    public void clampReservationsForAsset(Long assetId, User user) {
+        clampReservations(assetId, user.getId());
+    }
+
     private void clampReservations(Long assetId, Long uid) {
         BigDecimal value = assetValue(assetId, uid);
         List<Reservation> reservations = jdbc.query("""

@@ -5,6 +5,7 @@ export type AssetCategory =
   | "realEstate"
   | "business"
   | "vehicle"
+  | "metals"
   | "other";
 
 export type AssetIconKey =
@@ -23,7 +24,12 @@ export type AssetIconKey =
   | "shield"
   | "piggyBank"
   | "gem"
-  | "vault";
+  | "vault"
+  | "goldBars"
+  | "silverCoin";
+
+export type MetalSymbol = "XAU" | "XAG";
+export type MetalUnit = "TROY_OUNCE" | "GRAM";
 
 export type Asset = {
   id: number;
@@ -32,13 +38,16 @@ export type Asset = {
   color: string;
   category?: AssetCategory;
   iconKey?: AssetIconKey;
-
-  /**
-   * Systemowa Gotówka jest tworzona automatycznie.
-   * Nie można jej usunąć.
-   */
   systemCash?: boolean;
   portfolioId?: number;
+
+  marketPriced?: boolean;
+  metalSymbol?: MetalSymbol;
+  metalQuantity?: number;
+  metalUnit?: MetalUnit;
+  marketPriceUsd?: number;
+  usdPlnRate?: number;
+  marketUpdatedAt?: string;
 };
 
 export const assetCategoryLabels: Record<AssetCategory, string> = {
@@ -48,6 +57,7 @@ export const assetCategoryLabels: Record<AssetCategory, string> = {
   realEstate: "Nieruchomości",
   business: "Biznes",
   vehicle: "Pojazd",
+  metals: "Metale szlachetne",
   other: "Inne",
 };
 
@@ -58,6 +68,7 @@ export const defaultAssetIconByCategory: Record<AssetCategory, AssetIconKey> = {
   realEstate: "building",
   business: "briefcase",
   vehicle: "car",
+  metals: "goldBars",
   other: "circleDollar",
 };
 
@@ -67,4 +78,8 @@ export function getAssetCategory(asset: Asset): AssetCategory {
 
 export function getAssetIconKey(asset: Asset): AssetIconKey {
   return asset.iconKey ?? defaultAssetIconByCategory[getAssetCategory(asset)];
+}
+
+export function metalUnitLabel(unit?: MetalUnit): string {
+  return unit === "GRAM" ? "g" : "oz t";
 }
