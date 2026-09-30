@@ -16,6 +16,7 @@ import {
   ShoppingBasket,
   Trash2,
   Sparkles,
+  FileUp,
   Target,
   TrendingDown,
   TrendingUp,
@@ -33,6 +34,7 @@ import { CategoryIcon } from "../components/categories/CategoryIcon";
 import { RecurringTransactionsSection } from "../components/finances/RecurringTransactionsSection";
 import { AddRecurringTransactionModal } from "../components/finances/AddRecurringTransactionModal";
 import { EditRecurringTransactionModal } from "../components/finances/EditRecurringTransactionModal";
+import { MyFinanceImportModal } from "../components/finances/MyFinanceImportModal";
 
 import type {
   Expense,
@@ -92,6 +94,8 @@ type FinancesProps = {
   onDeleteRecurringTransaction: (
     id: number
   ) => void;
+
+  onDataImported: () => Promise<void> | void;
 };
 
 const categories = [
@@ -155,6 +159,7 @@ export function Finances({
   onUpdateRecurringTransaction,
   onToggleRecurringTransaction,
   onDeleteRecurringTransaction,
+  onDataImported,
 }: FinancesProps) {
   const [
     isAddExpenseOpen,
@@ -169,6 +174,11 @@ export function Finances({
   const [
     isAddRecurringOpen,
     setIsAddRecurringOpen,
+  ] = useState(false);
+
+  const [
+    isImportOpen,
+    setIsImportOpen,
   ] = useState(false);
 
   const [
@@ -399,6 +409,17 @@ export function Finances({
               />
             </button>
           </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              setIsImportOpen(true)
+            }
+            className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:border-blue-500/50 hover:bg-blue-500/10 hover:text-white"
+          >
+            <FileUp size={18} />
+            Import z Finanse
+          </button>
 
           <button
             type="button"
@@ -820,6 +841,13 @@ export function Finances({
           }}
         />
       )}
+
+
+      <MyFinanceImportModal
+        open={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        onImported={onDataImported}
+      />
     </main>
   );
 }

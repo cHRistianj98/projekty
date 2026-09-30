@@ -64,6 +64,31 @@ public class CategoryService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Category not found"));
     }
 
+    public Category findOrCreateImported(User user, CategoryType type, String name) {
+        ensureDefaults(user);
+        String cleanName = name == null ? "" : name.trim();
+        if (cleanName.isBlank()) {
+            return null;
+        }
+
+        Category existing = repository.findAllByUserIdOrderByTypeAscSortOrderAscNameAsc(user.getId()).stream()
+                .filter(category -> category.getType() == type)
+                .filter(category -> category.getName().equalsIgnoreCase(cleanName))
+                .findFirst()
+                .orElse(null);
+        if (existing != null) {
+            return existing;
+        }
+
+        CategoryGroup group = type == CategoryType.INCOME ? CategoryGroup.INCOME : CategoryGroup.OTHER;
+        String slug = uniqueSlug(user, type, slugify(cleanName));
+        String color = type == CategoryType.INCOME ? "#4A9FE8" : "#64748B";
+        Category imported = new Category(
+                user, type, group, slug, cleanName, "CircleHelp", color, false, true, 900
+        );
+        return repository.save(imported);
+    }
+
     private void ensureDefaults(User user) {
         if (repository.existsByUserId(user.getId())) return;
         int order = 0;

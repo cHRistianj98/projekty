@@ -48,6 +48,24 @@ public class TransactionService {
         return TransactionResponse.from(saved);
     }
 
+    public TransactionResponse createImported(TransactionRequest request, User user, String importSource) {
+        Category detailed = resolveCategory(request, user);
+        validate(request, detailed);
+        Long assetId = ledger.resolveAsset(request.assetId(), user);
+
+        Transaction transaction = new Transaction(user, request.type(), request.name(), request.amount(),
+                legacyCategory(request, detailed), detailed, request.recurring(), request.date(),
+                request.recurringRuleId(), assetId);
+        Transaction saved = repository.saveAndFlush(transaction);
+
+        if (saved.getType() == TransactionType.INCOME) {
+            ledger.recordIncome(saved.getId(), assetId, saved.getAmount(), user);
+        } else {
+            ledger.recordExpenseFromImportSource(saved.getId(), assetId, saved.getAmount(), user, importSource);
+        }
+        return TransactionResponse.from(saved);
+    }
+
     public TransactionResponse update(Long id, TransactionRequest request, User user) {
         Category detailed = resolveCategory(request, user);
         validate(request, detailed);

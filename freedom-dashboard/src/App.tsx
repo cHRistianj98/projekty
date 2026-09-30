@@ -553,6 +553,17 @@ function App() {
     return () => { cancelled = true; };
   }, [isAuthenticated]);
 
+  async function refreshTransactions() {
+    setMonthlyBudget(await transactionApi.getAll());
+  }
+
+  async function handleDataImported() {
+    await Promise.all([
+      refreshTransactions(),
+      refreshPortfolio(),
+    ]);
+  }
+
   /*
    * =========================================================
    * RECURRING TRANSACTIONS — SPRING BOOT API
@@ -1068,6 +1079,9 @@ function App() {
                   }
                   onDeleteRecurringTransaction={
                     handleDeleteRecurringTransaction
+                  }
+                  onDataImported={
+                    handleDataImported
                   }
                 />
               }

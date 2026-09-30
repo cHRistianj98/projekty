@@ -72,6 +72,38 @@ public class MoneyLedgerService {
         changeAssetValue(assetId, user.getId(), amount.negate());
     }
 
+    public void recordExpenseFromImportSource(Long transactionId, Long assetId, BigDecimal amount,
+                                              User user, String importSource) {
+        ensurePositive(amount);
+        reconcileAsset(assetId, user.getId());
+        if (amount.compareTo(available(assetId, user)) > 0) {
+            throw new IllegalArgumentException("Za mało wolnych środków w wybranym aktywie.");
+        }
+
+        List<Position> sourcePositions = importedSourcePositions(assetId, user.getId(), importSource);
+        BigDecimal sourceAvailable = sourcePositions.stream()
+                .map(Position::amount)
+                .reduce(ZERO, BigDecimal::add);
+        if (amount.compareTo(sourceAvailable) > 0) {
+            throw new IllegalArgumentException(
+                    "Backup zawiera więcej nowych wydatków niż dostępnych środków pochodzących z wcześniejszych i nowych importów Finanse."
+            );
+        }
+
+        BigDecimal remaining = amount;
+        for (Position row : sourcePositions) {
+            if (remaining.signum() == 0) break;
+            BigDecimal used = row.amount().min(remaining);
+            subtractPosition(row.id(), used);
+            jdbc.update("INSERT INTO transaction_lot_usages(user_id,transaction_id,lot_id,asset_id,amount) VALUES(?,?,?,?,?)",
+                    user.getId(), transactionId, row.lotId(), assetId, used);
+            movement(user.getId(), row.lotId(), "EXPENSE", assetId, null, transactionId, used);
+            remaining = remaining.subtract(used);
+        }
+        if (remaining.signum() != 0) throw new IllegalStateException("Ledger importu nie pokrywa wydatku.");
+        changeAssetValue(assetId, user.getId(), amount.negate());
+    }
+
     public void reverseExpense(Long transactionId, Long fallbackAssetId, BigDecimal amount, User user) {
         List<Usage> usages = jdbc.query(
                 "SELECT lot_id,asset_id,amount FROM transaction_lot_usages WHERE user_id=? AND transaction_id=? ORDER BY id",
@@ -348,6 +380,22 @@ public class MoneyLedgerService {
         } else args = new Object[]{uid, assetId};
         sql += " ORDER BY id";
         return jdbc.query(sql, (rs,n)->new Position(rs.getLong("id"),rs.getLong("lot_id"),rs.getLong("asset_id"),rs.getBigDecimal("amount")), args);
+    }
+
+    private List<Position> importedSourcePositions(Long assetId, Long uid, String source) {
+        return jdbc.query("""
+                SELECT p.id,p.lot_id,p.asset_id,p.amount
+                FROM money_positions p
+                JOIN money_lots l ON l.id=p.lot_id AND l.user_id=p.user_id
+                JOIN transaction_import_links il
+                  ON il.transaction_id=l.origin_transaction_id
+                 AND il.user_id=p.user_id
+                 AND il.source=?
+                WHERE p.user_id=? AND p.asset_id=? AND p.amount>0
+                ORDER BY l.created_at,l.id,p.id
+                """,
+                (rs,n)->new Position(rs.getLong("id"),rs.getLong("lot_id"),rs.getLong("asset_id"),rs.getBigDecimal("amount")),
+                source, uid, assetId);
     }
 
     private List<Position> positionsForLot(Long lotId, Long uid) {
