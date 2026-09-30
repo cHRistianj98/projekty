@@ -114,24 +114,38 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
           const progress = wallet.targetAmount ? wallet.grossValue / wallet.targetAmount * 100 : null;
           const breakdown = assets.map(asset => ({ id: String(asset.id), name: asset.name, value: asset.value, color: asset.color }));
           return <article className="portfolio-card" key={wallet.id} style={{ "--portfolio-accent": wallet.color } as CSSProperties}>
-            <div className="portfolio-card-heading"><span className="portfolio-card-icon"><WalletIcon name={wallet.iconKey}/></span><h3>{wallet.name}</h3>
-              {wallet.systemPortfolio ? <span className="portfolio-system-tag">SYSTEM</span> : <div className="portfolio-menu-container">
-                <button type="button" aria-label={`Opcje portfela ${wallet.name}`} aria-expanded={menu === wallet.id} className="investment-icon-button" onClick={event => { event.stopPropagation(); setMenu(menu === wallet.id ? null : wallet.id); }}><MoreVertical size={19}/></button>
-                {menu === wallet.id && <div className="portfolio-menu"><button type="button" onClick={() => setForm(wallet)}><Pencil size={14}/>Edytuj portfel</button><button type="button" onClick={() => { setManagerError(""); setDeleteWallet(wallet); }}><Trash2 size={14}/>Usuń portfel</button></div>}
-              </div>}
+            {wallet.imageUrl && (
+              <div className="portfolio-card-cover">
+                <img
+                  src={wallet.imageUrl}
+                  alt=""
+                  style={{ objectPosition: wallet.imagePosition ?? "center" }}
+                />
+                <div className="portfolio-card-cover-shade"/>
+              </div>
+            )}
+            <div className="portfolio-card-body">
+              <div className="portfolio-card-heading">
+                <span className="portfolio-card-icon"><WalletIcon name={wallet.iconKey}/></span>
+                <h3>{wallet.name}</h3>
+                {wallet.systemPortfolio ? <span className="portfolio-system-tag">SYSTEM</span> : <div className="portfolio-menu-container">
+                  <button type="button" aria-label={`Opcje portfela ${wallet.name}`} aria-expanded={menu === wallet.id} className="investment-icon-button" onClick={event => { event.stopPropagation(); setMenu(menu === wallet.id ? null : wallet.id); }}><MoreVertical size={19}/></button>
+                  {menu === wallet.id && <div className="portfolio-menu"><button type="button" onClick={() => setForm(wallet)}><Pencil size={14}/>Edytuj portfel</button><button type="button" onClick={() => { setManagerError(""); setDeleteWallet(wallet); }}><Trash2 size={14}/>Usuń portfel</button></div>}
+                </div>}
+              </div>
+              <div className="portfolio-card-value"><strong>{money(wallet.grossValue)}</strong><span>{percent(wallet.grossValue, total)} majątku</span></div>
+              <div className="portfolio-progress-block">
+                <div className="investment-progress" role="progressbar" aria-label={`Cel portfela ${wallet.name}`} aria-valuenow={Math.round(Math.min(100, Math.max(0, progress ?? 0)))} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${Math.min(100, Math.max(0, progress ?? 0))}%` }}/></div>
+                <div className="portfolio-progress-label"><span>{wallet.targetAmount ? `Cel: ${money(wallet.targetAmount)}` : wallet.systemPortfolio ? "Gotówka i bieżące środki" : "Brak kwoty docelowej"}</span><span>{progress == null ? "—" : `${Math.round(progress)}%`}</span></div>
+              </div>
+              <div className="portfolio-composition"><Donut rows={breakdown} small/><div className="portfolio-composition-legend">
+                {assets.slice(0, 3).map(asset => <div key={asset.id}><span className="investment-dot" style={{ background: asset.color }}/><span className="composition-name" title={asset.name}>{percent(asset.value, wallet.grossValue)}&nbsp; {asset.name}</span><span>{money(asset.value)}</span></div>)}
+                {assets.length > 3 && <span className="investment-note">+ {assets.length - 3} pozostałych aktywów</span>}
+                {!assets.length && <span className="investment-note">Dodaj pierwsze aktywo</span>}
+              </div></div>
+              {wallet.allocatedOut > 0 && <p className="portfolio-reserved">{money(wallet.allocatedOut)} na cele · dostępne {money(wallet.value)}</p>}
+              <button type="button" className="investment-button secondary portfolio-manage" onClick={() => { setSelectedId(wallet.id); setManagerError(""); }}>Zarządzaj portfelem <ArrowRight size={14}/></button>
             </div>
-            <div className="portfolio-card-value"><strong>{money(wallet.grossValue)}</strong><span>{percent(wallet.grossValue, total)} majątku</span></div>
-            <div className="portfolio-progress-block">
-              <div className="investment-progress" role="progressbar" aria-label={`Cel portfela ${wallet.name}`} aria-valuenow={Math.round(Math.min(100, Math.max(0, progress ?? 0)))} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${Math.min(100, Math.max(0, progress ?? 0))}%` }}/></div>
-              <div className="portfolio-progress-label"><span>{wallet.targetAmount ? `Cel: ${money(wallet.targetAmount)}` : wallet.systemPortfolio ? "Gotówka i bieżące środki" : "Brak kwoty docelowej"}</span><span>{progress == null ? "—" : `${Math.round(progress)}%`}</span></div>
-            </div>
-            <div className="portfolio-composition"><Donut rows={breakdown} small/><div className="portfolio-composition-legend">
-              {assets.slice(0, 3).map(asset => <div key={asset.id}><span className="investment-dot" style={{ background: asset.color }}/><span className="composition-name" title={asset.name}>{percent(asset.value, wallet.grossValue)}&nbsp; {asset.name}</span><span>{money(asset.value)}</span></div>)}
-              {assets.length > 3 && <span className="investment-note">+ {assets.length - 3} pozostałych aktywów</span>}
-              {!assets.length && <span className="investment-note">Dodaj pierwsze aktywo</span>}
-            </div></div>
-            {wallet.allocatedOut > 0 && <p className="portfolio-reserved">{money(wallet.allocatedOut)} na cele · dostępne {money(wallet.value)}</p>}
-            <button type="button" className="investment-button secondary portfolio-manage" onClick={() => { setSelectedId(wallet.id); setManagerError(""); }}>Zarządzaj portfelem <ArrowRight size={14}/></button>
           </article>;
         })}</div>}
     </section>

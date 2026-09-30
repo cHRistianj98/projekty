@@ -1,11 +1,12 @@
 import { useEffect, useId, useRef, useState, type ReactNode, type FormEvent } from "react";
-import { X, Wallet, Shield, Sprout, Clock3, House, Gem, Target, ArrowRight, ArrowRightLeft, ArrowUpRight, ArrowDownLeft, ChevronDown, Coins, LockKeyhole, Plus, CircleCheck, LoaderCircle } from "lucide-react";
+import { X, Wallet, Shield, Sprout, Clock3, House, Gem, Target, ArrowRight, ArrowRightLeft, ArrowUpRight, ArrowDownLeft, ChevronDown, Coins, LockKeyhole, Plus, CircleCheck, LoaderCircle, Image as ImageIcon } from "lucide-react";
 import type { Asset } from "../../types/Asset";
 import { getAssetIconKey } from "../../types/Asset";
 import { AssetIcon } from "./assetIcons";
-import type { PortfolioInput, PortfolioWallet } from "../../types/Portfolio";
+import type { PortfolioImagePosition, PortfolioInput, PortfolioWallet } from "../../types/Portfolio";
 import type { FundedGoal } from "./portfolioView";
 import { money, portfolioColors } from "./portfolioView";
+import { defaultPortfolioImage, portfolioImagePresets, suggestedPortfolioImage } from "./portfolioImages";
 
 export const walletIcons = { wallet: Wallet, shield: Shield, sprout: Sprout, clock: Clock3, house: House, gem: Gem, target: Target };
 export function WalletIcon({ name, size = 23 }: { name: string; size?: number }) {
@@ -36,18 +37,114 @@ export function PortfolioForm({ wallet, onClose, onSave }: {
   const [iconKey, setIconKey] = useState(wallet?.iconKey ?? "shield");
   const [target, setTarget] = useState(wallet?.targetAmount?.toString() ?? "");
   const [contribution, setContribution] = useState(String(wallet?.monthlyContribution ?? 0));
+  const [imageUrl, setImageUrl] = useState(wallet?.imageUrl ?? defaultPortfolioImage);
+  const [imagePosition, setImagePosition] = useState<PortfolioImagePosition>(wallet?.imagePosition ?? "center");
+  const [imageTouched, setImageTouched] = useState(Boolean(wallet?.imageUrl));
+  const [previewError, setPreviewError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  function changeName(value: string) {
+    setName(value);
+    if (!wallet && !imageTouched) {
+      setImageUrl(suggestedPortfolioImage(value));
+      setPreviewError(false);
+    }
+  }
+
+  function chooseImage(url: string) {
+    setImageUrl(url);
+    setImageTouched(true);
+    setPreviewError(false);
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault(); setSaving(true); setError("");
     try {
-      await onSave({ name: name.trim(), color, iconKey, targetAmount: target ? Number(target) : null, monthlyContribution: Number(contribution || 0) });
+      await onSave({
+        name: name.trim(),
+        color,
+        iconKey,
+        targetAmount: target ? Number(target) : null,
+        monthlyContribution: Number(contribution || 0),
+        imageUrl: imageUrl.trim() || null,
+        imagePosition,
+      });
       onClose();
     } catch (cause) { setError(errorMessage(cause)); } finally { setSaving(false); }
   }
-  return <PortfolioDialog title={wallet ? "Edytuj portfel" : "Dodaj portfel"} subtitle="Nadaj swoim pieniądzom kierunek." onClose={onClose} busy={saving}>
+
+  return <PortfolioDialog title={wallet ? "Edytuj portfel" : "Dodaj portfel"} subtitle="Nadaj swoim pieniądzom kierunek." onClose={onClose} busy={saving} wide>
     <form onSubmit={submit} className="investment-form">
-      <label>Nazwa portfela<input autoFocus required maxLength={120} value={name} onChange={event => setName(event.target.value)} placeholder="np. Długoterminowy" /></label>
+      <label>Nazwa portfela<input autoFocus required maxLength={120} value={name} onChange={event => changeName(event.target.value)} placeholder="np. Długoterminowy" /></label>
+
+      <fieldset className="portfolio-image-fieldset">
+        <legend>Grafika portfela</legend>
+        <div className="portfolio-image-editor">
+          <div className="portfolio-image-preview">
+            {imageUrl && !previewError ? (
+              <img
+                key={imageUrl}
+                src={imageUrl}
+                alt="Podgląd grafiki portfela"
+                style={{ objectPosition: imagePosition }}
+                onError={() => setPreviewError(true)}
+              />
+            ) : (
+              <div className="portfolio-image-empty"><ImageIcon size={28}/><span>Brak podglądu</span></div>
+            )}
+            <div className="portfolio-image-preview-shade"/>
+            <strong>{name.trim() || "Twój portfel"}</strong>
+          </div>
+
+          <div className="portfolio-image-controls">
+            <div className="portfolio-image-presets">
+              {portfolioImagePresets.map(preset => (
+                <button
+                  type="button"
+                  key={preset.key}
+                  className={imageUrl === preset.url ? "selected" : ""}
+                  aria-pressed={imageUrl === preset.url}
+                  onClick={() => chooseImage(preset.url)}
+                  title={preset.label}
+                >
+                  <img src={preset.url} alt="" />
+                  <span>{preset.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <label>
+              Własny adres grafiki
+              <input
+                value={imageUrl}
+                onChange={event => { setImageUrl(event.target.value); setImageTouched(true); setPreviewError(false); }}
+                placeholder="/portfolios/long-term.webp lub https://..."
+              />
+            </label>
+
+            <div>
+              <span className="portfolio-image-position-label">Pozycja kadru</span>
+              <div className="portfolio-image-position-options">
+                {(["top", "center", "bottom"] as PortfolioImagePosition[]).map(position => (
+                  <button
+                    key={position}
+                    type="button"
+                    className={imagePosition === position ? "selected" : ""}
+                    onClick={() => setImagePosition(position)}
+                  >
+                    {position === "top" ? "Góra" : position === "bottom" ? "Dół" : "Środek"}
+                  </button>
+                ))}
+                <button type="button" className="remove" onClick={() => { setImageUrl(""); setImageTouched(true); setPreviewError(false); }}>
+                  Bez grafiki
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </fieldset>
+
       <div className="investment-form-columns">
         <label>Docelowa wartość (zł)<input type="number" min=".01" step=".01" value={target} onChange={event => setTarget(event.target.value)} placeholder="Opcjonalnie" /></label>
         <label>Miesięczna wpłata (zł)<input type="number" min="0" step=".01" value={contribution} onChange={event => setContribution(event.target.value)} /></label>
@@ -62,7 +159,6 @@ export function PortfolioForm({ wallet, onClose, onSave }: {
     </form>
   </PortfolioDialog>;
 }
-
 export function TransferForm({ assets, wallets, allocated, sourceId, onClose, onTransfer, onAddAsset }: {
   assets: Asset[]; wallets: PortfolioWallet[]; allocated: Map<number, number>; sourceId?: number;
   onClose: () => void; onTransfer: (source: number, target: number, amount: number) => Promise<void>;

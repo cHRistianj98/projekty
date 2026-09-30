@@ -1,4 +1,5 @@
 export type PortfolioType = "MAIN" | "GOALS" | "CUSTOM";
+export type PortfolioImagePosition = "top" | "center" | "bottom";
 
 export type PortfolioWallet = {
   id: number;
@@ -12,6 +13,8 @@ export type PortfolioWallet = {
   value: number;
   targetAmount: number | null;
   monthlyContribution: number;
+  imageUrl?: string | null;
+  imagePosition?: PortfolioImagePosition | null;
 };
 
 export type PortfolioInput = {
@@ -20,6 +23,8 @@ export type PortfolioInput = {
   iconKey: string;
   targetAmount: number | null;
   monthlyContribution: number;
+  imageUrl: string | null;
+  imagePosition: PortfolioImagePosition;
 };
 
 export type ValuationEvent = {
