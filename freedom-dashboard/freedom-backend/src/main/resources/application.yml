@@ -39,3 +39,5 @@ app:
     crypto-cache-minutes: 10
     nbp-api-base-url: "https://api.nbp.pl/api"
     fx-cash-cache-minutes: 60
+    yahoo-finance-base-url: "https://query1.finance.yahoo.com"
+    stock-cache-minutes: 10

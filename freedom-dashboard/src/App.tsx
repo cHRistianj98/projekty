@@ -166,6 +166,13 @@ function App() {
           console.error("Nie udało się pobrać aktywów z backendu:", error);
         }
       }
+
+      try {
+        const loadedAssets = await marketPriceApi.refreshStockAssets();
+        if (!cancelled) setPortfolio(loadedAssets);
+      } catch (stockError) {
+        console.warn("Nie udało się odświeżyć notowań akcji/ETF, używam ostatnich zapisanych wartości:", stockError);
+      }
     }
 
     void refreshAssetsWithMarketPrices();

@@ -53,6 +53,23 @@ type BackendAsset = {
   fxRatePln?: number | null;
   fxEffectiveDate?: string | null;
   fxUpdatedAt?: string | null;
+  stockPriced?: boolean;
+  stockSymbol?: string | null;
+  stockCurrency?: CashCurrency | null;
+  stockQuantity?: number | null;
+  stockAverageBuyPrice?: number | null;
+  stockBuyFxRatePln?: number | null;
+  stockCurrentPrice?: number | null;
+  stockCurrentFxRatePln?: number | null;
+  stockGrossValuePln?: number | null;
+  stockCostBasisPln?: number | null;
+  stockUnrealizedGainPln?: number | null;
+  stockTaxRate?: number | null;
+  stockTaxAmountPln?: number | null;
+  stockChangePercent?: number | null;
+  stockMarketDate?: string | null;
+  stockMarketTime?: string | null;
+  stockUpdatedAt?: string | null;
   realEstateType?: RealEstateType | null;
   realEstateCity?: string | null;
   realEstateDistrict?: string | null;
@@ -157,6 +174,23 @@ export function fromBackendAsset(row: BackendAsset): Asset {
     ...(row.fxRatePln != null ? { fxRatePln: Number(row.fxRatePln) } : {}),
     ...(row.fxEffectiveDate ? { fxEffectiveDate: row.fxEffectiveDate } : {}),
     ...(row.fxUpdatedAt ? { fxUpdatedAt: row.fxUpdatedAt } : {}),
+    stockPriced: Boolean(row.stockPriced),
+    ...(row.stockSymbol ? { stockSymbol: row.stockSymbol } : {}),
+    ...(row.stockCurrency ? { stockCurrency: row.stockCurrency } : {}),
+    ...(row.stockQuantity != null ? { stockQuantity: Number(row.stockQuantity) } : {}),
+    ...(row.stockAverageBuyPrice != null ? { stockAverageBuyPrice: Number(row.stockAverageBuyPrice) } : {}),
+    ...(row.stockBuyFxRatePln != null ? { stockBuyFxRatePln: Number(row.stockBuyFxRatePln) } : {}),
+    ...(row.stockCurrentPrice != null ? { stockCurrentPrice: Number(row.stockCurrentPrice) } : {}),
+    ...(row.stockCurrentFxRatePln != null ? { stockCurrentFxRatePln: Number(row.stockCurrentFxRatePln) } : {}),
+    ...(row.stockGrossValuePln != null ? { stockGrossValuePln: Number(row.stockGrossValuePln) } : {}),
+    ...(row.stockCostBasisPln != null ? { stockCostBasisPln: Number(row.stockCostBasisPln) } : {}),
+    ...(row.stockUnrealizedGainPln != null ? { stockUnrealizedGainPln: Number(row.stockUnrealizedGainPln) } : {}),
+    ...(row.stockTaxRate != null ? { stockTaxRate: Number(row.stockTaxRate) } : {}),
+    ...(row.stockTaxAmountPln != null ? { stockTaxAmountPln: Number(row.stockTaxAmountPln) } : {}),
+    ...(row.stockChangePercent != null ? { stockChangePercent: Number(row.stockChangePercent) } : {}),
+    ...(row.stockMarketDate ? { stockMarketDate: row.stockMarketDate } : {}),
+    ...(row.stockMarketTime ? { stockMarketTime: row.stockMarketTime } : {}),
+    ...(row.stockUpdatedAt ? { stockUpdatedAt: row.stockUpdatedAt } : {}),
     ...(row.realEstateType ? { realEstateType: row.realEstateType } : {}),
     ...(row.realEstateCity ? { realEstateCity: row.realEstateCity } : {}),
     ...(row.realEstateDistrict ? { realEstateDistrict: row.realEstateDistrict } : {}),
@@ -193,6 +227,7 @@ function body(asset: Asset) {
   const liveCrypto = asset.category === "crypto" && Boolean(asset.marketPriced);
   const liveFxCash = asset.category === "cash" && Boolean(asset.fxPriced) && !asset.systemCash;
   const liveApartment = asset.category === "realEstate" && Boolean(asset.marketPriced);
+  const liveStock = asset.category === "stocks" && Boolean(asset.stockPriced);
   const retailBond = asset.category === "bonds";
   return {
     name: asset.name,
@@ -211,6 +246,12 @@ function body(asset: Asset) {
     fxPriced: liveFxCash,
     cashCurrency: liveFxCash ? asset.cashCurrency ?? null : null,
     cashQuantity: liveFxCash ? asset.cashQuantity ?? null : null,
+    stockPriced: liveStock,
+    stockSymbol: liveStock ? asset.stockSymbol ?? null : null,
+    stockCurrency: liveStock ? asset.stockCurrency ?? null : null,
+    stockQuantity: liveStock ? asset.stockQuantity ?? null : null,
+    stockAverageBuyPrice: liveStock ? asset.stockAverageBuyPrice ?? null : null,
+    stockBuyFxRatePln: liveStock ? asset.stockBuyFxRatePln ?? null : null,
     realEstateType: liveApartment ? asset.realEstateType ?? "APARTMENT" : null,
     realEstateCity: liveApartment ? asset.realEstateCity ?? null : null,
     realEstateDistrict: liveApartment ? asset.realEstateDistrict ?? null : null,

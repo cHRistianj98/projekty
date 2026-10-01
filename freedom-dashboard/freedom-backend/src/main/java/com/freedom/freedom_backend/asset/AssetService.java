@@ -9,6 +9,8 @@ import com.freedom.freedom_backend.market.CryptoPricingService;
 import com.freedom.freedom_backend.market.CryptoQuoteResponse;
 import com.freedom.freedom_backend.market.FxPricingService;
 import com.freedom.freedom_backend.market.FxQuoteResponse;
+import com.freedom.freedom_backend.market.StockPricingService;
+import com.freedom.freedom_backend.market.StockQuoteResponse;
 import com.freedom.freedom_backend.user.User;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -34,6 +36,8 @@ public class AssetService {
     private final RealEstatePricingService realEstatePricing;
     private final CryptoPricingService cryptoPricing;
     private final FxPricingService fxPricing;
+    private final StockPricingService stockPricing;
+    private final StockTaxValuationService stockTaxValuation;
     private final RetailBondValuationService retailBondValuation;
 
     public AssetService(
@@ -44,6 +48,8 @@ public class AssetService {
             RealEstatePricingService realEstatePricing,
             CryptoPricingService cryptoPricing,
             FxPricingService fxPricing,
+            StockPricingService stockPricing,
+            StockTaxValuationService stockTaxValuation,
             RetailBondValuationService retailBondValuation
     ) {
         this.repo = repo;
@@ -53,6 +59,8 @@ public class AssetService {
         this.realEstatePricing = realEstatePricing;
         this.cryptoPricing = cryptoPricing;
         this.fxPricing = fxPricing;
+        this.stockPricing = stockPricing;
+        this.stockTaxValuation = stockTaxValuation;
         this.retailBondValuation = retailBondValuation;
     }
 
@@ -172,6 +180,39 @@ public class AssetService {
             return PricingSetup.fx(request.cashCurrency(), request.cashQuantity(), quote, value);
         }
 
+        if (category == AssetCategory.STOCKS && Boolean.TRUE.equals(request.stockPriced())) {
+            if (request.stockSymbol() == null || request.stockSymbol().isBlank()) {
+                throw new IllegalArgumentException("Podaj symbol instrumentu w Stooq, np. DNP, XTB, MMM.US.");
+            }
+            if (request.stockCurrency() == null) {
+                throw new IllegalArgumentException("Wybierz walutę notowania instrumentu.");
+            }
+            if (request.stockQuantity() == null || request.stockQuantity().signum() <= 0) {
+                throw new IllegalArgumentException("Ilość akcji/jednostek musi być większa od zera.");
+            }
+            if (request.stockAverageBuyPrice() == null || request.stockAverageBuyPrice().signum() <= 0) {
+                throw new IllegalArgumentException("Średnia cena zakupu musi być większa od zera.");
+            }
+
+            StockQuoteResponse quote = stockPricing.quote(request.stockSymbol(), request.stockCurrency());
+            StockTaxValuationService.StockValuation valuation = stockTaxValuation.calculate(
+                    quote,
+                    request.stockQuantity(),
+                    request.stockAverageBuyPrice(),
+                    request.stockBuyFxRatePln()
+            );
+
+            return PricingSetup.stock(
+                    quote.symbol(),
+                    request.stockCurrency(),
+                    request.stockQuantity(),
+                    request.stockAverageBuyPrice(),
+                    valuation.buyFxRatePln(),
+                    quote,
+                    valuation
+            );
+        }
+
         boolean enabled = Boolean.TRUE.equals(request.marketPriced());
         if (!enabled) return PricingSetup.manual();
 
@@ -243,7 +284,7 @@ public class AssetService {
             return PricingSetup.realEstate(type, quote);
         }
 
-        throw new IllegalArgumentException("Automatyczna wycena jest dostępna dla walut obcych, krypto, metali szlachetnych i mieszkań.");
+        throw new IllegalArgumentException("Automatyczna wycena jest dostępna dla akcji/ETF, walut obcych, krypto, metali szlachetnych i mieszkań.");
     }
 
     private RetailBondValuationService.BondValuation bondValuation(AssetRequest request, AssetCategory category) {
@@ -318,6 +359,27 @@ public class AssetService {
             return;
         }
 
+        if (pricing.kind() == PricingKind.STOCK) {
+            asset.clearCryptoPricing();
+            asset.clearFxPricing();
+            asset.configureMarketPricing(false, null, null, null, null, null, null);
+            asset.configureRealEstatePricing(
+                    false, null, null, null, null,
+                    null, null, null, null, null
+            );
+            asset.configureStockPricing(
+                    true,
+                    pricing.stockSymbol(),
+                    pricing.stockCurrency(),
+                    pricing.stockQuantity(),
+                    pricing.stockAverageBuyPrice(),
+                    pricing.stockBuyFxRatePln(),
+                    pricing.stockQuote(),
+                    pricing.stockValuation()
+            );
+            return;
+        }
+
         if (pricing.kind() == PricingKind.REAL_ESTATE) {
             asset.clearCryptoPricing();
             asset.configureMarketPricing(false, null, null, null, null, null, null);
@@ -342,6 +404,7 @@ public class AssetService {
 
         asset.clearCryptoPricing();
         asset.clearFxPricing();
+        asset.clearStockPricing();
         asset.configureMarketPricing(false, null, null, null, null, null, null);
         asset.configureRealEstatePricing(
                 false, null, null, null, null,
@@ -385,7 +448,7 @@ public class AssetService {
         };
     }
 
-    private enum PricingKind { MANUAL, METAL, CRYPTO, FX, REAL_ESTATE }
+    private enum PricingKind { MANUAL, METAL, CRYPTO, FX, STOCK, REAL_ESTATE }
 
     private record PricingSetup(
             PricingKind kind,
@@ -400,6 +463,13 @@ public class AssetService {
             CashCurrency cashCurrency,
             BigDecimal cashQuantity,
             FxQuoteResponse fxQuote,
+            String stockSymbol,
+            CashCurrency stockCurrency,
+            BigDecimal stockQuantity,
+            BigDecimal stockAverageBuyPrice,
+            BigDecimal stockBuyFxRatePln,
+            StockQuoteResponse stockQuote,
+            StockTaxValuationService.StockValuation stockValuation,
             RealEstateType realEstateType,
             RealEstateQuoteResponse realEstateQuote,
             BigDecimal value
@@ -410,7 +480,9 @@ public class AssetService {
                     null, null, null, null,
                     null, null, null, null,
                     null, null, null,
-                    null, null, null
+                    null, null, null, null, null, null, null,
+                    null, null,
+                    null
             );
         }
 
@@ -426,7 +498,9 @@ public class AssetService {
                     symbol, quantity, unit, quote,
                     null, null, null, null,
                     null, null, null,
-                    null, null, value
+                    null, null, null, null, null, null, null,
+                    null, null,
+                    value
             );
         }
 
@@ -442,7 +516,9 @@ public class AssetService {
                     null, null, null, null,
                     coinId, symbol, quantity, quote,
                     null, null, null,
-                    null, null, value
+                    null, null, null, null, null, null, null,
+                    null, null,
+                    value
             );
         }
 
@@ -457,7 +533,29 @@ public class AssetService {
                     null, null, null, null,
                     null, null, null, null,
                     currency, quantity, quote,
-                    null, null, value
+                    null, null, null, null, null, null, null,
+                    null, null,
+                    value
+            );
+        }
+
+        private static PricingSetup stock(
+                String symbol,
+                CashCurrency currency,
+                BigDecimal quantity,
+                BigDecimal averageBuyPrice,
+                BigDecimal buyFxRatePln,
+                StockQuoteResponse quote,
+                StockTaxValuationService.StockValuation valuation
+        ) {
+            return new PricingSetup(
+                    PricingKind.STOCK,
+                    null, null, null, null,
+                    null, null, null, null,
+                    null, null, null,
+                    symbol, currency, quantity, averageBuyPrice, buyFxRatePln, quote, valuation,
+                    null, null,
+                    valuation.netValuePln()
             );
         }
 
@@ -467,7 +565,9 @@ public class AssetService {
                     null, null, null, null,
                     null, null, null, null,
                     null, null, null,
-                    type, quote, quote.estimatedValue()
+                    null, null, null, null, null, null, null,
+                    type, quote,
+                    quote.estimatedValue()
             );
         }
 

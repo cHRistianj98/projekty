@@ -4,6 +4,7 @@ import com.freedom.freedom_backend.user.User;
 import com.freedom.freedom_backend.market.RealEstateQuoteResponse;
 import com.freedom.freedom_backend.market.CryptoQuoteResponse;
 import com.freedom.freedom_backend.market.FxQuoteResponse;
+import com.freedom.freedom_backend.market.StockQuoteResponse;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
@@ -105,6 +106,58 @@ public class Asset {
 
     @Column(name = "fx_updated_at")
     private Instant fxUpdatedAt;
+
+    @Column(name = "stock_priced", nullable = false)
+    private boolean stockPriced = false;
+
+    @Column(name = "stock_symbol")
+    private String stockSymbol;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "stock_currency")
+    private CashCurrency stockCurrency;
+
+    @Column(name = "stock_quantity", precision = 38, scale = 12)
+    private BigDecimal stockQuantity;
+
+    @Column(name = "stock_average_buy_price", precision = 38, scale = 12)
+    private BigDecimal stockAverageBuyPrice;
+
+    @Column(name = "stock_buy_fx_rate_pln", precision = 19, scale = 8)
+    private BigDecimal stockBuyFxRatePln;
+
+    @Column(name = "stock_current_price", precision = 38, scale = 12)
+    private BigDecimal stockCurrentPrice;
+
+    @Column(name = "stock_current_fx_rate_pln", precision = 19, scale = 8)
+    private BigDecimal stockCurrentFxRatePln;
+
+    @Column(name = "stock_gross_value_pln", precision = 19, scale = 2)
+    private BigDecimal stockGrossValuePln;
+
+    @Column(name = "stock_cost_basis_pln", precision = 19, scale = 2)
+    private BigDecimal stockCostBasisPln;
+
+    @Column(name = "stock_unrealized_gain_pln", precision = 19, scale = 2)
+    private BigDecimal stockUnrealizedGainPln;
+
+    @Column(name = "stock_tax_rate", precision = 7, scale = 4)
+    private BigDecimal stockTaxRate;
+
+    @Column(name = "stock_tax_amount_pln", precision = 19, scale = 2)
+    private BigDecimal stockTaxAmountPln;
+
+    @Column(name = "stock_change_percent", precision = 18, scale = 8)
+    private BigDecimal stockChangePercent;
+
+    @Column(name = "stock_market_date")
+    private LocalDate stockMarketDate;
+
+    @Column(name = "stock_market_time")
+    private String stockMarketTime;
+
+    @Column(name = "stock_updated_at")
+    private Instant stockUpdatedAt;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "real_estate_type")
@@ -248,6 +301,7 @@ public class Asset {
         if (marketPriced) {
             clearCryptoPricing();
             clearFxPricing();
+            clearStockPricing();
         }
     }
 
@@ -277,6 +331,7 @@ public class Asset {
 
         this.marketPriced = true;
         clearFxPricing();
+        clearStockPricing();
         this.cryptoCoinId = coinId;
         this.cryptoSymbol = symbol;
         this.cryptoQuantity = quantity;
@@ -321,6 +376,7 @@ public class Asset {
 
         this.fxPriced = true;
         this.marketPriced = false;
+        clearStockPricing();
         this.cashCurrency = currency;
         this.cashQuantity = quantity;
 
@@ -347,6 +403,82 @@ public class Asset {
         this.fxUpdatedAt = null;
     }
 
+    public void configureStockPricing(
+            boolean enabled,
+            String symbol,
+            CashCurrency currency,
+            BigDecimal quantity,
+            BigDecimal averageBuyPrice,
+            BigDecimal buyFxRatePln,
+            StockQuoteResponse quote,
+            StockTaxValuationService.StockValuation valuation
+    ) {
+        if (!enabled) {
+            clearStockPricing();
+            return;
+        }
+
+        this.stockPriced = true;
+        this.marketPriced = false;
+        clearCryptoPricing();
+        clearFxPricing();
+        this.metalSymbol = null;
+        this.metalQuantity = null;
+        this.metalUnit = null;
+        this.marketPriceUsd = null;
+        this.usdPlnRate = null;
+
+        this.stockSymbol = symbol;
+        this.stockCurrency = currency;
+        this.stockQuantity = quantity;
+        this.stockAverageBuyPrice = averageBuyPrice;
+        this.stockBuyFxRatePln = valuation != null ? valuation.buyFxRatePln() : buyFxRatePln;
+
+        if (quote != null && valuation != null) {
+            applyStockValuation(valuation.netValuePln(), quote, valuation);
+        }
+    }
+
+    public void applyStockValuation(
+            BigDecimal value,
+            StockQuoteResponse quote,
+            StockTaxValuationService.StockValuation valuation
+    ) {
+        this.value = value;
+        this.stockCurrentPrice = quote.price();
+        this.stockCurrentFxRatePln = quote.fxRatePln();
+        this.stockGrossValuePln = valuation.grossValuePln();
+        this.stockCostBasisPln = valuation.costBasisPln();
+        this.stockUnrealizedGainPln = valuation.unrealizedGainPln();
+        this.stockTaxRate = valuation.taxRate();
+        this.stockTaxAmountPln = valuation.estimatedTaxPln();
+        this.stockBuyFxRatePln = valuation.buyFxRatePln();
+        this.stockChangePercent = quote.changePercent();
+        this.stockMarketDate = quote.marketDate();
+        this.stockMarketTime = quote.marketTime();
+        this.stockUpdatedAt = quote.fetchedAt();
+    }
+
+    public void clearStockPricing() {
+        this.stockPriced = false;
+        this.stockSymbol = null;
+        this.stockCurrency = null;
+        this.stockQuantity = null;
+        this.stockAverageBuyPrice = null;
+        this.stockBuyFxRatePln = null;
+        this.stockCurrentPrice = null;
+        this.stockCurrentFxRatePln = null;
+        this.stockGrossValuePln = null;
+        this.stockCostBasisPln = null;
+        this.stockUnrealizedGainPln = null;
+        this.stockTaxRate = null;
+        this.stockTaxAmountPln = null;
+        this.stockChangePercent = null;
+        this.stockMarketDate = null;
+        this.stockMarketTime = null;
+        this.stockUpdatedAt = null;
+    }
+
     public void configureRealEstatePricing(
             boolean enabled,
             RealEstateType type,
@@ -364,6 +496,7 @@ public class Asset {
         if (enabled) {
             clearCryptoPricing();
             clearFxPricing();
+            clearStockPricing();
             this.metalSymbol = null;
             this.metalQuantity = null;
             this.metalUnit = null;
@@ -515,6 +648,24 @@ public class Asset {
     public BigDecimal getFxRatePln() { return fxRatePln; }
     public LocalDate getFxEffectiveDate() { return fxEffectiveDate; }
     public Instant getFxUpdatedAt() { return fxUpdatedAt; }
+
+    public boolean isStockPriced() { return stockPriced; }
+    public String getStockSymbol() { return stockSymbol; }
+    public CashCurrency getStockCurrency() { return stockCurrency; }
+    public BigDecimal getStockQuantity() { return stockQuantity; }
+    public BigDecimal getStockAverageBuyPrice() { return stockAverageBuyPrice; }
+    public BigDecimal getStockBuyFxRatePln() { return stockBuyFxRatePln; }
+    public BigDecimal getStockCurrentPrice() { return stockCurrentPrice; }
+    public BigDecimal getStockCurrentFxRatePln() { return stockCurrentFxRatePln; }
+    public BigDecimal getStockGrossValuePln() { return stockGrossValuePln; }
+    public BigDecimal getStockCostBasisPln() { return stockCostBasisPln; }
+    public BigDecimal getStockUnrealizedGainPln() { return stockUnrealizedGainPln; }
+    public BigDecimal getStockTaxRate() { return stockTaxRate; }
+    public BigDecimal getStockTaxAmountPln() { return stockTaxAmountPln; }
+    public BigDecimal getStockChangePercent() { return stockChangePercent; }
+    public LocalDate getStockMarketDate() { return stockMarketDate; }
+    public String getStockMarketTime() { return stockMarketTime; }
+    public Instant getStockUpdatedAt() { return stockUpdatedAt; }
 
     public BigDecimal getBondPurchaseValue() { return bondPurchaseValue; }
     public BigDecimal getBondGrossValue() { return bondGrossValue; }

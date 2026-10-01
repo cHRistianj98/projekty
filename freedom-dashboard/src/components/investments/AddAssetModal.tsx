@@ -15,12 +15,13 @@ import {
   assetCategoryLabels,
   defaultAssetIconByCategory,
 } from "../../types/Asset";
-import { marketPriceApi, type CryptoQuote, type FxQuote, type MetalQuote, type RealEstateQuote } from "../../api/marketPriceApi";
+import { marketPriceApi, type CryptoQuote, type FxQuote, type MetalQuote, type RealEstateQuote, type StockQuote } from "../../api/marketPriceApi";
 import { AssetIcon, assetIconOptions } from "./assetIcons";
 import { RealEstateValuationPanel } from "./RealEstateValuationPanel";
 import { RetailBondValuationPanel, calculateRetailBondValuation } from "./RetailBondValuationPanel";
 import { CryptoPricingPanel, type CryptoSelection } from "./CryptoPricingPanel";
 import { FxCashPricingPanel } from "./FxCashPricingPanel";
+import { StockPricingPanel, type StockSelection } from "./StockPricingPanel";
 
 type AddAssetModalProps = {
   onClose: () => void;
@@ -63,6 +64,15 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
   const [fxQuote, setFxQuote] = useState<FxQuote | null>(null);
   const [fxLoading, setFxLoading] = useState(false);
   const [fxError, setFxError] = useState("");
+
+  const [stockPriced, setStockPriced] = useState(false);
+  const [stockSelection, setStockSelection] = useState<StockSelection>({ name: "Dino Polska", symbol: "DNP", currency: "PLN" });
+  const [stockQuantity, setStockQuantity] = useState("");
+  const [stockAverageBuyPrice, setStockAverageBuyPrice] = useState("");
+  const [stockBuyFxRatePln, setStockBuyFxRatePln] = useState("");
+  const [stockQuote, setStockQuote] = useState<StockQuote | null>(null);
+  const [stockLoading, setStockLoading] = useState(false);
+  const [stockError, setStockError] = useState("");
 
   const [realEstateCity, setRealEstateCity] = useState("");
   const [realEstateDistrict, setRealEstateDistrict] = useState("");
@@ -117,6 +127,28 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
     return () => { cancelled = true; };
   }, [category, fxPriced, cashCurrency]);
 
+  useEffect(() => {
+    if (category !== "stocks" || !stockPriced || !stockSelection.symbol.trim()) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setStockLoading(true);
+      setStockError("");
+      marketPriceApi.getStockQuote(stockSelection.symbol.trim(), stockSelection.currency)
+        .then((row) => { if (!cancelled) setStockQuote(row); })
+        .catch((cause) => {
+          if (!cancelled) {
+            setStockQuote(null);
+            setStockError(cause instanceof Error ? cause.message : "Nie udało się pobrać notowania.");
+          }
+        })
+        .finally(() => { if (!cancelled) setStockLoading(false); });
+    }, 450);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [category, stockPriced, stockSelection.symbol, stockSelection.currency]);
+
   const quote = quotes.find((row) => row.symbol === metalSymbol);
   const bondValuation = useMemo(() => calculateRetailBondValuation(Number(bondPurchaseValue), Number(bondGrossValue)), [bondPurchaseValue, bondGrossValue]);
 
@@ -141,6 +173,23 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
     if (!Number.isFinite(quantity) || quantity <= 0) return null;
     return fxQuote.ratePln * quantity;
   }, [fxQuote, cashQuantity]);
+
+  const stockEstimatedNetValue = useMemo(() => {
+    if (!stockQuote) return null;
+    const quantity = Number(stockQuantity);
+    const averageBuy = Number(stockAverageBuyPrice);
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(averageBuy) || averageBuy <= 0) return null;
+    const enteredFx = Number(stockBuyFxRatePln);
+    const buyFx = stockSelection.currency === "PLN"
+      ? 1
+      : Number.isFinite(enteredFx) && enteredFx > 0
+        ? enteredFx
+        : stockQuote.fxRatePln;
+    const gross = stockQuote.price * quantity * stockQuote.fxRatePln;
+    const cost = averageBuy * quantity * buyFx;
+    const tax = Math.max(gross - cost, 0) * 0.19;
+    return gross - tax;
+  }, [stockQuote, stockQuantity, stockAverageBuyPrice, stockBuyFxRatePln, stockSelection.currency]);
 
   async function refreshFxQuote() {
     setFxLoading(true);
@@ -169,11 +218,26 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
     }
   }
 
+  async function refreshStockQuote() {
+    if (!stockSelection.symbol.trim()) return;
+    setStockLoading(true);
+    setStockError("");
+    try {
+      setStockQuote(await marketPriceApi.getStockQuote(stockSelection.symbol.trim(), stockSelection.currency));
+    } catch (cause) {
+      setStockQuote(null);
+      setStockError(cause instanceof Error ? cause.message : "Nie udało się pobrać notowania.");
+    } finally {
+      setStockLoading(false);
+    }
+  }
+
   function handleCategoryChange(nextCategory: AssetCategory) {
     setCategory(nextCategory);
     setIconKey(defaultAssetIconByCategory[nextCategory]);
     if (nextCategory === "cash") {
       setMarketPriced(false);
+      setStockPriced(false);
       setFxPriced(false);
       setCashCurrency("EUR");
       setCashQuantity("");
@@ -187,6 +251,18 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
       setMetalUnit("TROY_OUNCE");
       setColor("#d4af37");
       setIconKey("goldBars");
+    } else if (nextCategory === "stocks") {
+      setMarketPriced(false);
+      setFxPriced(false);
+      setStockPriced(true);
+      setStockSelection({ name: "Dino Polska", symbol: "DNP", currency: "PLN" });
+      setStockQuantity("");
+      setStockAverageBuyPrice("");
+      setStockBuyFxRatePln("");
+      setStockQuote(null);
+      setColor("#10b981");
+      setIconKey("chart");
+      if (!name.trim()) setName("Dino Polska");
     } else if (nextCategory === "crypto") {
       setMarketPriced(true);
       setCryptoSelection({ id: "bitcoin", symbol: "BTC", name: "Bitcoin" });
@@ -207,6 +283,7 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
     } else {
       setMarketPriced(false);
       setFxPriced(false);
+      setStockPriced(false);
     }
   }
 
@@ -256,6 +333,7 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
     const liveMetal = category === "metals" && marketPriced;
     const liveCrypto = category === "crypto" && marketPriced;
     const liveFxCash = category === "cash" && fxPriced;
+    const liveStock = category === "stocks" && stockPriced;
     const liveRealEstate = category === "realEstate" && marketPriced;
     const retailBond = category === "bonds";
     const purchaseValue = Number(bondPurchaseValue);
@@ -268,15 +346,27 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
           ? (cryptoEstimatedValue ?? 0)
         : liveFxCash
           ? (fxEstimatedValue ?? 0)
+        : liveStock
+          ? (stockEstimatedNetValue ?? 0)
         : liveRealEstate
           ? (realEstateQuote?.estimatedValue ?? 0)
           : Number(value);
     const quantity = Number(metalQuantity);
     const cryptoAmount = Number(cryptoQuantity);
     const cashAmount = Number(cashQuantity);
+    const stockAmount = Number(stockQuantity);
+    const stockAvgPrice = Number(stockAverageBuyPrice);
+    const stockBuyFx = Number(stockBuyFxRatePln);
     const area = Number(realEstateAreaSqm);
 
-    if (name.trim() === "" || numericValue < 0 || !Number.isFinite(numericValue)) return;
+    if (name.trim() === "") {
+      setError("Podaj nazwę aktywa.");
+      return;
+    }
+    if (numericValue < 0 || !Number.isFinite(numericValue)) {
+      setError("Podaj poprawną wartość aktywa.");
+      return;
+    }
     if (retailBond && (bondPurchaseValue.trim() === "" || bondGrossValue.trim() === "" || !Number.isFinite(purchaseValue) || purchaseValue <= 0 || !Number.isFinite(grossValue) || grossValue < 0)) {
       setError("Podaj poprawny kapitał początkowy i bieżącą wartość brutto obligacji.");
       return;
@@ -291,6 +381,10 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
     }
     if (liveFxCash && (!Number.isFinite(cashAmount) || cashAmount <= 0)) {
       setError("Wybierz walutę i podaj poprawną ilość.");
+      return;
+    }
+    if (liveStock && (!stockSelection.symbol.trim() || !Number.isFinite(stockAmount) || stockAmount <= 0 || !Number.isFinite(stockAvgPrice) || stockAvgPrice <= 0)) {
+      setError("Podaj symbol, ilość i średnią cenę zakupu akcji/ETF.");
       return;
     }
     if (liveRealEstate && (!realEstateCity.trim() || !Number.isFinite(area) || area <= 0)) {
@@ -334,6 +428,14 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
         ...(liveFxCash ? {
           cashCurrency,
           cashQuantity: cashAmount,
+        } : {}),
+        stockPriced: liveStock,
+        ...(liveStock ? {
+          stockSymbol: stockSelection.symbol.trim().toUpperCase(),
+          stockCurrency: stockSelection.currency,
+          stockQuantity: stockAmount,
+          stockAverageBuyPrice: stockAvgPrice,
+          ...(Number.isFinite(stockBuyFx) && stockBuyFx > 0 ? { stockBuyFxRatePln: stockBuyFx } : {}),
         } : {}),
         ...(liveRealEstate ? {
           realEstateType: "APARTMENT" as const,
@@ -395,6 +497,13 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
                   <div className="mt-1 text-[11px] font-semibold text-slate-500">{cashCurrency} × średni kurs NBP</div>
                 </div>
               </Field>
+            ) : category === "stocks" && stockPriced ? (
+              <Field label="Wartość netto po szacowanym podatku">
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[.07] px-4 py-3.5">
+                  <div className="text-lg font-black text-white">{stockEstimatedNetValue == null ? "—" : `${stockEstimatedNetValue.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} zł`}</div>
+                  <div className="mt-1 text-[11px] font-semibold text-slate-500">{stockSelection.symbol || "ticker"} × live Stooq · zysk pomniejszony o est. 19%</div>
+                </div>
+              </Field>
             ) : category === "metals" && marketPriced ? (
               <Field label="Wartość rynkowa">
                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/8 px-4 py-3.5">
@@ -446,9 +555,22 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
           {category === "cash" && (
             <FxCashPricingPanel
               enabled={fxPriced}
-              onToggle={() => setFxPriced((current) => !current)}
+              onToggle={() => {
+                const nextEnabled = !fxPriced;
+                setFxPriced(nextEnabled);
+                if (nextEnabled && !name.trim()) {
+                  setName(`Gotówka ${cashCurrency}`);
+                }
+              }}
               currency={cashCurrency}
-              onCurrencyChange={(next) => { setCashCurrency(next); setFxQuote(null); }}
+              onCurrencyChange={(next) => {
+                const previousAutoName = `Gotówka ${cashCurrency}`;
+                setCashCurrency(next);
+                setFxQuote(null);
+                if (!name.trim() || name.trim() === previousAutoName) {
+                  setName(`Gotówka ${next}`);
+                }
+              }}
               quantity={cashQuantity}
               onQuantityChange={setCashQuantity}
               quote={fxQuote}
@@ -506,6 +628,29 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
                 </>
               )}
             </div>
+          )}
+
+          {category === "stocks" && (
+            <StockPricingPanel
+              enabled={stockPriced}
+              onEnabledChange={(enabled) => { setStockPriced(enabled); if (!enabled) setStockQuote(null); }}
+              selection={stockSelection}
+              onSelectionChange={(next) => {
+                setStockSelection(next);
+                setStockQuote(null);
+                if (!name.trim() || name === stockSelection.name) setName(next.name);
+              }}
+              quantity={stockQuantity}
+              onQuantityChange={setStockQuantity}
+              averageBuyPrice={stockAverageBuyPrice}
+              onAverageBuyPriceChange={setStockAverageBuyPrice}
+              buyFxRatePln={stockBuyFxRatePln}
+              onBuyFxRatePlnChange={setStockBuyFxRatePln}
+              quote={stockQuote}
+              loading={stockLoading}
+              error={stockError}
+              onRefresh={() => void refreshStockQuote()}
+            />
           )}
 
           {category === "crypto" && (
@@ -585,6 +730,8 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
               </div>
               <div className="shrink-0 text-lg font-black text-white">{Math.round(category === "cash" && fxPriced
               ? (fxEstimatedValue ?? 0)
+              : category === "stocks" && stockPriced
+                ? (stockEstimatedNetValue ?? 0)
               : category === "metals" && marketPriced
                 ? (estimatedValue ?? 0)
                 : category === "crypto" && marketPriced

@@ -32,7 +32,7 @@ export type AssetIconKey =
 
 export type MetalSymbol = "XAU" | "XAG";
 export type MetalUnit = "TROY_OUNCE" | "GRAM";
-export type CashCurrency = "PLN" | "EUR" | "CHF" | "USD" | "CZK";
+export type CashCurrency = "PLN" | "EUR" | "CHF" | "USD" | "GBP" | "CZK";
 export type RealEstateType = "APARTMENT";
 export type RealEstateValuationMode = "MARKET_MEDIAN" | "MARKET_ANCHORED";
 export type RealEstateMarketSegment = "ALL" | "PRIMARY" | "SECONDARY";
@@ -71,6 +71,24 @@ export type Asset = {
   fxRatePln?: number;
   fxEffectiveDate?: string;
   fxUpdatedAt?: string;
+
+  stockPriced?: boolean;
+  stockSymbol?: string;
+  stockCurrency?: CashCurrency;
+  stockQuantity?: number;
+  stockAverageBuyPrice?: number;
+  stockBuyFxRatePln?: number;
+  stockCurrentPrice?: number;
+  stockCurrentFxRatePln?: number;
+  stockGrossValuePln?: number;
+  stockCostBasisPln?: number;
+  stockUnrealizedGainPln?: number;
+  stockTaxRate?: number;
+  stockTaxAmountPln?: number;
+  stockChangePercent?: number;
+  stockMarketDate?: string;
+  stockMarketTime?: string;
+  stockUpdatedAt?: string;
 
   realEstateType?: RealEstateType;
   realEstateCity?: string;

@@ -44,6 +44,21 @@ export type CryptoSearchResult = {
   thumb?: string | null;
 };
 
+export type StockQuote = {
+  symbol: string;
+  name: string;
+  price: number;
+  currency: CashCurrency;
+  fxRatePln: number;
+  pricePln: number;
+  previousClose?: number | null;
+  changePercent?: number | null;
+  marketDate?: string | null;
+  marketTime?: string | null;
+  fetchedAt: string;
+  source: string;
+};
+
 export type RealEstateQuote = {
   city: string;
   requestedDistrict?: string | null;
@@ -126,6 +141,31 @@ export const marketPriceApi = {
   async refreshFxAssets(): Promise<Asset[]> {
     const rows = await handle<any[]>(
       await fetch(`${API_URL}/api/market/fx/refresh`, {
+        method: "POST",
+        headers: headers(),
+      })
+    );
+    return rows.map(fromBackendAsset);
+  },
+
+  async getStockQuote(symbol: string, currency: CashCurrency): Promise<StockQuote> {
+    const params = new URLSearchParams({ symbol, currency });
+    const row = await handle<StockQuote>(
+      await fetch(`${API_URL}/api/market/stocks/quote?${params.toString()}`, { headers: headers() })
+    );
+    return {
+      ...row,
+      price: Number(row.price),
+      fxRatePln: Number(row.fxRatePln),
+      pricePln: Number(row.pricePln),
+      previousClose: row.previousClose == null ? null : Number(row.previousClose),
+      changePercent: row.changePercent == null ? null : Number(row.changePercent),
+    };
+  },
+
+  async refreshStockAssets(): Promise<Asset[]> {
+    const rows = await handle<any[]>(
+      await fetch(`${API_URL}/api/market/stocks/refresh`, {
         method: "POST",
         headers: headers(),
       })

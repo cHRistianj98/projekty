@@ -12,12 +12,13 @@ import type {
   RealEstateMarketSegment,
 } from "../../types/Asset";
 import { assetCategoryLabels, defaultAssetIconByCategory, getAssetCategory, getAssetIconKey } from "../../types/Asset";
-import { marketPriceApi, type CryptoQuote, type FxQuote, type MetalQuote, type RealEstateQuote } from "../../api/marketPriceApi";
+import { marketPriceApi, type CryptoQuote, type FxQuote, type MetalQuote, type RealEstateQuote, type StockQuote } from "../../api/marketPriceApi";
 import { AssetIcon, assetIconOptions } from "./assetIcons";
 import { RealEstateValuationPanel } from "./RealEstateValuationPanel";
 import { RetailBondValuationPanel, calculateRetailBondValuation } from "./RetailBondValuationPanel";
 import { CryptoPricingPanel, type CryptoSelection } from "./CryptoPricingPanel";
 import { FxCashPricingPanel } from "./FxCashPricingPanel";
+import { StockPricingPanel, type StockSelection } from "./StockPricingPanel";
 
 type EditAssetModalProps = {
   asset: Asset;
@@ -77,6 +78,32 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
   } : null);
   const [fxLoading, setFxLoading] = useState(false);
   const [fxError, setFxError] = useState("");
+
+  const [stockPriced, setStockPriced] = useState(Boolean(asset.stockPriced));
+  const [stockSelection, setStockSelection] = useState<StockSelection>({
+    name: asset.name || "Instrument",
+    symbol: asset.stockSymbol ?? "DNP",
+    currency: asset.stockCurrency ?? "PLN",
+  });
+  const [stockQuantity, setStockQuantity] = useState(String(asset.stockQuantity ?? ""));
+  const [stockAverageBuyPrice, setStockAverageBuyPrice] = useState(String(asset.stockAverageBuyPrice ?? ""));
+  const [stockBuyFxRatePln, setStockBuyFxRatePln] = useState(String(asset.stockBuyFxRatePln ?? ""));
+  const [stockQuote, setStockQuote] = useState<StockQuote | null>(asset.stockCurrentPrice != null && asset.stockCurrency ? {
+    symbol: asset.stockSymbol ?? "",
+    name: asset.name,
+    price: asset.stockCurrentPrice,
+    currency: asset.stockCurrency,
+    fxRatePln: asset.stockCurrentFxRatePln ?? 1,
+    pricePln: asset.stockCurrentPrice * (asset.stockCurrentFxRatePln ?? 1),
+    previousClose: null,
+    changePercent: asset.stockChangePercent ?? null,
+    marketDate: asset.stockMarketDate ?? null,
+    marketTime: asset.stockMarketTime ?? null,
+    fetchedAt: asset.stockUpdatedAt ?? new Date().toISOString(),
+    source: "Stooq",
+  } : null);
+  const [stockLoading, setStockLoading] = useState(false);
+  const [stockError, setStockError] = useState("");
 
   const [realEstateCity, setRealEstateCity] = useState(asset.realEstateCity ?? "");
   const [realEstateDistrict, setRealEstateDistrict] = useState(asset.realEstateDistrict ?? "");
@@ -159,6 +186,28 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
     return () => { cancelled = true; };
   }, [asset.systemCash, category, fxPriced, cashCurrency]);
 
+  useEffect(() => {
+    if (category !== "stocks" || !stockPriced || !stockSelection.symbol.trim()) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setStockLoading(true);
+      setStockError("");
+      marketPriceApi.getStockQuote(stockSelection.symbol.trim(), stockSelection.currency)
+        .then((row) => { if (!cancelled) setStockQuote(row); })
+        .catch((cause) => {
+          if (!cancelled) {
+            setStockQuote(null);
+            setStockError(cause instanceof Error ? cause.message : "Nie udało się pobrać notowania.");
+          }
+        })
+        .finally(() => { if (!cancelled) setStockLoading(false); });
+    }, 450);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [category, stockPriced, stockSelection.symbol, stockSelection.currency]);
+
   const bondValuation = useMemo(() => calculateRetailBondValuation(Number(bondPurchaseValue), Number(bondGrossValue)), [bondPurchaseValue, bondGrossValue]);
 
   const quote = quotes.find((row) => row.symbol === metalSymbol);
@@ -183,6 +232,23 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
     if (!Number.isFinite(quantity) || quantity <= 0) return null;
     return fxQuote.ratePln * quantity;
   }, [fxQuote, cashQuantity, asset.value]);
+
+  const stockEstimatedNetValue = useMemo(() => {
+    if (!stockQuote) return asset.value;
+    const quantity = Number(stockQuantity);
+    const averageBuy = Number(stockAverageBuyPrice);
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(averageBuy) || averageBuy <= 0) return null;
+    const enteredFx = Number(stockBuyFxRatePln);
+    const buyFx = stockSelection.currency === "PLN"
+      ? 1
+      : Number.isFinite(enteredFx) && enteredFx > 0
+        ? enteredFx
+        : stockQuote.fxRatePln;
+    const gross = stockQuote.price * quantity * stockQuote.fxRatePln;
+    const cost = averageBuy * quantity * buyFx;
+    const tax = Math.max(gross - cost, 0) * 0.19;
+    return gross - tax;
+  }, [stockQuote, stockQuantity, stockAverageBuyPrice, stockBuyFxRatePln, stockSelection.currency, asset.value]);
 
   async function refreshFxQuote() {
     setFxLoading(true);
@@ -211,6 +277,20 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
     }
   }
 
+  async function refreshStockQuote() {
+    if (!stockSelection.symbol.trim()) return;
+    setStockLoading(true);
+    setStockError("");
+    try {
+      setStockQuote(await marketPriceApi.getStockQuote(stockSelection.symbol.trim(), stockSelection.currency));
+    } catch (cause) {
+      setStockQuote(null);
+      setStockError(cause instanceof Error ? cause.message : "Nie udało się pobrać notowania.");
+    } finally {
+      setStockLoading(false);
+    }
+  }
+
   function handleCategoryChange(nextCategory: AssetCategory) {
     setCategory(nextCategory);
     if (!asset.iconKey || iconKey === defaultAssetIconByCategory[category]) {
@@ -231,6 +311,17 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
       setMetalUnit("TROY_OUNCE");
       setColor("#d4af37");
       setIconKey("goldBars");
+    } else if (nextCategory === "stocks" && category !== "stocks") {
+      setMarketPriced(false);
+      setFxPriced(false);
+      setStockPriced(true);
+      setStockSelection({ name: "Dino Polska", symbol: "DNP", currency: "PLN" });
+      setStockQuantity("");
+      setStockAverageBuyPrice("");
+      setStockBuyFxRatePln("");
+      setStockQuote(null);
+      setColor("#10b981");
+      setIconKey("chart");
     } else if (nextCategory === "crypto" && category !== "crypto") {
       setMarketPriced(true);
       setCryptoSelection({ id: "bitcoin", symbol: "BTC", name: "Bitcoin" });
@@ -249,8 +340,9 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
       setIconKey("scrollText");
       setBondPurchaseValue(asset.bondPurchaseValue != null ? String(asset.bondPurchaseValue) : String(asset.value));
       setBondGrossValue(asset.bondGrossValue != null ? String(asset.bondGrossValue) : String(asset.value));
-    } else if (nextCategory !== "metals" && nextCategory !== "crypto" && nextCategory !== "realEstate") {
+    } else if (nextCategory !== "metals" && nextCategory !== "crypto" && nextCategory !== "realEstate" && nextCategory !== "stocks") {
       setMarketPriced(false);
+      setStockPriced(false);
       if (nextCategory !== "cash") setFxPriced(false);
     }
   }
@@ -301,6 +393,7 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
     const liveMetal = category === "metals" && marketPriced;
     const liveCrypto = category === "crypto" && marketPriced;
     const liveFxCash = category === "cash" && fxPriced && !asset.systemCash;
+    const liveStock = category === "stocks" && stockPriced;
     const liveRealEstate = category === "realEstate" && marketPriced;
     const retailBond = category === "bonds";
     const purchaseValue = Number(bondPurchaseValue);
@@ -313,12 +406,17 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
           ? (cryptoEstimatedValue ?? asset.value)
         : liveFxCash
           ? (fxEstimatedValue ?? asset.value)
+        : liveStock
+          ? (stockEstimatedNetValue ?? asset.value)
         : liveRealEstate
           ? (realEstateQuote?.estimatedValue ?? asset.value)
           : Number(value);
     const quantity = Number(metalQuantity);
     const cryptoAmount = Number(cryptoQuantity);
     const cashAmount = Number(cashQuantity);
+    const stockAmount = Number(stockQuantity);
+    const stockAvgPrice = Number(stockAverageBuyPrice);
+    const stockBuyFx = Number(stockBuyFxRatePln);
     const area = Number(realEstateAreaSqm);
     if (name.trim() === "" || numericValue < 0 || !Number.isFinite(numericValue)) return;
     if (retailBond && (bondPurchaseValue.trim() === "" || bondGrossValue.trim() === "" || !Number.isFinite(purchaseValue) || purchaseValue <= 0 || !Number.isFinite(grossValue) || grossValue < 0)) {
@@ -335,6 +433,10 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
     }
     if (liveFxCash && (!Number.isFinite(cashAmount) || cashAmount <= 0)) {
       setError("Wybierz walutę i podaj poprawną ilość.");
+      return;
+    }
+    if (liveStock && (!stockSelection.symbol.trim() || !Number.isFinite(stockAmount) || stockAmount <= 0 || !Number.isFinite(stockAvgPrice) || stockAvgPrice <= 0)) {
+      setError("Podaj symbol, ilość i średnią cenę zakupu akcji/ETF.");
       return;
     }
     if (liveRealEstate && (!realEstateCity.trim() || !Number.isFinite(area) || area <= 0)) {
@@ -386,6 +488,20 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
         } : {
           cashCurrency: undefined,
           cashQuantity: undefined,
+        }),
+        stockPriced: liveStock,
+        ...(liveStock ? {
+          stockSymbol: stockSelection.symbol.trim().toUpperCase(),
+          stockCurrency: stockSelection.currency,
+          stockQuantity: stockAmount,
+          stockAverageBuyPrice: stockAvgPrice,
+          stockBuyFxRatePln: Number.isFinite(stockBuyFx) && stockBuyFx > 0 ? stockBuyFx : undefined,
+        } : {
+          stockSymbol: undefined,
+          stockCurrency: undefined,
+          stockQuantity: undefined,
+          stockAverageBuyPrice: undefined,
+          stockBuyFxRatePln: undefined,
         }),
         ...(liveRealEstate ? {
           realEstateType: "APARTMENT" as const,
@@ -441,6 +557,8 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
             <Field label="Nazwa aktywa"><input autoFocus value={name} onChange={(e) => setName(e.target.value)} className={inputClass} /></Field>
             {category === "cash" && fxPriced && !asset.systemCash ? (
               <Field label="Wartość w PLN"><div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[.07] px-4 py-3.5"><div className="text-lg font-black text-white">{fxEstimatedValue == null ? "—" : `${fxEstimatedValue.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł`}</div><div className="mt-1 text-[11px] font-semibold text-slate-500">{cashCurrency} × średni kurs NBP</div></div></Field>
+            ) : category === "stocks" && stockPriced ? (
+              <Field label="Wartość netto po szacowanym podatku"><div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[.07] px-4 py-3.5"><div className="text-lg font-black text-white">{stockEstimatedNetValue == null ? "—" : `${stockEstimatedNetValue.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} zł`}</div><div className="mt-1 text-[11px] font-semibold text-slate-500">{stockSelection.symbol || "ticker"} × live Stooq · zysk pomniejszony o est. 19%</div></div></Field>
             ) : category === "metals" && marketPriced ? (
               <Field label="Wartość rynkowa"><div className="rounded-xl border border-amber-500/20 bg-amber-500/8 px-4 py-3.5"><div className="text-lg font-black text-white">{estimatedValue == null ? "—" : `${Math.round(estimatedValue).toLocaleString("pl-PL")} zł`}</div><div className="mt-1 text-[11px] font-semibold text-slate-500">sterowana automatycznie przez cenę spot</div></div></Field>
             ) : category === "crypto" && marketPriced ? (
@@ -495,6 +613,29 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
                 </div>
               </>}
             </div>
+          )}
+
+          {category === "stocks" && (
+            <StockPricingPanel
+              enabled={stockPriced}
+              onEnabledChange={(enabled) => { setStockPriced(enabled); if (!enabled) setStockQuote(null); }}
+              selection={stockSelection}
+              onSelectionChange={(next) => {
+                setStockSelection(next);
+                setStockQuote(null);
+                if (!name.trim() || name === stockSelection.name || name === asset.name) setName(next.name);
+              }}
+              quantity={stockQuantity}
+              onQuantityChange={setStockQuantity}
+              averageBuyPrice={stockAverageBuyPrice}
+              onAverageBuyPriceChange={setStockAverageBuyPrice}
+              buyFxRatePln={stockBuyFxRatePln}
+              onBuyFxRatePlnChange={setStockBuyFxRatePln}
+              quote={stockQuote}
+              loading={stockLoading}
+              error={stockError}
+              onRefresh={() => void refreshStockQuote()}
+            />
           )}
 
           {category === "crypto" && (
@@ -553,6 +694,8 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
           <div className="relative overflow-hidden rounded-2xl border p-4" style={{ borderColor: `${color}38`, background: `linear-gradient(90deg, ${color}18, rgba(15,23,42,.7) 45%, rgba(15,23,42,.5))` }}>
             <div className="flex items-center justify-between gap-4"><div className="flex min-w-0 items-center gap-3"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1 ring-white/10" style={{ color, backgroundColor: `${color}22`, boxShadow: `0 8px 25px ${color}20` }}><AssetIcon iconKey={iconKey} size={23} /></div><div className="min-w-0"><div className="truncate font-black text-white">{name || "Aktywo"}</div><div className="mt-1 text-xs font-medium" style={{ color }}>{assetCategoryLabels[category]}</div></div></div><div className="shrink-0 text-lg font-black text-white">{Math.round(category === "cash" && fxPriced && !asset.systemCash
               ? (fxEstimatedValue ?? asset.value)
+              : category === "stocks" && stockPriced
+                ? (stockEstimatedNetValue ?? asset.value)
               : category === "metals" && marketPriced
               ? (estimatedValue ?? asset.value)
               : category === "crypto" && marketPriced
