@@ -1,6 +1,6 @@
 import { authApi } from "./authApi";
 import { fromBackendAsset } from "./assetApi";
-import type { Asset, MetalSymbol, RealEstateMarketSegment, RealEstateValuationMode } from "../types/Asset";
+import type { Asset, CashCurrency, MetalSymbol, RealEstateMarketSegment, RealEstateValuationMode } from "../types/Asset";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 
@@ -14,6 +14,16 @@ export type MetalQuote = {
   fxDate: string;
 };
 
+
+export type FxQuote = {
+  currency: CashCurrency;
+  currencyName: string;
+  ratePln: number;
+  effectiveDate: string;
+  tableNo: string;
+  fetchedAt: string;
+  source: string;
+};
 
 export type CryptoQuote = {
   coinId: string;
@@ -91,6 +101,31 @@ export const marketPriceApi = {
   async refreshMetalAssets(): Promise<Asset[]> {
     const rows = await handle<any[]>(
       await fetch(`${API_URL}/api/market/metals/refresh`, {
+        method: "POST",
+        headers: headers(),
+      })
+    );
+    return rows.map(fromBackendAsset);
+  },
+
+  async getFxQuote(currency: CashCurrency): Promise<FxQuote> {
+    const params = new URLSearchParams({ currency });
+    const row = await handle<FxQuote>(
+      await fetch(`${API_URL}/api/market/fx/quote?${params.toString()}`, { headers: headers() })
+    );
+    return { ...row, ratePln: Number(row.ratePln) };
+  },
+
+  async getFxQuotes(): Promise<FxQuote[]> {
+    const rows = await handle<FxQuote[]>(
+      await fetch(`${API_URL}/api/market/fx/quotes`, { headers: headers() })
+    );
+    return rows.map((row) => ({ ...row, ratePln: Number(row.ratePln) }));
+  },
+
+  async refreshFxAssets(): Promise<Asset[]> {
+    const rows = await handle<any[]>(
+      await fetch(`${API_URL}/api/market/fx/refresh`, {
         method: "POST",
         headers: headers(),
       })

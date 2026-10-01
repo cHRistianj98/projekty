@@ -7,6 +7,8 @@ import com.freedom.freedom_backend.market.RealEstatePricingService;
 import com.freedom.freedom_backend.market.RealEstateQuoteResponse;
 import com.freedom.freedom_backend.market.CryptoPricingService;
 import com.freedom.freedom_backend.market.CryptoQuoteResponse;
+import com.freedom.freedom_backend.market.FxPricingService;
+import com.freedom.freedom_backend.market.FxQuoteResponse;
 import com.freedom.freedom_backend.user.User;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -31,6 +33,7 @@ public class AssetService {
     private final MetalPricingService metalPricing;
     private final RealEstatePricingService realEstatePricing;
     private final CryptoPricingService cryptoPricing;
+    private final FxPricingService fxPricing;
     private final RetailBondValuationService retailBondValuation;
 
     public AssetService(
@@ -40,6 +43,7 @@ public class AssetService {
             MetalPricingService metalPricing,
             RealEstatePricingService realEstatePricing,
             CryptoPricingService cryptoPricing,
+            FxPricingService fxPricing,
             RetailBondValuationService retailBondValuation
     ) {
         this.repo = repo;
@@ -48,6 +52,7 @@ public class AssetService {
         this.metalPricing = metalPricing;
         this.realEstatePricing = realEstatePricing;
         this.cryptoPricing = cryptoPricing;
+        this.fxPricing = fxPricing;
         this.retailBondValuation = retailBondValuation;
     }
 
@@ -154,6 +159,19 @@ public class AssetService {
 
     private PricingSetup pricingSetup(AssetRequest request, AssetCategory category) {
         if (category == AssetCategory.BONDS) return PricingSetup.manual();
+
+        if (category == AssetCategory.CASH && Boolean.TRUE.equals(request.fxPriced())) {
+            if (request.cashCurrency() == null || request.cashCurrency() == CashCurrency.PLN) {
+                throw new IllegalArgumentException("Wybierz walutę obcą: EUR, CHF, USD albo CZK.");
+            }
+            if (request.cashQuantity() == null || request.cashQuantity().signum() <= 0) {
+                throw new IllegalArgumentException("Ilość waluty musi być większa od zera.");
+            }
+            FxQuoteResponse quote = fxPricing.quote(request.cashCurrency());
+            BigDecimal value = fxPricing.valuePln(quote, request.cashQuantity());
+            return PricingSetup.fx(request.cashCurrency(), request.cashQuantity(), quote, value);
+        }
+
         boolean enabled = Boolean.TRUE.equals(request.marketPriced());
         if (!enabled) return PricingSetup.manual();
 
@@ -225,7 +243,7 @@ public class AssetService {
             return PricingSetup.realEstate(type, quote);
         }
 
-        throw new IllegalArgumentException("Automatyczna wycena jest dostępna dla krypto, metali szlachetnych i mieszkań.");
+        throw new IllegalArgumentException("Automatyczna wycena jest dostępna dla walut obcych, krypto, metali szlachetnych i mieszkań.");
     }
 
     private RetailBondValuationService.BondValuation bondValuation(AssetRequest request, AssetCategory category) {
@@ -284,6 +302,22 @@ public class AssetService {
             return;
         }
 
+        if (pricing.kind() == PricingKind.FX) {
+            asset.clearCryptoPricing();
+            asset.configureMarketPricing(false, null, null, null, null, null, null);
+            asset.configureRealEstatePricing(
+                    false, null, null, null, null,
+                    null, null, null, null, null
+            );
+            asset.configureFxPricing(
+                    true,
+                    pricing.cashCurrency(),
+                    pricing.cashQuantity(),
+                    pricing.fxQuote()
+            );
+            return;
+        }
+
         if (pricing.kind() == PricingKind.REAL_ESTATE) {
             asset.clearCryptoPricing();
             asset.configureMarketPricing(false, null, null, null, null, null, null);
@@ -307,6 +341,7 @@ public class AssetService {
         }
 
         asset.clearCryptoPricing();
+        asset.clearFxPricing();
         asset.configureMarketPricing(false, null, null, null, null, null, null);
         asset.configureRealEstatePricing(
                 false, null, null, null, null,
@@ -350,7 +385,7 @@ public class AssetService {
         };
     }
 
-    private enum PricingKind { MANUAL, METAL, CRYPTO, REAL_ESTATE }
+    private enum PricingKind { MANUAL, METAL, CRYPTO, FX, REAL_ESTATE }
 
     private record PricingSetup(
             PricingKind kind,
@@ -362,12 +397,21 @@ public class AssetService {
             String cryptoSymbol,
             BigDecimal cryptoQuantity,
             CryptoQuoteResponse cryptoQuote,
+            CashCurrency cashCurrency,
+            BigDecimal cashQuantity,
+            FxQuoteResponse fxQuote,
             RealEstateType realEstateType,
             RealEstateQuoteResponse realEstateQuote,
             BigDecimal value
     ) {
         private static PricingSetup manual() {
-            return new PricingSetup(PricingKind.MANUAL, null, null, null, null, null, null, null, null, null, null, null);
+            return new PricingSetup(
+                    PricingKind.MANUAL,
+                    null, null, null, null,
+                    null, null, null, null,
+                    null, null, null,
+                    null, null, null
+            );
         }
 
         private static PricingSetup metal(
@@ -377,7 +421,13 @@ public class AssetService {
                 MetalQuoteResponse quote,
                 BigDecimal value
         ) {
-            return new PricingSetup(PricingKind.METAL, symbol, quantity, unit, quote, null, null, null, null, null, null, value);
+            return new PricingSetup(
+                    PricingKind.METAL,
+                    symbol, quantity, unit, quote,
+                    null, null, null, null,
+                    null, null, null,
+                    null, null, value
+            );
         }
 
         private static PricingSetup crypto(
@@ -387,11 +437,38 @@ public class AssetService {
                 CryptoQuoteResponse quote,
                 BigDecimal value
         ) {
-            return new PricingSetup(PricingKind.CRYPTO, null, null, null, null, coinId, symbol, quantity, quote, null, null, value);
+            return new PricingSetup(
+                    PricingKind.CRYPTO,
+                    null, null, null, null,
+                    coinId, symbol, quantity, quote,
+                    null, null, null,
+                    null, null, value
+            );
+        }
+
+        private static PricingSetup fx(
+                CashCurrency currency,
+                BigDecimal quantity,
+                FxQuoteResponse quote,
+                BigDecimal value
+        ) {
+            return new PricingSetup(
+                    PricingKind.FX,
+                    null, null, null, null,
+                    null, null, null, null,
+                    currency, quantity, quote,
+                    null, null, value
+            );
         }
 
         private static PricingSetup realEstate(RealEstateType type, RealEstateQuoteResponse quote) {
-            return new PricingSetup(PricingKind.REAL_ESTATE, null, null, null, null, null, null, null, null, type, quote, quote.estimatedValue());
+            return new PricingSetup(
+                    PricingKind.REAL_ESTATE,
+                    null, null, null, null,
+                    null, null, null, null,
+                    null, null, null,
+                    type, quote, quote.estimatedValue()
+            );
         }
 
         private boolean enabled() { return kind != PricingKind.MANUAL; }

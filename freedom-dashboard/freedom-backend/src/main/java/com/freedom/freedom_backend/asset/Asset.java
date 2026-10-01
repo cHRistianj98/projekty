@@ -3,6 +3,7 @@ package com.freedom.freedom_backend.asset;
 import com.freedom.freedom_backend.user.User;
 import com.freedom.freedom_backend.market.RealEstateQuoteResponse;
 import com.freedom.freedom_backend.market.CryptoQuoteResponse;
+import com.freedom.freedom_backend.market.FxQuoteResponse;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
@@ -85,6 +86,25 @@ public class Asset {
 
     @Column(name = "crypto_updated_at")
     private Instant cryptoUpdatedAt;
+
+    @Column(name = "fx_priced", nullable = false)
+    private boolean fxPriced = false;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cash_currency")
+    private CashCurrency cashCurrency;
+
+    @Column(name = "cash_quantity", precision = 38, scale = 12)
+    private BigDecimal cashQuantity;
+
+    @Column(name = "fx_rate_pln", precision = 19, scale = 8)
+    private BigDecimal fxRatePln;
+
+    @Column(name = "fx_effective_date")
+    private LocalDate fxEffectiveDate;
+
+    @Column(name = "fx_updated_at")
+    private Instant fxUpdatedAt;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "real_estate_type")
@@ -225,7 +245,10 @@ public class Asset {
         this.marketPriceUsd = marketPriced ? marketPriceUsd : null;
         this.usdPlnRate = marketPriced ? usdPlnRate : null;
         this.marketUpdatedAt = marketPriced ? marketUpdatedAt : null;
-        if (marketPriced) clearCryptoPricing();
+        if (marketPriced) {
+            clearCryptoPricing();
+            clearFxPricing();
+        }
     }
 
     public void applyMarketValuation(
@@ -253,6 +276,7 @@ public class Asset {
         }
 
         this.marketPriced = true;
+        clearFxPricing();
         this.cryptoCoinId = coinId;
         this.cryptoSymbol = symbol;
         this.cryptoQuantity = quantity;
@@ -284,6 +308,45 @@ public class Asset {
         this.cryptoUpdatedAt = null;
     }
 
+    public void configureFxPricing(
+            boolean enabled,
+            CashCurrency currency,
+            BigDecimal quantity,
+            FxQuoteResponse quote
+    ) {
+        if (!enabled) {
+            clearFxPricing();
+            return;
+        }
+
+        this.fxPriced = true;
+        this.marketPriced = false;
+        this.cashCurrency = currency;
+        this.cashQuantity = quantity;
+
+        if (quote != null) {
+            this.fxRatePln = quote.ratePln();
+            this.fxEffectiveDate = quote.effectiveDate();
+            this.fxUpdatedAt = quote.fetchedAt();
+        }
+    }
+
+    public void applyFxValuation(BigDecimal value, FxQuoteResponse quote) {
+        this.value = value;
+        this.fxRatePln = quote.ratePln();
+        this.fxEffectiveDate = quote.effectiveDate();
+        this.fxUpdatedAt = quote.fetchedAt();
+    }
+
+    public void clearFxPricing() {
+        this.fxPriced = false;
+        this.cashCurrency = null;
+        this.cashQuantity = null;
+        this.fxRatePln = null;
+        this.fxEffectiveDate = null;
+        this.fxUpdatedAt = null;
+    }
+
     public void configureRealEstatePricing(
             boolean enabled,
             RealEstateType type,
@@ -300,6 +363,7 @@ public class Asset {
 
         if (enabled) {
             clearCryptoPricing();
+            clearFxPricing();
             this.metalSymbol = null;
             this.metalQuantity = null;
             this.metalUnit = null;
@@ -444,6 +508,13 @@ public class Asset {
     public BigDecimal getCryptoPriceUsd() { return cryptoPriceUsd; }
     public BigDecimal getCryptoChange24h() { return cryptoChange24h; }
     public Instant getCryptoUpdatedAt() { return cryptoUpdatedAt; }
+
+    public boolean isFxPriced() { return fxPriced; }
+    public CashCurrency getCashCurrency() { return cashCurrency; }
+    public BigDecimal getCashQuantity() { return cashQuantity; }
+    public BigDecimal getFxRatePln() { return fxRatePln; }
+    public LocalDate getFxEffectiveDate() { return fxEffectiveDate; }
+    public Instant getFxUpdatedAt() { return fxUpdatedAt; }
 
     public BigDecimal getBondPurchaseValue() { return bondPurchaseValue; }
     public BigDecimal getBondGrossValue() { return bondGrossValue; }

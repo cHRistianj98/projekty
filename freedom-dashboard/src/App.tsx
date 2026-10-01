@@ -184,6 +184,31 @@ function App() {
 
     let cancelled = false;
 
+    async function refreshFxCashPrices() {
+      try {
+        const loadedAssets = await marketPriceApi.refreshFxAssets();
+        if (!cancelled) setPortfolio(loadedAssets);
+      } catch (error) {
+        console.warn("Nie udało się odświeżyć kursów walut NBP; zostawiam ostatnie zapisane wartości:", error);
+      }
+    }
+
+    void refreshFxCashPrices();
+    const timer = window.setInterval(() => {
+      void refreshFxCashPrices();
+    }, 60 * 60 * 1000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let cancelled = false;
+
     async function refreshRealEstatePrices() {
       try {
         const loadedAssets = await marketPriceApi.refreshRealEstateAssets();

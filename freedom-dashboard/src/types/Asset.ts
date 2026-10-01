@@ -32,6 +32,7 @@ export type AssetIconKey =
 
 export type MetalSymbol = "XAU" | "XAG";
 export type MetalUnit = "TROY_OUNCE" | "GRAM";
+export type CashCurrency = "PLN" | "EUR" | "CHF" | "USD" | "CZK";
 export type RealEstateType = "APARTMENT";
 export type RealEstateValuationMode = "MARKET_MEDIAN" | "MARKET_ANCHORED";
 export type RealEstateMarketSegment = "ALL" | "PRIMARY" | "SECONDARY";
@@ -63,6 +64,13 @@ export type Asset = {
   cryptoPriceUsd?: number;
   cryptoChange24h?: number;
   cryptoUpdatedAt?: string;
+
+  fxPriced?: boolean;
+  cashCurrency?: CashCurrency;
+  cashQuantity?: number;
+  fxRatePln?: number;
+  fxEffectiveDate?: string;
+  fxUpdatedAt?: string;
 
   realEstateType?: RealEstateType;
   realEstateCity?: string;

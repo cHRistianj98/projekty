@@ -4,6 +4,7 @@ import type {
   AssetIconKey,
   MetalSymbol,
   MetalUnit,
+  CashCurrency,
   RealEstateType,
   RealEstateValuationMode,
   RealEstateMarketSegment,
@@ -46,6 +47,12 @@ type BackendAsset = {
   cryptoPriceUsd?: number | null;
   cryptoChange24h?: number | null;
   cryptoUpdatedAt?: string | null;
+  fxPriced?: boolean;
+  cashCurrency?: CashCurrency | null;
+  cashQuantity?: number | null;
+  fxRatePln?: number | null;
+  fxEffectiveDate?: string | null;
+  fxUpdatedAt?: string | null;
   realEstateType?: RealEstateType | null;
   realEstateCity?: string | null;
   realEstateDistrict?: string | null;
@@ -144,6 +151,12 @@ export function fromBackendAsset(row: BackendAsset): Asset {
     ...(row.cryptoPriceUsd != null ? { cryptoPriceUsd: Number(row.cryptoPriceUsd) } : {}),
     ...(row.cryptoChange24h != null ? { cryptoChange24h: Number(row.cryptoChange24h) } : {}),
     ...(row.cryptoUpdatedAt ? { cryptoUpdatedAt: row.cryptoUpdatedAt } : {}),
+    fxPriced: Boolean(row.fxPriced),
+    ...(row.cashCurrency ? { cashCurrency: row.cashCurrency } : {}),
+    ...(row.cashQuantity != null ? { cashQuantity: Number(row.cashQuantity) } : {}),
+    ...(row.fxRatePln != null ? { fxRatePln: Number(row.fxRatePln) } : {}),
+    ...(row.fxEffectiveDate ? { fxEffectiveDate: row.fxEffectiveDate } : {}),
+    ...(row.fxUpdatedAt ? { fxUpdatedAt: row.fxUpdatedAt } : {}),
     ...(row.realEstateType ? { realEstateType: row.realEstateType } : {}),
     ...(row.realEstateCity ? { realEstateCity: row.realEstateCity } : {}),
     ...(row.realEstateDistrict ? { realEstateDistrict: row.realEstateDistrict } : {}),
@@ -178,6 +191,7 @@ export function fromBackendAsset(row: BackendAsset): Asset {
 function body(asset: Asset) {
   const liveMetal = asset.category === "metals" && Boolean(asset.marketPriced);
   const liveCrypto = asset.category === "crypto" && Boolean(asset.marketPriced);
+  const liveFxCash = asset.category === "cash" && Boolean(asset.fxPriced) && !asset.systemCash;
   const liveApartment = asset.category === "realEstate" && Boolean(asset.marketPriced);
   const retailBond = asset.category === "bonds";
   return {
@@ -194,6 +208,9 @@ function body(asset: Asset) {
     cryptoCoinId: liveCrypto ? asset.cryptoCoinId ?? null : null,
     cryptoSymbol: liveCrypto ? asset.cryptoSymbol ?? null : null,
     cryptoQuantity: liveCrypto ? asset.cryptoQuantity ?? null : null,
+    fxPriced: liveFxCash,
+    cashCurrency: liveFxCash ? asset.cashCurrency ?? null : null,
+    cashQuantity: liveFxCash ? asset.cashQuantity ?? null : null,
     realEstateType: liveApartment ? asset.realEstateType ?? "APARTMENT" : null,
     realEstateCity: liveApartment ? asset.realEstateCity ?? null : null,
     realEstateDistrict: liveApartment ? asset.realEstateDistrict ?? null : null,

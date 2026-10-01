@@ -5,6 +5,7 @@ import type {
   Asset,
   AssetCategory,
   AssetIconKey,
+  CashCurrency,
   MetalSymbol,
   MetalUnit,
   RealEstateValuationMode,
@@ -14,11 +15,12 @@ import {
   assetCategoryLabels,
   defaultAssetIconByCategory,
 } from "../../types/Asset";
-import { marketPriceApi, type CryptoQuote, type MetalQuote, type RealEstateQuote } from "../../api/marketPriceApi";
+import { marketPriceApi, type CryptoQuote, type FxQuote, type MetalQuote, type RealEstateQuote } from "../../api/marketPriceApi";
 import { AssetIcon, assetIconOptions } from "./assetIcons";
 import { RealEstateValuationPanel } from "./RealEstateValuationPanel";
 import { RetailBondValuationPanel, calculateRetailBondValuation } from "./RetailBondValuationPanel";
 import { CryptoPricingPanel, type CryptoSelection } from "./CryptoPricingPanel";
+import { FxCashPricingPanel } from "./FxCashPricingPanel";
 
 type AddAssetModalProps = {
   onClose: () => void;
@@ -54,6 +56,13 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
   const [cryptoQuote, setCryptoQuote] = useState<CryptoQuote | null>(null);
   const [cryptoLoading, setCryptoLoading] = useState(false);
   const [cryptoError, setCryptoError] = useState("");
+
+  const [fxPriced, setFxPriced] = useState(false);
+  const [cashCurrency, setCashCurrency] = useState<Exclude<CashCurrency, "PLN">>("EUR");
+  const [cashQuantity, setCashQuantity] = useState("");
+  const [fxQuote, setFxQuote] = useState<FxQuote | null>(null);
+  const [fxLoading, setFxLoading] = useState(false);
+  const [fxError, setFxError] = useState("");
 
   const [realEstateCity, setRealEstateCity] = useState("");
   const [realEstateDistrict, setRealEstateDistrict] = useState("");
@@ -96,6 +105,18 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
     return () => { cancelled = true; };
   }, [category, marketPriced, cryptoSelection.id, cryptoSelection.symbol, cryptoSelection.name]);
 
+  useEffect(() => {
+    if (category !== "cash" || !fxPriced) return;
+    let cancelled = false;
+    setFxLoading(true);
+    setFxError("");
+    marketPriceApi.getFxQuote(cashCurrency)
+      .then((row) => { if (!cancelled) setFxQuote(row); })
+      .catch((cause) => { if (!cancelled) { setFxQuote(null); setFxError(cause instanceof Error ? cause.message : "Nie udało się pobrać kursu waluty."); } })
+      .finally(() => { if (!cancelled) setFxLoading(false); });
+    return () => { cancelled = true; };
+  }, [category, fxPriced, cashCurrency]);
+
   const quote = quotes.find((row) => row.symbol === metalSymbol);
   const bondValuation = useMemo(() => calculateRetailBondValuation(Number(bondPurchaseValue), Number(bondGrossValue)), [bondPurchaseValue, bondGrossValue]);
 
@@ -114,6 +135,26 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
     return cryptoQuote.pricePln * quantity;
   }, [cryptoQuote, cryptoQuantity]);
 
+  const fxEstimatedValue = useMemo(() => {
+    if (!fxQuote) return null;
+    const quantity = Number(cashQuantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) return null;
+    return fxQuote.ratePln * quantity;
+  }, [fxQuote, cashQuantity]);
+
+  async function refreshFxQuote() {
+    setFxLoading(true);
+    setFxError("");
+    try {
+      setFxQuote(await marketPriceApi.getFxQuote(cashCurrency));
+    } catch (cause) {
+      setFxQuote(null);
+      setFxError(cause instanceof Error ? cause.message : "Nie udało się pobrać kursu waluty.");
+    } finally {
+      setFxLoading(false);
+    }
+  }
+
   async function refreshCryptoQuote() {
     if (!cryptoSelection.id) return;
     setCryptoLoading(true);
@@ -131,7 +172,15 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
   function handleCategoryChange(nextCategory: AssetCategory) {
     setCategory(nextCategory);
     setIconKey(defaultAssetIconByCategory[nextCategory]);
-    if (nextCategory === "metals") {
+    if (nextCategory === "cash") {
+      setMarketPriced(false);
+      setFxPriced(false);
+      setCashCurrency("EUR");
+      setCashQuantity("");
+      setFxQuote(null);
+      setColor("#3b82f6");
+      setIconKey("landmark");
+    } else if (nextCategory === "metals") {
       setMarketPriced(true);
       setMetalSymbol("XAU");
       setMetalQuantity("1");
@@ -157,6 +206,7 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
       if (!name.trim()) setName("Obligacje detaliczne");
     } else {
       setMarketPriced(false);
+      setFxPriced(false);
     }
   }
 
@@ -205,6 +255,7 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
     event.preventDefault();
     const liveMetal = category === "metals" && marketPriced;
     const liveCrypto = category === "crypto" && marketPriced;
+    const liveFxCash = category === "cash" && fxPriced;
     const liveRealEstate = category === "realEstate" && marketPriced;
     const retailBond = category === "bonds";
     const purchaseValue = Number(bondPurchaseValue);
@@ -215,11 +266,14 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
         ? (estimatedValue ?? 0)
         : liveCrypto
           ? (cryptoEstimatedValue ?? 0)
+        : liveFxCash
+          ? (fxEstimatedValue ?? 0)
         : liveRealEstate
           ? (realEstateQuote?.estimatedValue ?? 0)
           : Number(value);
     const quantity = Number(metalQuantity);
     const cryptoAmount = Number(cryptoQuantity);
+    const cashAmount = Number(cashQuantity);
     const area = Number(realEstateAreaSqm);
 
     if (name.trim() === "" || numericValue < 0 || !Number.isFinite(numericValue)) return;
@@ -233,6 +287,10 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
     }
     if (liveCrypto && (!cryptoSelection.id || !Number.isFinite(cryptoAmount) || cryptoAmount <= 0)) {
       setError("Wybierz kryptowalutę i podaj poprawną ilość.");
+      return;
+    }
+    if (liveFxCash && (!Number.isFinite(cashAmount) || cashAmount <= 0)) {
+      setError("Wybierz walutę i podaj poprawną ilość.");
       return;
     }
     if (liveRealEstate && (!realEstateCity.trim() || !Number.isFinite(area) || area <= 0)) {
@@ -261,6 +319,7 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
         category,
         iconKey,
         marketPriced: liveMetal || liveCrypto || liveRealEstate,
+        fxPriced: liveFxCash,
         ...(retailBond ? { bondPurchaseValue: purchaseValue, bondGrossValue: grossValue } : {}),
         ...(liveMetal ? {
           metalSymbol,
@@ -271,6 +330,10 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
           cryptoCoinId: cryptoSelection.id,
           cryptoSymbol: cryptoSelection.symbol,
           cryptoQuantity: cryptoAmount,
+        } : {}),
+        ...(liveFxCash ? {
+          cashCurrency,
+          cashQuantity: cashAmount,
         } : {}),
         ...(liveRealEstate ? {
           realEstateType: "APARTMENT" as const,
@@ -325,7 +388,14 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
             <Field label="Nazwa aktywa">
               <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={category === "metals" ? "np. Uncja złota" : category === "crypto" ? "np. Bitcoin" : category === "bonds" ? "np. EDO 10-letnie" : "np. S&P 500 ETF"} className={inputClass} />
             </Field>
-            {category === "metals" && marketPriced ? (
+            {category === "cash" && fxPriced ? (
+              <Field label="Wartość w PLN">
+                <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[.07] px-4 py-3.5">
+                  <div className="text-lg font-black text-white">{fxEstimatedValue == null ? "—" : `${fxEstimatedValue.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł`}</div>
+                  <div className="mt-1 text-[11px] font-semibold text-slate-500">{cashCurrency} × średni kurs NBP</div>
+                </div>
+              </Field>
+            ) : category === "metals" && marketPriced ? (
               <Field label="Wartość rynkowa">
                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/8 px-4 py-3.5">
                   <div className="text-lg font-black text-white">{estimatedValue == null ? "—" : `${Math.round(estimatedValue).toLocaleString("pl-PL")} zł`}</div>
@@ -372,6 +442,21 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
               ))}
             </div>
           </Field>
+
+          {category === "cash" && (
+            <FxCashPricingPanel
+              enabled={fxPriced}
+              onToggle={() => setFxPriced((current) => !current)}
+              currency={cashCurrency}
+              onCurrencyChange={(next) => { setCashCurrency(next); setFxQuote(null); }}
+              quantity={cashQuantity}
+              onQuantityChange={setCashQuantity}
+              quote={fxQuote}
+              loading={fxLoading}
+              error={fxError}
+              onRefresh={refreshFxQuote}
+            />
+          )}
 
           {category === "metals" && (
             <div className="space-y-4 rounded-2xl border border-amber-500/15 bg-gradient-to-br from-amber-500/[.07] to-slate-950/30 p-4">
@@ -498,7 +583,9 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1 ring-white/10" style={{ color, backgroundColor: `${color}22`, boxShadow: `0 8px 25px ${color}20` }}><AssetIcon iconKey={iconKey} size={23} /></div>
                 <div className="min-w-0"><div className="truncate font-black text-white">{name || "Nowe aktywo"}</div><div className="mt-1 text-xs font-medium" style={{ color }}>{assetCategoryLabels[category]}</div></div>
               </div>
-              <div className="shrink-0 text-lg font-black text-white">{Math.round(category === "metals" && marketPriced
+              <div className="shrink-0 text-lg font-black text-white">{Math.round(category === "cash" && fxPriced
+              ? (fxEstimatedValue ?? 0)
+              : category === "metals" && marketPriced
                 ? (estimatedValue ?? 0)
                 : category === "crypto" && marketPriced
                   ? (cryptoEstimatedValue ?? 0)
