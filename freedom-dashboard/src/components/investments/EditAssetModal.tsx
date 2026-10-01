@@ -11,10 +11,11 @@ import type {
   RealEstateMarketSegment,
 } from "../../types/Asset";
 import { assetCategoryLabels, defaultAssetIconByCategory, getAssetCategory, getAssetIconKey } from "../../types/Asset";
-import { marketPriceApi, type MetalQuote, type RealEstateQuote } from "../../api/marketPriceApi";
+import { marketPriceApi, type CryptoQuote, type MetalQuote, type RealEstateQuote } from "../../api/marketPriceApi";
 import { AssetIcon, assetIconOptions } from "./assetIcons";
 import { RealEstateValuationPanel } from "./RealEstateValuationPanel";
 import { RetailBondValuationPanel, calculateRetailBondValuation } from "./RetailBondValuationPanel";
+import { CryptoPricingPanel, type CryptoSelection } from "./CryptoPricingPanel";
 
 type EditAssetModalProps = {
   asset: Asset;
@@ -40,6 +41,25 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
   const [quotes, setQuotes] = useState<MetalQuote[]>([]);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState("");
+
+  const [cryptoSelection, setCryptoSelection] = useState<CryptoSelection>({
+    id: asset.cryptoCoinId ?? "bitcoin",
+    symbol: asset.cryptoSymbol ?? "BTC",
+    name: asset.name || "Bitcoin",
+  });
+  const [cryptoQuantity, setCryptoQuantity] = useState(String(asset.cryptoQuantity ?? ""));
+  const [cryptoQuote, setCryptoQuote] = useState<CryptoQuote | null>(asset.cryptoPricePln != null ? {
+    coinId: asset.cryptoCoinId ?? "bitcoin",
+    symbol: asset.cryptoSymbol ?? "BTC",
+    name: asset.name,
+    pricePln: asset.cryptoPricePln,
+    priceUsd: asset.cryptoPriceUsd ?? null,
+    change24h: asset.cryptoChange24h ?? null,
+    updatedAt: asset.cryptoUpdatedAt ?? new Date().toISOString(),
+    source: "CoinGecko",
+  } : null);
+  const [cryptoLoading, setCryptoLoading] = useState(false);
+  const [cryptoError, setCryptoError] = useState("");
 
   const [realEstateCity, setRealEstateCity] = useState(asset.realEstateCity ?? "");
   const [realEstateDistrict, setRealEstateDistrict] = useState(asset.realEstateDistrict ?? "");
@@ -98,6 +118,18 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
     return () => { cancelled = true; };
   }, [category, marketPriced]);
 
+  useEffect(() => {
+    if (category !== "crypto" || !marketPriced || !cryptoSelection.id) return;
+    let cancelled = false;
+    setCryptoLoading(true);
+    setCryptoError("");
+    marketPriceApi.getCryptoQuote(cryptoSelection.id, cryptoSelection.symbol, cryptoSelection.name)
+      .then((row) => { if (!cancelled) setCryptoQuote(row); })
+      .catch((cause) => { if (!cancelled) { setCryptoQuote(null); setCryptoError(cause instanceof Error ? cause.message : "Nie udało się pobrać ceny krypto."); } })
+      .finally(() => { if (!cancelled) setCryptoLoading(false); });
+    return () => { cancelled = true; };
+  }, [category, marketPriced, cryptoSelection.id, cryptoSelection.symbol, cryptoSelection.name]);
+
   const bondValuation = useMemo(() => calculateRetailBondValuation(Number(bondPurchaseValue), Number(bondGrossValue)), [bondPurchaseValue, bondGrossValue]);
 
   const quote = quotes.find((row) => row.symbol === metalSymbol);
@@ -108,6 +140,27 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
     const ounces = metalUnit === "GRAM" ? quantity / GRAMS_PER_OUNCE : quantity;
     return quote.pricePlnPerTroyOunce * ounces;
   }, [quote, metalQuantity, metalUnit, asset.value]);
+
+  const cryptoEstimatedValue = useMemo(() => {
+    if (!cryptoQuote) return asset.value;
+    const quantity = Number(cryptoQuantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) return null;
+    return cryptoQuote.pricePln * quantity;
+  }, [cryptoQuote, cryptoQuantity, asset.value]);
+
+  async function refreshCryptoQuote() {
+    if (!cryptoSelection.id) return;
+    setCryptoLoading(true);
+    setCryptoError("");
+    try {
+      setCryptoQuote(await marketPriceApi.getCryptoQuote(cryptoSelection.id, cryptoSelection.symbol, cryptoSelection.name));
+    } catch (cause) {
+      setCryptoQuote(null);
+      setCryptoError(cause instanceof Error ? cause.message : "Nie udało się pobrać ceny krypto.");
+    } finally {
+      setCryptoLoading(false);
+    }
+  }
 
   function handleCategoryChange(nextCategory: AssetCategory) {
     setCategory(nextCategory);
@@ -121,6 +174,13 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
       setMetalUnit("TROY_OUNCE");
       setColor("#d4af37");
       setIconKey("goldBars");
+    } else if (nextCategory === "crypto" && category !== "crypto") {
+      setMarketPriced(true);
+      setCryptoSelection({ id: "bitcoin", symbol: "BTC", name: "Bitcoin" });
+      setCryptoQuantity("");
+      setCryptoQuote(null);
+      setColor("#f59e0b");
+      setIconKey("bitcoin");
     } else if (nextCategory === "realEstate" && category !== "realEstate") {
       setMarketPriced(true);
       setColor("#10b981");
@@ -132,7 +192,7 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
       setIconKey("scrollText");
       setBondPurchaseValue(asset.bondPurchaseValue != null ? String(asset.bondPurchaseValue) : String(asset.value));
       setBondGrossValue(asset.bondGrossValue != null ? String(asset.bondGrossValue) : String(asset.value));
-    } else if (nextCategory !== "metals" && nextCategory !== "realEstate") {
+    } else if (nextCategory !== "metals" && nextCategory !== "crypto" && nextCategory !== "realEstate") {
       setMarketPriced(false);
     }
   }
@@ -181,6 +241,7 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const liveMetal = category === "metals" && marketPriced;
+    const liveCrypto = category === "crypto" && marketPriced;
     const liveRealEstate = category === "realEstate" && marketPriced;
     const retailBond = category === "bonds";
     const purchaseValue = Number(bondPurchaseValue);
@@ -189,10 +250,13 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
       ? bondValuation.netValue
       : liveMetal
         ? (estimatedValue ?? asset.value)
+        : liveCrypto
+          ? (cryptoEstimatedValue ?? asset.value)
         : liveRealEstate
           ? (realEstateQuote?.estimatedValue ?? asset.value)
           : Number(value);
     const quantity = Number(metalQuantity);
+    const cryptoAmount = Number(cryptoQuantity);
     const area = Number(realEstateAreaSqm);
     if (name.trim() === "" || numericValue < 0 || !Number.isFinite(numericValue)) return;
     if (retailBond && (bondPurchaseValue.trim() === "" || bondGrossValue.trim() === "" || !Number.isFinite(purchaseValue) || purchaseValue <= 0 || !Number.isFinite(grossValue) || grossValue < 0)) {
@@ -201,6 +265,10 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
     }
     if (liveMetal && (!Number.isFinite(quantity) || quantity <= 0)) {
       setError("Podaj poprawną ilość metalu.");
+      return;
+    }
+    if (liveCrypto && (!cryptoSelection.id || !Number.isFinite(cryptoAmount) || cryptoAmount <= 0)) {
+      setError("Wybierz kryptowalutę i podaj poprawną ilość.");
       return;
     }
     if (liveRealEstate && (!realEstateCity.trim() || !Number.isFinite(area) || area <= 0)) {
@@ -228,13 +296,22 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
         color,
         category,
         iconKey,
-        marketPriced: liveMetal || liveRealEstate,
+        marketPriced: liveMetal || liveCrypto || liveRealEstate,
         bondPurchaseValue: retailBond ? purchaseValue : undefined,
         bondGrossValue: retailBond ? grossValue : undefined,
         ...(liveMetal ? { metalSymbol, metalQuantity: quantity, metalUnit } : {
           metalSymbol: undefined,
           metalQuantity: undefined,
           metalUnit: undefined,
+        }),
+        ...(liveCrypto ? {
+          cryptoCoinId: cryptoSelection.id,
+          cryptoSymbol: cryptoSelection.symbol,
+          cryptoQuantity: cryptoAmount,
+        } : {
+          cryptoCoinId: undefined,
+          cryptoSymbol: undefined,
+          cryptoQuantity: undefined,
         }),
         ...(liveRealEstate ? {
           realEstateType: "APARTMENT" as const,
@@ -290,6 +367,8 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
             <Field label="Nazwa aktywa"><input autoFocus value={name} onChange={(e) => setName(e.target.value)} className={inputClass} /></Field>
             {category === "metals" && marketPriced ? (
               <Field label="Wartość rynkowa"><div className="rounded-xl border border-amber-500/20 bg-amber-500/8 px-4 py-3.5"><div className="text-lg font-black text-white">{estimatedValue == null ? "—" : `${Math.round(estimatedValue).toLocaleString("pl-PL")} zł`}</div><div className="mt-1 text-[11px] font-semibold text-slate-500">sterowana automatycznie przez cenę spot</div></div></Field>
+            ) : category === "crypto" && marketPriced ? (
+              <Field label="Wartość rynkowa"><div className="rounded-xl border border-violet-500/20 bg-violet-500/[.07] px-4 py-3.5"><div className="text-lg font-black text-white">{cryptoEstimatedValue == null ? "—" : `${cryptoEstimatedValue.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} zł`}</div><div className="mt-1 text-[11px] font-semibold text-slate-500">{cryptoSelection.symbol} × live cena CoinGecko w PLN</div></div></Field>
             ) : category === "realEstate" && marketPriced ? (
               <Field label="Wartość rynkowa"><div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[.07] px-4 py-3.5"><div className="text-lg font-black text-white">{realEstateQuote ? `${Math.round(realEstateQuote.estimatedValue).toLocaleString("pl-PL")} zł` : `${Math.round(asset.value).toLocaleString("pl-PL")} zł`}</div><div className="mt-1 text-[11px] font-semibold text-slate-500">{realEstateValuationMode === "MARKET_ANCHORED" ? "rynek skorygowany historyczną ceną Twojego lokalu" : "mediana RCN × metraż mieszkania"}</div></div></Field>
             ) : category === "bonds" ? (
@@ -325,6 +404,21 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
                 </div>
               </>}
             </div>
+          )}
+
+          {category === "crypto" && (
+            <CryptoPricingPanel
+              enabled={marketPriced}
+              onEnabledChange={(enabled) => { setMarketPriced(enabled); if (!enabled) setCryptoQuote(null); }}
+              selection={cryptoSelection}
+              onSelectionChange={(next) => { setCryptoSelection(next); setCryptoQuote(null); }}
+              quantity={cryptoQuantity}
+              onQuantityChange={setCryptoQuantity}
+              quote={cryptoQuote}
+              loading={cryptoLoading}
+              error={cryptoError}
+              onRefresh={() => void refreshCryptoQuote()}
+            />
           )}
 
           {category === "realEstate" && (
@@ -368,6 +462,8 @@ export function EditAssetModal({ asset, onClose, onUpdate }: EditAssetModalProps
           <div className="relative overflow-hidden rounded-2xl border p-4" style={{ borderColor: `${color}38`, background: `linear-gradient(90deg, ${color}18, rgba(15,23,42,.7) 45%, rgba(15,23,42,.5))` }}>
             <div className="flex items-center justify-between gap-4"><div className="flex min-w-0 items-center gap-3"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1 ring-white/10" style={{ color, backgroundColor: `${color}22`, boxShadow: `0 8px 25px ${color}20` }}><AssetIcon iconKey={iconKey} size={23} /></div><div className="min-w-0"><div className="truncate font-black text-white">{name || "Aktywo"}</div><div className="mt-1 text-xs font-medium" style={{ color }}>{assetCategoryLabels[category]}</div></div></div><div className="shrink-0 text-lg font-black text-white">{Math.round(category === "metals" && marketPriced
               ? (estimatedValue ?? asset.value)
+              : category === "crypto" && marketPriced
+                ? (cryptoEstimatedValue ?? asset.value)
               : category === "realEstate" && marketPriced
                 ? (realEstateQuote?.estimatedValue ?? asset.value)
                 : category === "bonds"

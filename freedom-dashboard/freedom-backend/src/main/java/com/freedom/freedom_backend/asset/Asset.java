@@ -2,6 +2,7 @@ package com.freedom.freedom_backend.asset;
 
 import com.freedom.freedom_backend.user.User;
 import com.freedom.freedom_backend.market.RealEstateQuoteResponse;
+import com.freedom.freedom_backend.market.CryptoQuoteResponse;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
@@ -63,6 +64,27 @@ public class Asset {
 
     @Column(name = "market_updated_at")
     private Instant marketUpdatedAt;
+
+    @Column(name = "crypto_coin_id")
+    private String cryptoCoinId;
+
+    @Column(name = "crypto_symbol")
+    private String cryptoSymbol;
+
+    @Column(name = "crypto_quantity", precision = 38, scale = 12)
+    private BigDecimal cryptoQuantity;
+
+    @Column(name = "crypto_price_pln", precision = 38, scale = 12)
+    private BigDecimal cryptoPricePln;
+
+    @Column(name = "crypto_price_usd", precision = 38, scale = 12)
+    private BigDecimal cryptoPriceUsd;
+
+    @Column(name = "crypto_change_24h", precision = 18, scale = 8)
+    private BigDecimal cryptoChange24h;
+
+    @Column(name = "crypto_updated_at")
+    private Instant cryptoUpdatedAt;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "real_estate_type")
@@ -203,6 +225,7 @@ public class Asset {
         this.marketPriceUsd = marketPriced ? marketPriceUsd : null;
         this.usdPlnRate = marketPriced ? usdPlnRate : null;
         this.marketUpdatedAt = marketPriced ? marketUpdatedAt : null;
+        if (marketPriced) clearCryptoPricing();
     }
 
     public void applyMarketValuation(
@@ -215,6 +238,50 @@ public class Asset {
         this.marketPriceUsd = marketPriceUsd;
         this.usdPlnRate = usdPlnRate;
         this.marketUpdatedAt = marketUpdatedAt;
+    }
+
+    public void configureCryptoPricing(
+            boolean enabled,
+            String coinId,
+            String symbol,
+            BigDecimal quantity,
+            CryptoQuoteResponse quote
+    ) {
+        if (!enabled) {
+            clearCryptoPricing();
+            return;
+        }
+
+        this.marketPriced = true;
+        this.cryptoCoinId = coinId;
+        this.cryptoSymbol = symbol;
+        this.cryptoQuantity = quantity;
+        if (quote != null) {
+            this.cryptoPricePln = quote.pricePln();
+            this.cryptoPriceUsd = quote.priceUsd();
+            this.cryptoChange24h = quote.change24h();
+            this.cryptoUpdatedAt = quote.updatedAt();
+            this.marketUpdatedAt = quote.updatedAt();
+        }
+    }
+
+    public void applyCryptoValuation(BigDecimal value, CryptoQuoteResponse quote) {
+        this.value = value;
+        this.cryptoPricePln = quote.pricePln();
+        this.cryptoPriceUsd = quote.priceUsd();
+        this.cryptoChange24h = quote.change24h();
+        this.cryptoUpdatedAt = quote.updatedAt();
+        this.marketUpdatedAt = quote.updatedAt();
+    }
+
+    public void clearCryptoPricing() {
+        this.cryptoCoinId = null;
+        this.cryptoSymbol = null;
+        this.cryptoQuantity = null;
+        this.cryptoPricePln = null;
+        this.cryptoPriceUsd = null;
+        this.cryptoChange24h = null;
+        this.cryptoUpdatedAt = null;
     }
 
     public void configureRealEstatePricing(
@@ -232,6 +299,7 @@ public class Asset {
         this.marketPriced = enabled;
 
         if (enabled) {
+            clearCryptoPricing();
             this.metalSymbol = null;
             this.metalQuantity = null;
             this.metalUnit = null;
@@ -368,6 +436,14 @@ public class Asset {
     public LocalDate getRealEstateAnchorPeriodFrom() { return realEstateAnchorPeriodFrom; }
     public LocalDate getRealEstateAnchorPeriodTo() { return realEstateAnchorPeriodTo; }
     public Instant getRealEstateUpdatedAt() { return realEstateUpdatedAt; }
+
+    public String getCryptoCoinId() { return cryptoCoinId; }
+    public String getCryptoSymbol() { return cryptoSymbol; }
+    public BigDecimal getCryptoQuantity() { return cryptoQuantity; }
+    public BigDecimal getCryptoPricePln() { return cryptoPricePln; }
+    public BigDecimal getCryptoPriceUsd() { return cryptoPriceUsd; }
+    public BigDecimal getCryptoChange24h() { return cryptoChange24h; }
+    public Instant getCryptoUpdatedAt() { return cryptoUpdatedAt; }
 
     public BigDecimal getBondPurchaseValue() { return bondPurchaseValue; }
     public BigDecimal getBondGrossValue() { return bondGrossValue; }

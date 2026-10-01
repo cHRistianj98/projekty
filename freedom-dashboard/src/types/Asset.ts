@@ -36,6 +36,8 @@ export type RealEstateType = "APARTMENT";
 export type RealEstateValuationMode = "MARKET_MEDIAN" | "MARKET_ANCHORED";
 export type RealEstateMarketSegment = "ALL" | "PRIMARY" | "SECONDARY";
 
+export type CryptoPresetKey = "BTC" | "ETH" | "USDC" | "NOS" | "PEAQ" | "TRAC" | "CPOOL";
+
 export type Asset = {
   id: number;
   name: string;
@@ -53,6 +55,14 @@ export type Asset = {
   marketPriceUsd?: number;
   usdPlnRate?: number;
   marketUpdatedAt?: string;
+
+  cryptoCoinId?: string;
+  cryptoSymbol?: string;
+  cryptoQuantity?: number;
+  cryptoPricePln?: number;
+  cryptoPriceUsd?: number;
+  cryptoChange24h?: number;
+  cryptoUpdatedAt?: string;
 
   realEstateType?: RealEstateType;
   realEstateCity?: string;

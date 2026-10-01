@@ -14,6 +14,26 @@ export type MetalQuote = {
   fxDate: string;
 };
 
+
+export type CryptoQuote = {
+  coinId: string;
+  symbol: string;
+  name: string;
+  pricePln: number;
+  priceUsd?: number | null;
+  change24h?: number | null;
+  updatedAt: string;
+  source: string;
+};
+
+export type CryptoSearchResult = {
+  id: string;
+  symbol: string;
+  name: string;
+  marketCapRank?: number | null;
+  thumb?: string | null;
+};
+
 export type RealEstateQuote = {
   city: string;
   requestedDistrict?: string | null;
@@ -71,6 +91,38 @@ export const marketPriceApi = {
   async refreshMetalAssets(): Promise<Asset[]> {
     const rows = await handle<any[]>(
       await fetch(`${API_URL}/api/market/metals/refresh`, {
+        method: "POST",
+        headers: headers(),
+      })
+    );
+    return rows.map(fromBackendAsset);
+  },
+
+  async getCryptoQuote(coinId: string, symbol?: string, name?: string): Promise<CryptoQuote> {
+    const params = new URLSearchParams({ coinId });
+    if (symbol) params.set("symbol", symbol);
+    if (name) params.set("name", name);
+    const row = await handle<CryptoQuote>(
+      await fetch(`${API_URL}/api/market/crypto/quote?${params.toString()}`, { headers: headers() })
+    );
+    return {
+      ...row,
+      pricePln: Number(row.pricePln),
+      priceUsd: row.priceUsd == null ? null : Number(row.priceUsd),
+      change24h: row.change24h == null ? null : Number(row.change24h),
+    };
+  },
+
+  async searchCrypto(query: string): Promise<CryptoSearchResult[]> {
+    const params = new URLSearchParams({ q: query });
+    return handle<CryptoSearchResult[]>(
+      await fetch(`${API_URL}/api/market/crypto/search?${params.toString()}`, { headers: headers() })
+    );
+  },
+
+  async refreshCryptoAssets(): Promise<Asset[]> {
+    const rows = await handle<any[]>(
+      await fetch(`${API_URL}/api/market/crypto/refresh`, {
         method: "POST",
         headers: headers(),
       })

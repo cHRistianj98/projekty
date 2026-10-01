@@ -39,6 +39,13 @@ type BackendAsset = {
   marketPriceUsd?: number | null;
   usdPlnRate?: number | null;
   marketUpdatedAt?: string | null;
+  cryptoCoinId?: string | null;
+  cryptoSymbol?: string | null;
+  cryptoQuantity?: number | null;
+  cryptoPricePln?: number | null;
+  cryptoPriceUsd?: number | null;
+  cryptoChange24h?: number | null;
+  cryptoUpdatedAt?: string | null;
   realEstateType?: RealEstateType | null;
   realEstateCity?: string | null;
   realEstateDistrict?: string | null;
@@ -130,6 +137,13 @@ export function fromBackendAsset(row: BackendAsset): Asset {
     ...(row.marketPriceUsd != null ? { marketPriceUsd: Number(row.marketPriceUsd) } : {}),
     ...(row.usdPlnRate != null ? { usdPlnRate: Number(row.usdPlnRate) } : {}),
     ...(row.marketUpdatedAt ? { marketUpdatedAt: row.marketUpdatedAt } : {}),
+    ...(row.cryptoCoinId ? { cryptoCoinId: row.cryptoCoinId } : {}),
+    ...(row.cryptoSymbol ? { cryptoSymbol: row.cryptoSymbol } : {}),
+    ...(row.cryptoQuantity != null ? { cryptoQuantity: Number(row.cryptoQuantity) } : {}),
+    ...(row.cryptoPricePln != null ? { cryptoPricePln: Number(row.cryptoPricePln) } : {}),
+    ...(row.cryptoPriceUsd != null ? { cryptoPriceUsd: Number(row.cryptoPriceUsd) } : {}),
+    ...(row.cryptoChange24h != null ? { cryptoChange24h: Number(row.cryptoChange24h) } : {}),
+    ...(row.cryptoUpdatedAt ? { cryptoUpdatedAt: row.cryptoUpdatedAt } : {}),
     ...(row.realEstateType ? { realEstateType: row.realEstateType } : {}),
     ...(row.realEstateCity ? { realEstateCity: row.realEstateCity } : {}),
     ...(row.realEstateDistrict ? { realEstateDistrict: row.realEstateDistrict } : {}),
@@ -163,6 +177,7 @@ export function fromBackendAsset(row: BackendAsset): Asset {
 
 function body(asset: Asset) {
   const liveMetal = asset.category === "metals" && Boolean(asset.marketPriced);
+  const liveCrypto = asset.category === "crypto" && Boolean(asset.marketPriced);
   const liveApartment = asset.category === "realEstate" && Boolean(asset.marketPriced);
   const retailBond = asset.category === "bonds";
   return {
@@ -172,10 +187,13 @@ function body(asset: Asset) {
     category: toBackendCategory(asset.category),
     iconKey: asset.iconKey ?? null,
     portfolioId: asset.portfolioId ?? null,
-    marketPriced: liveMetal || liveApartment,
+    marketPriced: liveMetal || liveCrypto || liveApartment,
     metalSymbol: liveMetal ? asset.metalSymbol ?? null : null,
     metalQuantity: liveMetal ? asset.metalQuantity ?? null : null,
     metalUnit: liveMetal ? asset.metalUnit ?? null : null,
+    cryptoCoinId: liveCrypto ? asset.cryptoCoinId ?? null : null,
+    cryptoSymbol: liveCrypto ? asset.cryptoSymbol ?? null : null,
+    cryptoQuantity: liveCrypto ? asset.cryptoQuantity ?? null : null,
     realEstateType: liveApartment ? asset.realEstateType ?? "APARTMENT" : null,
     realEstateCity: liveApartment ? asset.realEstateCity ?? null : null,
     realEstateDistrict: liveApartment ? asset.realEstateDistrict ?? null : null,

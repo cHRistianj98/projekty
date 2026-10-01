@@ -34,3 +34,6 @@ app:
     cache-minutes: 10
     real-estate-api-base-url: "https://api.mscanner.pl/api"
     real-estate-cache-minutes: 60
+    coingecko-api-base-url: "https://api.coingecko.com/api/v3"
+    coingecko-demo-api-key: "${COINGECKO_DEMO_API_KEY:}"
+    crypto-cache-minutes: 10

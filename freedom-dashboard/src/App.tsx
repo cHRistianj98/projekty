@@ -149,10 +149,16 @@ function App() {
 
     async function refreshAssetsWithMarketPrices() {
       try {
-        const loadedAssets = await marketPriceApi.refreshMetalAssets();
-        if (!cancelled) setPortfolio(loadedAssets);
+        await marketPriceApi.refreshMetalAssets();
       } catch (marketError) {
-        console.warn("Nie udało się odświeżyć notowań metali, używam ostatnich zapisanych wartości:", marketError);
+        console.warn("Nie udało się odświeżyć notowań metali, zostawiam ostatnie zapisane wartości:", marketError);
+      }
+
+      try {
+        const loadedAssets = await marketPriceApi.refreshCryptoAssets();
+        if (!cancelled) setPortfolio(loadedAssets);
+      } catch (cryptoError) {
+        console.warn("Nie udało się odświeżyć notowań krypto, używam ostatnich zapisanych wartości:", cryptoError);
         try {
           const loadedAssets = await assetApi.getAll();
           if (!cancelled) setPortfolio(loadedAssets);
