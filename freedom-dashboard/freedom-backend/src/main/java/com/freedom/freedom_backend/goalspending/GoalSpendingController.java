@@ -33,4 +33,12 @@ public class GoalSpendingController {
     ) {
         return service.completeGoal(goalId, request, user);
     }
+
+    @PostMapping("/{goalId}/undo-completion")
+    public void undoCompletion(
+            @PathVariable Long goalId,
+            @AuthenticationPrincipal User user
+    ) {
+        service.undoCompletion(goalId, user);
+    }
 }

@@ -10,6 +10,7 @@ import {
   ImageOff,
   Pencil,
   Plus,
+  RotateCcw,
   Target,
   Trash2,
   WalletCards,
@@ -516,7 +517,11 @@ export function Goals({
           {showCompleted && (
             <div className="grid gap-4 border-t border-slate-800 p-5 md:grid-cols-2 xl:grid-cols-3">
               {completedGoals.map((goal) => (
-                <CompletedGoalCard key={goal.id} goal={goal} />
+                <CompletedGoalCard
+                  key={goal.id}
+                  goal={goal}
+                  onUndo={onGoalsChanged}
+                />
               ))}
             </div>
           )}
@@ -612,12 +617,46 @@ export function Goals({
 }
 
 
-function CompletedGoalCard({ goal }: { goal: Goal }) {
+function CompletedGoalCard({
+  goal,
+  onUndo,
+}: {
+  goal: Goal;
+  onUndo: () => Promise<void>;
+}) {
   const spent = goal.spentAmount ?? 0;
   const unused = Math.max(goal.targetAmount - spent, 0);
+  const [undoing, setUndoing] = useState(false);
+  const [undoError, setUndoError] = useState<string | null>(null);
+
+  async function handleUndo() {
+    if (
+      !window.confirm(
+        `Cofnąć zakończenie celu "${goal.name}"? Pozostała rezerwa zostanie odtworzona w poprzednich aktywach.`
+      )
+    ) {
+      return;
+    }
+
+    setUndoError(null);
+    setUndoing(true);
+
+    try {
+      await goalSpendingApi.undoCompletion(goal.id);
+      await onUndo();
+    } catch (error) {
+      setUndoError(
+        error instanceof Error
+          ? error.message
+          : "Nie udało się cofnąć zakończenia celu."
+      );
+    } finally {
+      setUndoing(false);
+    }
+  }
 
   return (
-    <article className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/55 opacity-70 grayscale">
+    <article className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/55 opacity-70 grayscale transition hover:opacity-100 hover:grayscale-0">
       <div className="relative h-28 overflow-hidden">
         {goal.imageUrl ? (
           <img
@@ -671,6 +710,22 @@ function CompletedGoalCard({ goal }: { goal: Goal }) {
             </p>
           </div>
         </div>
+
+        {undoError && (
+          <div className="mt-4 rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-300">
+            {undoError}
+          </div>
+        )}
+
+        <button
+          type="button"
+          disabled={undoing}
+          onClick={handleUndo}
+          className="mt-4 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-600/40 bg-slate-900/70 px-4 py-2.5 text-xs font-black text-slate-300 transition hover:border-violet-400/40 hover:bg-violet-500/10 hover:text-violet-300 disabled:cursor-wait disabled:opacity-50"
+        >
+          <RotateCcw size={15} />
+          {undoing ? "COFANIE..." : "COFNIJ ZAKOŃCZENIE"}
+        </button>
       </div>
     </article>
   );

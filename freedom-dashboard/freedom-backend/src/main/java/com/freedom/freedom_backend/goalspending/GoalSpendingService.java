@@ -217,6 +217,22 @@ public class GoalSpendingService {
         BigDecimal transferred = ZERO;
         Long targetGoalId = null;
 
+        jdbc.update("DELETE FROM goal_completion_allocation_snapshots WHERE user_id=? AND goal_id=?", uid, goalId);
+        for (AllocationRow allocation : allocations) {
+            jdbc.update(
+                    """
+                    INSERT INTO goal_completion_allocation_snapshots(
+                        user_id,goal_id,asset_id,asset_name_snapshot,amount
+                    ) VALUES(?,?,?,?,?)
+                    """,
+                    uid,
+                    goalId,
+                    allocation.assetId(),
+                    allocation.assetName(),
+                    allocation.amount()
+            );
+        }
+
         if (request.mode() == GoalCompletionMode.TRANSFER_TO_GOAL) {
             if (request.targetGoalId() == null) {
                 throw new IllegalArgumentException("Wybierz cel, do którego przenieść pozostałe środki.");
@@ -313,6 +329,124 @@ public class GoalSpendingService {
         );
     }
 
+    public void undoCompletion(Long goalId, User user) {
+        Long uid = user.getId();
+        GoalRow goal = requireGoal(goalId, uid);
+
+        if (goal.status() != GoalStatus.COMPLETED) {
+            throw new IllegalArgumentException("Tylko zakończony cel można przywrócić.");
+        }
+
+        List<CompletionEventRow> events = jdbc.query(
+                """
+                SELECT mode,target_goal_id,released_amount,transferred_amount
+                FROM goal_completion_events
+                WHERE user_id=? AND goal_id=?
+                """,
+                (rs, n) -> new CompletionEventRow(
+                        GoalCompletionMode.valueOf(rs.getString("mode")),
+                        (Long) rs.getObject("target_goal_id"),
+                        rs.getBigDecimal("released_amount"),
+                        rs.getBigDecimal("transferred_amount")
+                ),
+                uid,
+                goalId
+        );
+
+        if (events.isEmpty()) {
+            throw new IllegalArgumentException("Brak danych potrzebnych do cofnięcia zakończenia tego celu.");
+        }
+
+        CompletionEventRow event = events.getFirst();
+        List<CompletionAllocationRow> snapshots = jdbc.query(
+                """
+                SELECT asset_id,asset_name_snapshot,amount
+                FROM goal_completion_allocation_snapshots
+                WHERE user_id=? AND goal_id=?
+                ORDER BY id
+                """,
+                (rs, n) -> new CompletionAllocationRow(
+                        (Long) rs.getObject("asset_id"),
+                        rs.getString("asset_name_snapshot"),
+                        rs.getBigDecimal("amount")
+                ),
+                uid,
+                goalId
+        );
+
+        BigDecimal amountToRestore = event.releasedAmount().add(event.transferredAmount());
+        if (snapshots.isEmpty() && amountToRestore.signum() > 0) {
+            if (event.mode() == GoalCompletionMode.RELEASE) {
+                Long cashId = systemCashId(uid);
+                snapshots = List.of(new CompletionAllocationRow(
+                        cashId,
+                        assetName(cashId, uid, "Gotówka systemowa"),
+                        event.releasedAmount()
+                ));
+            } else {
+                throw new IllegalArgumentException(
+                        "Tego starszego transferu nie można bezpiecznie cofnąć, bo nie zapisano struktury aktywów."
+                );
+            }
+        }
+
+        if (event.mode() == GoalCompletionMode.TRANSFER_TO_GOAL && event.transferredAmount().signum() > 0) {
+            if (event.targetGoalId() == null) {
+                throw new IllegalArgumentException("Brak celu docelowego poprzedniego transferu.");
+            }
+
+            GoalRow target = requireGoal(event.targetGoalId(), uid);
+            if (target.status() == GoalStatus.COMPLETED) {
+                throw new IllegalArgumentException(
+                        "Nie można cofnąć zakończenia, ponieważ cel docelowy transferu został już zakończony."
+                );
+            }
+
+            for (CompletionAllocationRow snapshot : snapshots) {
+                if (snapshot.assetId() == null) {
+                    throw new IllegalArgumentException("Nie można odwrócić transferu środków Legacy / nieprzypisanych.");
+                }
+                AllocationRow targetAllocation = requireAllocation(target.id(), snapshot.assetId(), uid);
+                if (targetAllocation.amount().compareTo(snapshot.amount()) < 0) {
+                    throw new IllegalArgumentException(
+                            "Nie można cofnąć zakończenia, bo część przeniesionych środków została już wykorzystana w celu docelowym."
+                    );
+                }
+            }
+
+            for (CompletionAllocationRow snapshot : snapshots) {
+                jdbc.update(
+                        "UPDATE goal_allocations SET amount=amount-?,updated_at=NOW() WHERE user_id=? AND goal_id=? AND asset_id=?",
+                        snapshot.amount(),
+                        uid,
+                        target.id(),
+                        snapshot.assetId()
+                );
+                jdbc.update(
+                        "DELETE FROM goal_allocations WHERE user_id=? AND goal_id=? AND asset_id=? AND amount=0",
+                        uid,
+                        target.id(),
+                        snapshot.assetId()
+                );
+            }
+            recomputeGoal(target.id(), uid);
+        }
+
+        for (CompletionAllocationRow snapshot : snapshots) {
+            restoreAllocation(goalId, snapshot, uid);
+        }
+
+        jdbc.update(
+                "UPDATE goals SET status='ACTIVE',completed_at=NULL WHERE id=? AND user_id=?",
+                goalId,
+                uid
+        );
+        recomputeGoal(goalId, uid);
+
+        jdbc.update("DELETE FROM goal_completion_events WHERE user_id=? AND goal_id=?", uid, goalId);
+        jdbc.update("DELETE FROM goal_completion_allocation_snapshots WHERE user_id=? AND goal_id=?", uid, goalId);
+    }
+
     public void recomputeGoal(Long goalId, Long uid) {
         GoalRow goal = requireGoal(goalId, uid);
         if (goal.status() == GoalStatus.COMPLETED) {
@@ -368,6 +502,32 @@ public class GoalSpendingService {
                     amount
             );
         }
+    }
+
+    private void restoreAllocation(Long goalId, CompletionAllocationRow snapshot, Long uid) {
+        if (snapshot.assetId() != null) {
+            Long assetId = snapshot.assetId();
+            String assetName = assetExists(assetId, uid)
+                    ? assetName(assetId, uid, snapshot.assetName())
+                    : snapshot.assetName();
+
+            if (assetExists(assetId, uid)) {
+                upsertAllocation(goalId, assetId, assetName, snapshot.amount(), uid);
+                return;
+            }
+        }
+
+        jdbc.update(
+                """
+                INSERT INTO goal_allocations(user_id,goal_id,asset_id,asset_name_snapshot,amount)
+                VALUES(?,?,?,?,?)
+                """,
+                uid,
+                goalId,
+                null,
+                snapshot.assetName(),
+                snapshot.amount()
+        );
     }
 
     private List<AllocationRow> allocations(Long goalId, Long uid) {
@@ -500,6 +660,21 @@ public class GoalSpendingService {
 
     private record AllocationRow(
             Long id,
+            Long assetId,
+            String assetName,
+            BigDecimal amount
+    ) {
+    }
+
+    private record CompletionEventRow(
+            GoalCompletionMode mode,
+            Long targetGoalId,
+            BigDecimal releasedAmount,
+            BigDecimal transferredAmount
+    ) {
+    }
+
+    private record CompletionAllocationRow(
             Long assetId,
             String assetName,
             BigDecimal amount

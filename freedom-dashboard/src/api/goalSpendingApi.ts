@@ -75,4 +75,34 @@ export const goalSpendingApi = {
 
     return read<GoalCompletionResponse>(response);
   },
+
+  async undoCompletion(goalId: number): Promise<void> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/goals/${goalId}/undo-completion`,
+      {
+        method: "POST",
+        headers: headers(),
+      }
+    );
+
+    if (!response.ok) {
+      const body = await response.text();
+      let message = body || response.statusText;
+
+      try {
+        const parsed = JSON.parse(body) as { message?: string };
+        message = parsed.message ?? message;
+      } catch {
+        // plain-text backend response
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        authApi.removeToken();
+        window.dispatchEvent(new CustomEvent("freedom:auth-expired"));
+        throw new Error("Sesja wygasła. Zaloguj się ponownie i spróbuj jeszcze raz.");
+      }
+
+      throw new Error(message || `HTTP ${response.status}`);
+    }
+  },
 };
