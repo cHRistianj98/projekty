@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 
 import {
   CalendarDays,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Flag,
   Image,
   ImageOff,
@@ -19,8 +22,10 @@ import { EditGoalModal } from "../components/goals/EditGoalModal";
 import type { Goal } from "../types/Goal";
 import type { Asset } from "../types/Asset";
 import { goalAllocationApi } from "../api/goalAllocationApi";
+import { goalSpendingApi } from "../api/goalSpendingApi";
 import { liabilityAllocationApi } from "../api/liabilityAllocationApi";
 import type { AllocateGoalMoneyRequest, GoalAllocationSummary, MoneyFlowOverview } from "../types/GoalAllocation";
+import type { GoalCompletionMode } from "../types/GoalSpending";
 import type { LiabilityAllocationOverview } from "../types/LiabilityAllocation";
 
 import {
@@ -41,6 +46,7 @@ type GoalsProps = {
     request: AllocateGoalMoneyRequest
   ) => Promise<void>;
   onReleaseMoney: (goalId:number,assetId:number,amount:number)=>Promise<void>;
+  onGoalsChanged: () => Promise<void>;
 };
 
 export function Goals({
@@ -51,6 +57,7 @@ export function Goals({
   onDeleteGoal,
   onAllocateMoney,
   onReleaseMoney,
+  onGoalsChanged,
 }: GoalsProps) {
   const [
     isAddModalOpen,
@@ -72,23 +79,11 @@ export function Goals({
     setFundingGoal,
   ] = useState<Goal | null>(null);
 
-  const [moneyFlow,setMoneyFlow]=useState<MoneyFlowOverview|null>(null);
-  async function refreshMoneyFlow(){
-    try{setMoneyFlow(await goalAllocationApi.getOverview());}
-    catch(e){console.error("Money Flow:",e);}
-  }
-  useEffect(()=>{void refreshMoneyFlow();},[goals]);
+  const [completingGoal, setCompletingGoal] = useState<Goal | null>(null);
+  const [showCompleted, setShowCompleted] = useState(false);
 
-  async function executeGoal(goal:Goal){
-    if(!window.confirm(`Wykonać cel "${goal.name}"? Przypisany kapitał zostanie faktycznie wydany.`))return;
-    try{
-      setMoneyFlow(await goalAllocationApi.executeGoal(goal.id));
-      window.location.reload();
-    }catch(e){
-      console.error("Execute goal:",e);
-      window.alert("Cel musi być w 100% sfinansowany i mieć środki przypisane do aktywów.");
-    }
-  }
+  const activeGoals = goals.filter((goal) => goal.status !== "COMPLETED");
+  const completedGoals = goals.filter((goal) => goal.status === "COMPLETED");
 
   function handleDelete(
     goal: Goal
@@ -142,17 +137,17 @@ export function Goals({
           </div>
           <div>
             <p className="text-xs font-black uppercase tracking-[0.16em] text-violet-400">
-              Goals 3.4 · Visual Goal Cards
+              Goals 4.0 · Spend & Complete
             </p>
             <p className="mt-1 text-sm leading-6 text-slate-400">
-              Zdjęcie buduje emocję celu, a dane finansowe pozostają na osobnej, czytelnej powierzchni. Priorytet, deadline i integracja z Money Routerem działają jak wcześniej.
+              Cel jest rezerwacją realnego kapitału. Wydatki mogą zużywać tę rezerwę bez sztucznych transferów, a zakończone cele zostają w historii jako osiągnięcia.
             </p>
           </div>
         </div>
       </section>
 
       <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
-        {goals.map((goal) => {
+        {activeGoals.map((goal) => {
           const progress =
             calculateGoalProgress(goal);
 
@@ -350,7 +345,18 @@ export function Goals({
                   />
                 </div>
 
-                <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <Info
+                    label="Odłożone"
+                    value={`${(goal.reservedAmount ?? 0).toLocaleString("pl-PL")} zł`}
+                    status="good"
+                  />
+
+                  <Info
+                    label="Wydano"
+                    value={`${(goal.spentAmount ?? 0).toLocaleString("pl-PL")} zł`}
+                  />
+
                   <Info
                     label="Brakuje"
                     value={
@@ -358,11 +364,6 @@ export function Goals({
                         ? "0 zł"
                         : `${remaining.toLocaleString("pl-PL")} zł`
                     }
-                  />
-
-                  <Info
-                    label="Wpłacasz / mies."
-                    value={`${goal.monthlyContribution.toLocaleString("pl-PL")} zł`}
                   />
 
                   <Info
@@ -440,20 +441,26 @@ export function Goals({
                   </button>
                 )}
 
-                {completed && !moneyFlow?.executedGoalIds.includes(goal.id) && (
-                  <button type="button" onClick={()=>void executeGoal(goal)}
-                    className="mt-4 flex w-full cursor-pointer items-center justify-center rounded-xl border border-amber-400/25 bg-amber-500/10 px-4 py-3 text-sm font-black text-amber-300 hover:bg-amber-500/15">
-                    ✓ WYKONAJ CEL / UŻYJ ŚRODKÓW
+                {(completed || (goal.spentAmount ?? 0) > 0) && (
+                  <button
+                    type="button"
+                    onClick={() => setCompletingGoal(goal)}
+                    className="mt-4 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-violet-400/25 bg-violet-500/10 px-4 py-3 text-sm font-black text-violet-300 transition hover:bg-violet-500/15"
+                  >
+                    <CheckCircle2 size={17} />
+                    ZAKOŃCZ CEL
                   </button>
                 )}
-                {moneyFlow?.executedGoalIds.includes(goal.id) ? (
-                  <div className="mt-4 flex items-center gap-2 border-t border-slate-800 pt-4 text-sm font-black text-violet-300">
-                    ✓ CEL WYKONANY · KAPITAŁ ZUŻYTY
-                  </div>
-                ) : completed ? (
+
+                {completed ? (
                   <div className="mt-4 flex items-center gap-2 border-t border-slate-800 pt-4 text-sm font-bold text-emerald-400">
                     <Target size={17} />
-                    Cel w pełni sfinansowany! 🎉
+                    Cel w pełni sfinansowany — możesz wydawać środki bez utraty 100% postępu.
+                  </div>
+                ) : (goal.spentAmount ?? 0) > 0 ? (
+                  <div className="mt-4 flex items-center gap-2 border-t border-slate-800 pt-4 text-sm text-violet-300">
+                    <WalletCards size={17} />
+                    Część celu jest już zrealizowana wydatkami. Pozostała rezerwa nadal pracuje w aktywach.
                   </div>
                 ) : (
                   <div className="mt-4 flex items-center gap-2 border-t border-slate-800 pt-4 text-sm text-slate-400">
@@ -479,6 +486,42 @@ export function Goals({
           );
         })}
       </div>
+
+      {completedGoals.length > 0 && (
+        <section className="mt-8 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/35">
+          <button
+            type="button"
+            onClick={() => setShowCompleted((current) => !current)}
+            className="flex w-full cursor-pointer items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-slate-900/50"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800 text-slate-300">
+                <CheckCircle2 size={19} />
+              </div>
+              <div>
+                <h2 className="font-black text-slate-200">Zrealizowane cele</h2>
+                <p className="mt-0.5 text-xs text-slate-600">
+                  Historia wykonanych planów · {completedGoals.length}
+                </p>
+              </div>
+            </div>
+
+            {showCompleted ? (
+              <ChevronUp size={18} className="text-slate-500" />
+            ) : (
+              <ChevronDown size={18} className="text-slate-500" />
+            )}
+          </button>
+
+          {showCompleted && (
+            <div className="grid gap-4 border-t border-slate-800 p-5 md:grid-cols-2 xl:grid-cols-3">
+              {completedGoals.map((goal) => (
+                <CompletedGoalCard key={goal.id} goal={goal} />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {goals.length === 0 && (
         <div className="mt-8 rounded-2xl border border-dashed border-slate-700 p-16 text-center">
@@ -531,7 +574,6 @@ export function Goals({
               fundingGoal.id,
               request
             );
-            await refreshMoneyFlow();
             setFundingGoal(null);
           }}
         />
@@ -551,7 +593,242 @@ export function Goals({
           }}
         />
       )}
+
+      {completingGoal && (
+        <GoalCompletionModal
+          goal={completingGoal}
+          goals={activeGoals.filter(
+            (goal) => goal.id !== completingGoal.id && goal.currentAmount < goal.targetAmount
+          )}
+          onClose={() => setCompletingGoal(null)}
+          onCompleted={async () => {
+            await onGoalsChanged();
+            setCompletingGoal(null);
+          }}
+        />
+      )}
     </main>
+  );
+}
+
+
+function CompletedGoalCard({ goal }: { goal: Goal }) {
+  const spent = goal.spentAmount ?? 0;
+  const unused = Math.max(goal.targetAmount - spent, 0);
+
+  return (
+    <article className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/55 opacity-70 grayscale">
+      <div className="relative h-28 overflow-hidden">
+        {goal.imageUrl ? (
+          <img
+            src={goal.imageUrl}
+            alt={goal.name}
+            className={`absolute inset-0 h-full w-full object-cover ${
+              goal.imagePosition === "top"
+                ? "object-top"
+                : goal.imagePosition === "bottom"
+                  ? "object-bottom"
+                  : "object-center"
+            }`}
+          />
+        ) : (
+          <div className="absolute inset-0 bg-slate-900" />
+        )}
+        <div className="absolute inset-0 bg-slate-950/55" />
+        <div className="absolute inset-x-4 bottom-3 flex items-end justify-between gap-3">
+          <h3 className="font-black text-slate-200">{goal.name}</h3>
+          <span className="flex items-center gap-1 rounded-lg border border-slate-600/40 bg-slate-950/70 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
+            <CheckCircle2 size={12} />
+            Completed
+          </span>
+        </div>
+      </div>
+
+      <div className="p-4">
+        <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
+          <div className="h-full w-full rounded-full bg-slate-500" />
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-600">Wydano</p>
+            <p className="mt-1 font-black text-slate-300">{spent.toLocaleString("pl-PL")} zł</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-600">Budżet</p>
+            <p className="mt-1 font-black text-slate-300">{goal.targetAmount.toLocaleString("pl-PL")} zł</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-600">Niewykorzystane</p>
+            <p className="mt-1 font-black text-slate-300">{unused.toLocaleString("pl-PL")} zł</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-600">Ukończono</p>
+            <p className="mt-1 font-black text-slate-300">
+              {goal.completedAt
+                ? new Date(goal.completedAt).toLocaleDateString("pl-PL")
+                : "—"}
+            </p>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+type GoalCompletionModalProps = {
+  goal: Goal;
+  goals: Goal[];
+  onClose: () => void;
+  onCompleted: () => Promise<void>;
+};
+
+function GoalCompletionModal({
+  goal,
+  goals,
+  onClose,
+  onCompleted,
+}: GoalCompletionModalProps) {
+  const reserved = goal.reservedAmount ?? 0;
+  const [mode, setMode] = useState<GoalCompletionMode>("RELEASE");
+  const [targetGoalId, setTargetGoalId] = useState<number | undefined>(goals[0]?.id);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleComplete() {
+    setError(null);
+
+    if (mode === "TRANSFER_TO_GOAL" && !targetGoalId) {
+      setError("Wybierz cel docelowy.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await goalSpendingApi.complete(goal.id, {
+        mode,
+        targetGoalId: mode === "TRANSFER_TO_GOAL" ? targetGoalId : null,
+      });
+      await onCompleted();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Nie udało się zakończyć celu.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-violet-500/20 bg-[#0b1322] shadow-2xl">
+        <div className="flex items-start justify-between border-b border-slate-800 p-6">
+          <div className="flex gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300">
+              <CheckCircle2 size={22} />
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-400">Goal completion</p>
+              <h2 className="mt-1 text-xl font-black">Zakończ · {goal.name}</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Zakończenie nie tworzy wydatku. Płatności powinny być wcześniej zaksięgowane jako wydatki z tego celu.
+              </p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="cursor-pointer rounded-lg p-2 text-slate-500 hover:bg-slate-800 hover:text-white">
+            <X size={19} />
+          </button>
+        </div>
+
+        <div className="space-y-5 p-6">
+          {error && (
+            <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              {error}
+            </div>
+          )}
+
+          <div className="grid grid-cols-3 gap-3">
+            <Info label="Budżet" value={`${goal.targetAmount.toLocaleString("pl-PL")} zł`} />
+            <Info label="Wydano" value={`${(goal.spentAmount ?? 0).toLocaleString("pl-PL")} zł`} />
+            <Info label="Nadal odłożone" value={`${reserved.toLocaleString("pl-PL")} zł`} status={reserved > 0 ? "good" : "neutral"} />
+          </div>
+
+          {reserved > 0 ? (
+            <div>
+              <p className="mb-3 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                Co zrobić z pozostałą rezerwą?
+              </p>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setMode("RELEASE")}
+                  className={`cursor-pointer rounded-2xl border p-4 text-left transition ${
+                    mode === "RELEASE"
+                      ? "border-emerald-400/35 bg-emerald-500/10"
+                      : "border-slate-800 bg-slate-950/35 hover:border-slate-700"
+                  }`}
+                >
+                  <p className="font-black text-slate-100">Zwolnij środki</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Pieniądze zostają w swoich aktywach, ale przestają być zarezerwowane.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={goals.length === 0}
+                  onClick={() => setMode("TRANSFER_TO_GOAL")}
+                  className={`rounded-2xl border p-4 text-left transition ${
+                    goals.length === 0
+                      ? "cursor-not-allowed border-slate-800 bg-slate-950/25 opacity-40"
+                      : mode === "TRANSFER_TO_GOAL"
+                        ? "cursor-pointer border-violet-400/35 bg-violet-500/10"
+                        : "cursor-pointer border-slate-800 bg-slate-950/35 hover:border-slate-700"
+                  }`}
+                >
+                  <p className="font-black text-slate-100">Przenieś do innego celu</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Rezerwacja zmieni cel, ale bazowe aktywa nie zostaną ruszone.
+                  </p>
+                </button>
+              </div>
+
+              {mode === "TRANSFER_TO_GOAL" && goals.length > 0 && (
+                <select
+                  value={targetGoalId ?? ""}
+                  onChange={(event) => setTargetGoalId(Number(event.target.value))}
+                  className="mt-3 w-full cursor-pointer rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-violet-500"
+                >
+                  {goals.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.name} — brakuje {Math.max(candidate.targetAmount - candidate.currentAmount, 0).toLocaleString("pl-PL")} zł
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4 text-sm text-slate-500">
+              Cała rezerwa została już wykorzystana. Możesz po prostu zamknąć cel i zachować go w historii osiągnięć.
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 border-t border-slate-800 pt-5">
+            <button type="button" onClick={onClose} className="cursor-pointer rounded-xl border border-slate-700 px-4 py-3 text-sm font-bold text-slate-300 hover:bg-slate-800">
+              Anuluj
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void handleComplete()}
+              className="flex cursor-pointer items-center gap-2 rounded-xl bg-violet-600 px-5 py-3 text-sm font-black text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CheckCircle2 size={17} />
+              {saving ? "Kończę…" : "ZAKOŃCZ CEL"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

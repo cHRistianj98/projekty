@@ -1,6 +1,7 @@
 package com.freedom.freedom_backend.goalallocation;
 
 import com.freedom.freedom_backend.user.User;
+import com.freedom.freedom_backend.goal.GoalStatus;
 import com.freedom.freedom_backend.ledger.MoneyLedgerService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -47,6 +48,10 @@ public class GoalAllocationService {
                 goalId,
                 userId
         );
+
+        if (goal.status() == GoalStatus.COMPLETED) {
+            throw new IllegalArgumentException("Nie można dodawać środków do zakończonego celu.");
+        }
 
         AssetRow target = requireAsset(
                 request.targetAssetId(),
@@ -127,24 +132,9 @@ public class GoalAllocationService {
                 request.targetAssetId()
         );
 
-        // current_amount staje się sumą allocation ledger.
-        // Dzięki legacy allocation stare cele nie tracą dotychczasowego stanu.
-        jdbc.update(
-                """
-                UPDATE goals g
-                SET current_amount = (
-                    SELECT COALESCE(SUM(ga.amount), 0)
-                    FROM goal_allocations ga
-                    WHERE ga.goal_id = g.id
-                      AND ga.user_id = ?
-                )
-                WHERE g.id = ?
-                  AND g.user_id = ?
-                """,
-                userId,
-                goalId,
-                userId
-        );
+        // Progress = capital still reserved + capital already spent on the goal.
+        // Spending must not make the progress bar go backwards.
+        recomputeGoalProgress(goalId, userId);
 
         return buildSummary(
                 goalId,
@@ -162,39 +152,21 @@ public class GoalAllocationService {
             """,(rs,n)->new PortfolioAllocationResponse(rs.getLong("goal_id"),rs.getString("goal_name"),
                 nullableLong(rs,"asset_id"),rs.getString("asset_name_snapshot"),rs.getBigDecimal("amount")),uid);
         BigDecimal total=rows.stream().map(PortfolioAllocationResponse::amount).reduce(BigDecimal.ZERO,BigDecimal::add);
-        List<Long> executed=jdbc.query("SELECT goal_id FROM goal_executions WHERE user_id=?",
-                (rs,n)->rs.getLong("goal_id"),uid);
+        List<Long> executed=jdbc.query("SELECT id FROM goals WHERE user_id=? AND status='COMPLETED'",
+                (rs,n)->rs.getLong("id"),uid);
         return new MoneyFlowOverviewResponse(total,rows,executed);
     }
 
-    public MoneyFlowOverviewResponse executeGoal(Long goalId,User user) {
-        Long uid=user.getId();
-        GoalRow goal=requireGoal(goalId,uid);
-        Integer done=jdbc.queryForObject("SELECT COUNT(*) FROM goal_executions WHERE user_id=? AND goal_id=?",
-                Integer.class,uid,goalId);
-        if(done!=null&&done>0) throw new IllegalArgumentException("Cel został już wykonany.");
-        if(goal.currentAmount().compareTo(goal.targetAmount())<0)
-            throw new IllegalArgumentException("Cel musi być w 100% sfinansowany.");
-
-        List<GoalAllocationItemResponse> rows=jdbc.query("""
-            SELECT id,goal_id,asset_id,asset_name_snapshot,amount FROM goal_allocations
-            WHERE user_id=? AND goal_id=? AND amount>0
-            """,(rs,n)->new GoalAllocationItemResponse(rs.getLong("id"),rs.getLong("goal_id"),
-                nullableLong(rs,"asset_id"),rs.getString("asset_name_snapshot"),rs.getBigDecimal("amount")),uid,goalId);
-        if(rows.isEmpty()) throw new IllegalArgumentException("Cel nie ma przypisanego kapitału.");
-
-        BigDecimal spent=BigDecimal.ZERO;
-        for(GoalAllocationItemResponse a:rows){
-            if(a.assetId()==null) throw new IllegalArgumentException("Cel ma środki Legacy / nieprzypisane.");
-            AssetRow asset=requireAsset(a.assetId(),uid);
-            if(asset.value().compareTo(a.amount())<0)
-                throw new IllegalArgumentException("Za mało środków w aktywie "+asset.name());
-            ledger.consumeAssetValue(a.assetId(),a.amount(),user,"GOAL_EXECUTION");
-            spent=spent.add(a.amount());
-        }
-        jdbc.update("INSERT INTO goal_executions(user_id,goal_id,spent_amount) VALUES(?,?,?)",uid,goalId,spent);
-        jdbc.update("DELETE FROM goal_allocations WHERE user_id=? AND goal_id=?",uid,goalId);
-        return getOverview(user);
+    /**
+     * Kept only for API compatibility with older frontends. Goal completion is
+     * no longer a hidden money-destruction event. Record real expenses linked to
+     * the goal and then use /api/goals/{id}/complete.
+     */
+    @Deprecated
+    public MoneyFlowOverviewResponse executeGoal(Long goalId, User user) {
+        throw new IllegalArgumentException(
+                "Ten endpoint jest przestarzały. Zarejestruj wydatek z celu, a następnie zakończ cel."
+        );
     }
 
     public GoalAllocationSummaryResponse release(Long goalId, Long assetId, BigDecimal amount, User user) {
@@ -211,7 +183,7 @@ public class GoalAllocationService {
         jdbc.update("UPDATE goal_allocations SET amount=amount-?,updated_at=NOW() WHERE id=?",amount,row.id());
         jdbc.update("DELETE FROM goal_allocations WHERE id=? AND amount=0",row.id());
         jdbc.update("INSERT INTO goal_allocation_releases(user_id,goal_id,asset_id,asset_name_snapshot,amount) VALUES(?,?,?,?,?)",uid,goalId,assetId,row.assetName(),amount);
-        jdbc.update("UPDATE goals g SET current_amount=(SELECT COALESCE(SUM(amount),0) FROM goal_allocations WHERE user_id=? AND goal_id=g.id) WHERE g.id=? AND g.user_id=?",uid,goalId,uid);
+        recomputeGoalProgress(goalId, uid);
         return buildSummary(goalId,uid);
     }
 
@@ -267,7 +239,8 @@ public class GoalAllocationService {
                 """
                 SELECT id,
                        current_amount,
-                       target_amount
+                       target_amount,
+                       status
                 FROM goals
                 WHERE id = ?
                   AND user_id = ?
@@ -275,7 +248,8 @@ public class GoalAllocationService {
                 (rs, rowNum) -> new GoalRow(
                         rs.getLong("id"),
                         rs.getBigDecimal("current_amount"),
-                        rs.getBigDecimal("target_amount")
+                        rs.getBigDecimal("target_amount"),
+                        GoalStatus.valueOf(rs.getString("status"))
                 ),
                 goalId,
                 userId
@@ -399,6 +373,34 @@ public class GoalAllocationService {
         );
     }
 
+    private void recomputeGoalProgress(Long goalId, Long userId) {
+        GoalRow goal = requireGoal(goalId, userId);
+        if (goal.status() == GoalStatus.COMPLETED) {
+            return;
+        }
+
+        BigDecimal reserved = jdbc.queryForObject(
+                "SELECT COALESCE(SUM(amount),0) FROM goal_allocations WHERE user_id=? AND goal_id=?",
+                BigDecimal.class, userId, goalId
+        );
+        BigDecimal spent = jdbc.queryForObject(
+                "SELECT COALESCE(SUM(amount),0) FROM goal_spendings WHERE user_id=? AND goal_id=?",
+                BigDecimal.class, userId, goalId
+        );
+
+        reserved = reserved == null ? BigDecimal.ZERO : reserved;
+        spent = spent == null ? BigDecimal.ZERO : spent;
+        BigDecimal covered = reserved.add(spent);
+        GoalStatus next = covered.compareTo(goal.targetAmount()) >= 0
+                ? GoalStatus.FUNDED
+                : GoalStatus.ACTIVE;
+
+        jdbc.update(
+                "UPDATE goals SET current_amount=?,status=?,completed_at=NULL WHERE id=? AND user_id=?",
+                covered, next.name(), goalId, userId
+        );
+    }
+
     private Long nullableLong(
             ResultSet rs,
             String column
@@ -412,7 +414,8 @@ public class GoalAllocationService {
     private record GoalRow(
             Long id,
             BigDecimal currentAmount,
-            BigDecimal targetAmount
+            BigDecimal targetAmount,
+            GoalStatus status
     ) {
     }
 

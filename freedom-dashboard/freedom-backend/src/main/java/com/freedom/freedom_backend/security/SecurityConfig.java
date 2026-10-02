@@ -1,5 +1,6 @@
 package com.freedom.freedom_backend.security;
 
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -53,8 +54,33 @@ public class SecurityConfig {
                                 )
                 )
 
+                .exceptionHandling(
+                        exceptions -> exceptions
+                                .authenticationEntryPoint(
+                                        (request, response, authException) -> {
+                                            response.setStatus(401);
+                                            response.setContentType("application/json");
+                                            response.getWriter().write(
+                                                    "{\"message\":\"Sesja wygasła lub brak poprawnego tokenu JWT.\"}"
+                                            );
+                                        }
+                                )
+                                .accessDeniedHandler(
+                                        (request, response, accessDeniedException) -> {
+                                            response.setStatus(403);
+                                            response.setContentType("application/json");
+                                            response.getWriter().write(
+                                                    "{\"message\":\"Brak uprawnień do tej operacji.\"}"
+                                            );
+                                        }
+                                )
+                )
+
                 .authorizeHttpRequests(
                         auth -> auth
+                                // Preserve the original HTTP status when the container renders an error.
+                                .dispatcherTypeMatchers(DispatcherType.ERROR)
+                                .permitAll()
 
                                 .requestMatchers(
                                         "/api/auth/register",

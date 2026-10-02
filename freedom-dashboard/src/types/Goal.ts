@@ -24,6 +24,10 @@ export type Goal = {
   color: string;
   imageUrl?: string;
   imagePosition?: "center" | "top" | "bottom";
+  status?: "ACTIVE" | "FUNDED" | "COMPLETED";
+  completedAt?: string;
+  reservedAmount?: number;
+  spentAmount?: number;
 };
 
 export type GoalDisplay = Goal & {

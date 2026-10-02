@@ -21,6 +21,7 @@ export type Expense = TransactionCategoryDetails & {
   date: string;
   recurringRuleId?: number;
   assetId?: number;
+  goalId?: number;
 };
 
 export type Income = TransactionCategoryDetails & {

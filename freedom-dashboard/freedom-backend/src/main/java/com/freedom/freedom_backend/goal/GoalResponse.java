@@ -1,6 +1,7 @@
 package com.freedom.freedom_backend.goal;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 
 public record GoalResponse(
@@ -14,10 +15,17 @@ public record GoalResponse(
         GoalType type,
         String color,
         String imageUrl,
-        GoalImagePosition imagePosition
+        GoalImagePosition imagePosition,
+        GoalStatus status,
+        Instant completedAt,
+        BigDecimal reservedAmount,
+        BigDecimal spentAmount
 ) {
-
-    public static GoalResponse from(Goal goal) {
+    public static GoalResponse from(
+            Goal goal,
+            BigDecimal reservedAmount,
+            BigDecimal spentAmount
+    ) {
         return new GoalResponse(
                 goal.getId(),
                 goal.getName(),
@@ -29,7 +37,11 @@ public record GoalResponse(
                 goal.getType(),
                 goal.getColor(),
                 goal.getImageUrl(),
-                goal.getImagePosition()
+                goal.getImagePosition(),
+                goal.getStatus(),
+                goal.getCompletedAt(),
+                reservedAmount,
+                spentAmount
         );
     }
 }

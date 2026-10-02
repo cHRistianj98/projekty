@@ -28,11 +28,14 @@ export function GoalCard({
     calculateMonthsToGoal(goal);
 
   const completed =
-    remaining === 0;
+    goal.status === "COMPLETED";
+
+  const funded =
+    !completed && remaining === 0;
 
   return (
     <div
-      className="
+      className={`
         group
         rounded-2xl
         border
@@ -40,11 +43,10 @@ export function GoalCard({
         bg-slate-900/70
         p-5
         transition
-        hover:-translate-y-1
-        hover:border-slate-700
-        hover:bg-slate-900
-        hover:shadow-xl
-      "
+        ${completed
+          ? "opacity-60 grayscale"
+          : "hover:-translate-y-1 hover:border-slate-700 hover:bg-slate-900 hover:shadow-xl"}
+      `}
     >
       {/* HEADER */}
 
@@ -162,8 +164,12 @@ export function GoalCard({
         "
       >
         {completed ? (
+          <span className="font-medium text-slate-400">
+            ✓ Cel zrealizowany
+          </span>
+        ) : funded ? (
           <span className="font-medium text-emerald-400">
-            ✓ Cel osiągnięty
+            ✓ Cel w pełni sfinansowany
           </span>
         ) : monthsRemaining !==
           null ? (

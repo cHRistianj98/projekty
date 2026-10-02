@@ -28,13 +28,6 @@ export function EditGoalModal({
     useState(goal.name);
 
   const [
-    currentAmount,
-    setCurrentAmount,
-  ] = useState(
-    goal.currentAmount.toString()
-  );
-
-  const [
     targetAmount,
     setTargetAmount,
   ] = useState(
@@ -69,9 +62,6 @@ export function EditGoalModal({
   ) {
     event.preventDefault();
 
-    const current =
-      Number(currentAmount);
-
     const target =
       Number(targetAmount);
 
@@ -81,7 +71,6 @@ export function EditGoalModal({
     if (
       !name.trim() ||
       target <= 0 ||
-      current < 0 ||
       monthly < 0
     ) {
       return;
@@ -90,7 +79,7 @@ export function EditGoalModal({
     onUpdate({
       ...goal,
       name: name.trim(),
-      currentAmount: current,
+      currentAmount: goal.currentAmount,
       targetAmount: target,
       monthlyContribution: monthly,
       priority,
@@ -137,13 +126,27 @@ export function EditGoalModal({
             type="text"
           />
 
-          <Field
-            label="Aktualnie odłożone"
-            value={currentAmount}
-            onChange={
-              setCurrentAmount
-            }
-          />
+          <div className="rounded-xl border border-slate-800 bg-slate-950/45 p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+                  Pokryte przez rezerwy i wydatki
+                </p>
+                <p className="mt-1 text-lg font-black text-white">
+                  {goal.currentAmount.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} zł
+                </p>
+              </div>
+
+              <div className="text-right text-xs text-slate-500">
+                <div>Odłożone: {(goal.reservedAmount ?? goal.currentAmount).toLocaleString("pl-PL", { maximumFractionDigits: 2 })} zł</div>
+                <div>Wydano: {(goal.spentAmount ?? 0).toLocaleString("pl-PL", { maximumFractionDigits: 2 })} zł</div>
+              </div>
+            </div>
+
+            <p className="mt-3 text-xs leading-5 text-slate-500">
+              Tej kwoty nie edytujesz ręcznie. Zmienia się przez przypisywanie środków do celu oraz wydatki powiązane z celem.
+            </p>
+          </div>
 
           <Field
             label="Kwota celu"

@@ -3,6 +3,10 @@ import type { Goal } from "../types/Goal";
 export function calculateGoalProgress(
   goal: Goal
 ): number {
+  if (goal.status === "COMPLETED") {
+    return 100;
+  }
+
   if (goal.targetAmount <= 0) {
     return 0;
   }
@@ -18,6 +22,10 @@ export function calculateGoalProgress(
 export function calculateGoalRemaining(
   goal: Goal
 ): number {
+  if (goal.status === "COMPLETED") {
+    return 0;
+  }
+
   return Math.max(
     goal.targetAmount -
       goal.currentAmount,

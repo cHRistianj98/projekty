@@ -1,6 +1,7 @@
 package com.freedom.freedom_backend.ledger;
 
 import com.freedom.freedom_backend.user.User;
+import com.freedom.freedom_backend.goalspending.GoalSpendingService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,9 +15,11 @@ import java.util.List;
 public class MoneyLedgerService {
     private static final BigDecimal ZERO = BigDecimal.ZERO;
     private final JdbcTemplate jdbc;
+    private final GoalSpendingService goalSpending;
 
-    public MoneyLedgerService(JdbcTemplate jdbc) {
+    public MoneyLedgerService(JdbcTemplate jdbc, GoalSpendingService goalSpending) {
         this.jdbc = jdbc;
+        this.goalSpending = goalSpending;
     }
 
     public Long resolveAsset(Long requestedAssetId, User user) {
@@ -156,6 +159,7 @@ public class MoneyLedgerService {
                 for (Long expenseId : dependentExpenses) {
                     ExpenseRow expense = expenseRow(expenseId, uid);
                     reverseExpense(expense.id(), expense.assetId(), expense.amount(), user);
+                    goalSpending.reverseSpending(expense.id(), user);
                     jdbc.update("DELETE FROM transactions WHERE id=? AND user_id=?", expense.id(), uid);
                     cascaded.add(expense.id());
                 }
@@ -503,7 +507,21 @@ public class MoneyLedgerService {
             jdbc.update("DELETE FROM " + table + " WHERE id=? AND amount=0", reservation.id());
             overflow = overflow.subtract(cut);
         }
-        jdbc.update("UPDATE goals g SET current_amount=(SELECT COALESCE(SUM(amount),0) FROM goal_allocations WHERE user_id=? AND goal_id=g.id) WHERE user_id=?", uid, uid);
+        jdbc.update("""
+                UPDATE goals g
+                SET current_amount =
+                        COALESCE((SELECT SUM(amount) FROM goal_allocations WHERE user_id=? AND goal_id=g.id),0) +
+                        COALESCE((SELECT SUM(amount) FROM goal_spendings WHERE user_id=? AND goal_id=g.id),0),
+                    status = CASE
+                        WHEN g.status='COMPLETED' THEN g.status
+                        WHEN (
+                            COALESCE((SELECT SUM(amount) FROM goal_allocations WHERE user_id=? AND goal_id=g.id),0) +
+                            COALESCE((SELECT SUM(amount) FROM goal_spendings WHERE user_id=? AND goal_id=g.id),0)
+                        ) >= g.target_amount THEN 'FUNDED'
+                        ELSE 'ACTIVE'
+                    END
+                WHERE g.user_id=?
+                """, uid, uid, uid, uid, uid);
     }
 
     private void movement(Long uid, Long lotId, String type, Long source, Long target, Long txId, BigDecimal amount) {

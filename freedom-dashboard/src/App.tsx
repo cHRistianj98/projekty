@@ -425,6 +425,11 @@ function App() {
     };
   }, [isAuthenticated]);
 
+  async function refreshGoals() {
+    const refreshedGoals = await goalApi.getAll();
+    setGoals(refreshedGoals);
+  }
+
   async function handleAddGoal(goal: Goal) {
     try {
       const createdGoal = await goalApi.create(goal);
@@ -678,7 +683,7 @@ function App() {
           ...current,
           expenses: [...current.expenses, created],
         }));
-        await refreshPortfolio();
+        await Promise.all([refreshPortfolio(), refreshGoals()]);
         return;
       }
 
@@ -688,7 +693,7 @@ function App() {
           ...current,
           expenses: [...current.expenses, created],
         }));
-        await refreshPortfolio();
+        await Promise.all([refreshPortfolio(), refreshGoals()]);
         return;
       }
 
@@ -713,7 +718,7 @@ function App() {
         ...current,
         expenses: [...current.expenses, created],
       }));
-      await refreshPortfolio();
+      await Promise.all([refreshPortfolio(), refreshGoals()]);
     } catch (error) {
       console.error("Nie udało się dodać wydatku:", error);
       window.alert("Nie udało się zapisać wydatku w backendzie.");
@@ -727,7 +732,7 @@ function App() {
         ...current,
         expenses: current.expenses.filter((expense) => expense.id !== id),
       }));
-      await refreshPortfolio();
+      await Promise.all([refreshPortfolio(), refreshGoals()]);
     } catch (error) {
       console.error("Nie udało się usunąć wydatku:", error);
     }
@@ -742,7 +747,7 @@ function App() {
           expense.id === saved.id ? saved : expense
         ),
       }));
-      await refreshPortfolio();
+      await Promise.all([refreshPortfolio(), refreshGoals()]);
     } catch (error) {
       console.error("Nie udało się zaktualizować wydatku:", error);
     }
@@ -1178,6 +1183,9 @@ function App() {
                   goals={goals}
                   monthlySnapshots={monthlySnapshots}
                   onReleaseMoney={handleReleaseGoalMoney}
+                  onGoalsChanged={async () => {
+                    await refreshGoals();
+                  }}
                 />
               }
             />
@@ -1201,6 +1209,9 @@ function App() {
                     handleAllocateGoalMoney
                   }
                   onReleaseMoney={handleReleaseGoalMoney}
+                  onGoalsChanged={async () => {
+                    await refreshGoals();
+                  }}
                 />
               }
             />

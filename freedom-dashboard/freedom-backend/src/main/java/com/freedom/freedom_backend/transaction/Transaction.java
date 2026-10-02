@@ -45,18 +45,21 @@ public class Transaction {
     @Column(name = "asset_id")
     private Long assetId;
 
+    @Column(name = "goal_id")
+    private Long goalId;
+
     protected Transaction() {}
 
     public Transaction(User user, TransactionType type, String name, BigDecimal amount,
                        ExpenseCategory category, Category detailedCategory, boolean recurring,
-                       LocalDate date, Long recurringRuleId, Long assetId) {
+                       LocalDate date, Long recurringRuleId, Long assetId, Long goalId) {
         this.user = user;
-        update(type, name, amount, category, detailedCategory, recurring, date, recurringRuleId, assetId);
+        update(type, name, amount, category, detailedCategory, recurring, date, recurringRuleId, assetId, goalId);
     }
 
     public void update(TransactionType type, String name, BigDecimal amount,
                        ExpenseCategory category, Category detailedCategory, boolean recurring,
-                       LocalDate date, Long recurringRuleId, Long assetId) {
+                       LocalDate date, Long recurringRuleId, Long assetId, Long goalId) {
         this.type = type;
         this.name = name;
         this.amount = amount;
@@ -66,6 +69,7 @@ public class Transaction {
         this.date = date;
         this.recurringRuleId = recurringRuleId;
         this.assetId = assetId;
+        this.goalId = goalId;
     }
 
     public Long getId() { return id; }
@@ -79,4 +83,5 @@ public class Transaction {
     public LocalDate getDate() { return date; }
     public Long getRecurringRuleId() { return recurringRuleId; }
     public Long getAssetId() { return assetId; }
+    public Long getGoalId() { return goalId; }
 }

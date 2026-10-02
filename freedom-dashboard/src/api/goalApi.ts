@@ -13,11 +13,13 @@ type GoalApiResponse =
     | "type"
     | "imageUrl"
     | "imagePosition"
+    | "completedAt"
   > & {
     targetDate?: string | null;
     priority?: Goal["priority"] | null;
     type?: Goal["type"] | null;
     imageUrl?: string | null;
+    completedAt?: string | null;
 
     imagePosition?:
       | "CENTER"
@@ -116,6 +118,18 @@ function fromResponse(
 
     imageUrl:
       goal.imageUrl ?? undefined,
+
+    completedAt:
+      goal.completedAt ?? undefined,
+
+    reservedAmount:
+      Number(goal.reservedAmount ?? 0),
+
+    spentAmount:
+      Number(goal.spentAmount ?? 0),
+
+    status:
+      goal.status ?? "ACTIVE",
 
     imagePosition:
       goal.imagePosition

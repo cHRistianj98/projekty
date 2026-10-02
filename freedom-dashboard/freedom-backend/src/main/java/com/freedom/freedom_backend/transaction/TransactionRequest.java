@@ -3,6 +3,7 @@ package com.freedom.freedom_backend.transaction;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
@@ -15,5 +16,7 @@ public record TransactionRequest(
         boolean recurring,
         @NotNull LocalDate date,
         Long recurringRuleId,
-        Long assetId
-) {}
+        Long assetId,
+        Long goalId
+) {
+}

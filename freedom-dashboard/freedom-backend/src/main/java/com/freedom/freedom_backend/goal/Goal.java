@@ -5,6 +5,7 @@ import com.freedom.freedom_backend.user.User;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 
 @Entity
@@ -74,6 +75,13 @@ public class Goal {
     @Column(name = "image_position")
     private GoalImagePosition imagePosition;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private GoalStatus status;
+
+    @Column(name = "completed_at")
+    private Instant completedAt;
+
     protected Goal() {
     }
 
@@ -101,6 +109,10 @@ public class Goal {
         this.color = color;
         this.imageUrl = imageUrl;
         this.imagePosition = imagePosition;
+        this.status = currentAmount.compareTo(targetAmount) >= 0
+                ? GoalStatus.FUNDED
+                : GoalStatus.ACTIVE;
+        this.completedAt = null;
     }
 
     public void update(
@@ -125,6 +137,12 @@ public class Goal {
         this.color = color;
         this.imageUrl = imageUrl;
         this.imagePosition = imagePosition;
+        if (this.status != GoalStatus.COMPLETED) {
+            this.status = currentAmount.compareTo(targetAmount) >= 0
+                    ? GoalStatus.FUNDED
+                    : GoalStatus.ACTIVE;
+            this.completedAt = null;
+        }
     }
 
     public Long getId() {
@@ -173,5 +191,13 @@ public class Goal {
 
     public GoalImagePosition getImagePosition() {
         return imagePosition;
+    }
+
+    public GoalStatus getStatus() {
+        return status;
+    }
+
+    public Instant getCompletedAt() {
+        return completedAt;
     }
 }

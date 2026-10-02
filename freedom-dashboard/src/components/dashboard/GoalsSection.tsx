@@ -17,7 +17,9 @@ export function GoalsSection({
 }: GoalsSectionProps) {
   const navigate = useNavigate();
 
-  const visibleGoals = goals.slice(0, 5);
+  const visibleGoals = goals
+    .filter((goal) => goal.status !== "COMPLETED")
+    .slice(0, 5);
 
   return (
     <section className="mt-6">
@@ -56,7 +58,9 @@ export function GoalsSection({
       ) : (
         <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-900/30 p-8 text-center">
           <p className="text-sm text-slate-500">
-            Nie masz jeszcze żadnych celów.
+            {goals.length > 0
+              ? "Wszystkie aktywne cele są już zrealizowane. ✓"
+              : "Nie masz jeszcze żadnych celów."}
           </p>
 
           <button
@@ -64,7 +68,7 @@ export function GoalsSection({
             onClick={() => navigate("/goals")}
             className="mt-3 cursor-pointer text-sm font-semibold text-blue-400 hover:text-blue-300"
           >
-            Dodaj pierwszy cel
+            {goals.length > 0 ? "Zobacz historię celów" : "Dodaj pierwszy cel"}
           </button>
         </div>
       )}

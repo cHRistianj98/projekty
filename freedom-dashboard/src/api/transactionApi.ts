@@ -18,6 +18,7 @@ type BackendTransaction = {
   date: string;
   recurringRuleId?: number | null;
   assetId?: number | null;
+  goalId?: number | null;
 };
 
 function headers(): HeadersInit {
@@ -66,6 +67,7 @@ function toExpense(item: BackendTransaction): Expense {
     date: item.date,
     recurringRuleId: item.recurringRuleId ?? undefined,
     assetId: item.assetId ?? undefined,
+    goalId: item.goalId ?? undefined,
     ...details(item),
   };
 }
@@ -94,6 +96,7 @@ function expensePayload(expense: Expense) {
     date: expense.date,
     recurringRuleId: expense.recurringRuleId ?? null,
     assetId: expense.assetId ?? null,
+    goalId: expense.goalId ?? null,
   };
 }
 
@@ -108,6 +111,7 @@ function incomePayload(income: Income) {
     date: income.date,
     recurringRuleId: income.recurringRuleId ?? null,
     assetId: income.assetId ?? null,
+    goalId: null,
   };
 }
 
