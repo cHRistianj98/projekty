@@ -100,20 +100,28 @@
 .portfolio-menu { position: absolute; right: 0; top: 30px; z-index: 5; padding: 5px; min-width: 165px; background: #101e33; border: 1px solid #294764; border-radius: 9px; box-shadow: 0 10px 30px #0008; }
 .portfolio-menu button { display: flex; align-items: center; gap: 8px; border: 0; width: 100%; padding: 9px; border-radius: 5px; background: transparent; color: #c9d9f2; font-size: 12px; text-align: left; }
 .portfolio-menu button:hover { background: #20406a; }
-.portfolio-system-tag { font-size: 8px; letter-spacing: .7px; color: #65b9ff; background: #102843; border: 1px solid #254463; border-radius: 5px; padding: 3px 5px; white-space: nowrap; }
+.portfolio-system-tag { font-size: 9px; letter-spacing: .7px; color: #65b9ff; background: #102843; border: 1px solid #254463; border-radius: 6px; padding: 3px 6px; white-space: nowrap; }
 .portfolio-card-value { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; margin: 0 0 15px; }
 .portfolio-card-value strong { font-size: 22px; font-weight: 800; letter-spacing: -.6px; }
 .portfolio-card-value > span { color: #abc7e7; font-size: 10px; }
 .investment-progress { height: 10px; border-radius: 10px; overflow: hidden; background: #0d1b2c; border: 1px solid #4c7aab; }
 .investment-progress > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #288dff, #407cef); box-shadow: 0 0 10px #318bff55; transition: width .3s; }
 .portfolio-progress-label { display: flex; justify-content: space-between; color: #b6d1f0; gap: 6px; font-size: 10px; margin-top: 6px; }
-.portfolio-composition { display: flex; align-items: center; gap: 12px; min-height: 67px; margin: 3px 0 8px; }
+.portfolio-composition { display: flex; align-items: center; gap: 14px; min-height: 92px; margin: 3px 0 10px; }
 .investment-donut.small { width: 49px; min-width: 49px; }
-.portfolio-composition-legend { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 11px; }
-.portfolio-composition-legend > div { display: flex; align-items: center; gap: 7px; font-size: 11px; color: #bad2ef; }
-.portfolio-composition-legend .investment-dot { width: 7px; height: 7px; }
+.portfolio-composition-legend { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.portfolio-composition-legend > div { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #bad2ef; }
+.portfolio-composition-legend .investment-dot { width: 8px; height: 8px; }
 .composition-name { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .portfolio-composition-legend > div > span:last-child { white-space: nowrap; }
+.composition-row { padding: 6px 8px; border-radius: 10px; background: linear-gradient(90deg, #0d1a2d88, #09122033); border: 1px solid #14304d; }
+.composition-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #d2e5ff; font-weight: 600; }
+.composition-value { font-weight: 700; color: #eef5ff; }
+.asset-change-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; white-space: nowrap; font-size: 10px; font-weight: 800; letter-spacing: .1px; }
+.asset-change-badge.positive { color: #8ff0c7; background: #11362b; border: 1px solid #1f6d52; }
+.asset-change-badge.negative { color: #ffd08a; background: #38230f; border: 1px solid #8c5a20; }
+.asset-change-badge.large { font-size: 11px; padding: 5px 10px; }
+.asset-change-icon { display: inline-flex; align-items: center; }
 .portfolio-manage { width: 100%; margin-top: auto; font-size: 10px; padding: 8px; }
 .portfolio-reserved { color: #b3a1dc; font-size: 10px; margin: -3px 0 10px; line-height: 1.5; }
 .goal-capital-rows { display: flex; flex-direction: column; gap: 9px; padding-bottom: 7px; }
@@ -178,13 +186,14 @@
 .goal-capital-details > div { display: flex; justify-content: space-between; gap: 20px; color: #bbd0eb; }
 .investment-manager { padding: 22px; }
 .investment-manager > .investment-toolbar { margin-bottom: 20px; }
-.managed-asset { display: flex; align-items: center; gap: 14px; border-top: 1px solid #21334c; padding: 16px 0; }
+.managed-asset { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 14px; border-top: 1px solid #21334c; padding: 18px 0; }
 .managed-asset-info { flex: 1; min-width: 0; }
-.managed-asset-info h3 { margin: 0 0 5px; font-size: 14px; font-weight: 700; }
+.managed-asset-info h3 { margin: 0 0 5px; font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .managed-asset-info > span, .managed-asset-info > small { display: block; color: #8ea8c7; font-size: 11px; line-height: 1.7; }
-.managed-asset > strong { white-space: nowrap; }
+.managed-asset-value { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 165px; }
+.managed-asset-value > strong { white-space: nowrap; font-size: 24px; font-weight: 800; letter-spacing: -.6px; }
 .managed-asset-controls { display: flex; align-items: center; gap: 8px; }
-.managed-asset select { max-width: 150px; padding: 7px; font-size: 11px; }
+.managed-asset select { max-width: 160px; padding: 8px; font-size: 11px; }
 @media (min-width: 1600px) { .investments-page { padding-top: 22px; } .portfolio-card { min-height: 260px; } .wealth-chart-body { gap: 36px; } }
 @media (max-width: 1390px) {
   .investments-page { padding: 18px; }
@@ -220,8 +229,9 @@
   .wealth-legend { width: 100%; max-width: none; }
   .investment-tabs { margin-top: 3px; }
   .portfolio-history-chart { height: 200px; }
-  .managed-asset { flex-wrap: wrap; }
-  .managed-asset-controls { width: 100%; justify-content: flex-end; }
+  .managed-asset { grid-template-columns: auto minmax(0, 1fr); }
+  .managed-asset-value { align-items: flex-start; min-width: 0; }
+  .managed-asset-controls { width: 100%; justify-content: flex-end; grid-column: 1 / -1; }
   .managed-asset-info { min-width: 120px; }
   .investment-form-columns { grid-template-columns: 1fr; }
   .portfolio-image-editor { grid-template-columns: 1fr; }
