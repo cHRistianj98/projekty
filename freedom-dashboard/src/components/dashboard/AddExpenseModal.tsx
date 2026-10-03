@@ -212,7 +212,7 @@ export function AddExpenseModal({
             >
               {assets.map((asset) => (
                 <option key={asset.id} value={asset.id}>
-                  {asset.systemCash ? "Gotówka (system)" : asset.name} — {asset.value.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} zł
+                  {asset.systemCash ? "Środki nierozdzielone" : asset.name} — {asset.value.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} zł
                 </option>
               ))}
             </select>

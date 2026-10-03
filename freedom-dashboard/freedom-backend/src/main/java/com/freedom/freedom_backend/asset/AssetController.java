@@ -32,6 +32,21 @@ public class AssetController {
         );
     }
 
+    @GetMapping("/cash-reconciliation")
+    public CashReconciliationResponse getCashReconciliation(
+            @AuthenticationPrincipal User currentUser
+    ) {
+        return assetService.getCashReconciliation(currentUser);
+    }
+
+    @PostMapping("/cash-reconciliation")
+    public CashReconciliationResponse reconcileCash(
+            @Valid @RequestBody CashReconciliationRequest request,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        return assetService.reconcileCash(request, currentUser);
+    }
+
     @GetMapping("/{id}")
     public AssetResponse getAsset(
             @PathVariable Long id,

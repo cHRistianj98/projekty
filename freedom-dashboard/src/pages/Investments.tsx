@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { ArrowDownRight, ArrowRight, ArrowRightLeft, ArrowUpRight, ChartNoAxesCombined, ChartPie, CreditCard, FileSpreadsheet, ListTree, LoaderCircle, MoreVertical, Pencil, Plus, ScrollText, Target, Trash2, TrendingUp, WalletCards } from "lucide-react";
+import { ArrowDownRight, ArrowRight, ArrowRightLeft, ArrowUpRight, ChartNoAxesCombined, ChartPie, CreditCard, FileSpreadsheet, GripVertical, Landmark, ListTree, LoaderCircle, MoreVertical, Pencil, Plus, ScrollText, Target, Trash2, TrendingUp, TriangleAlert, WalletCards } from "lucide-react";
 import type { Asset } from "../types/Asset";
 import { assetCategoryLabels, getAssetCategory, getAssetIconKey, metalUnitLabel } from "../types/Asset";
 import type { Goal } from "../types/Goal";
@@ -14,6 +14,7 @@ import { portfolioApi } from "../api/portfolioApi";
 import { AssetIcon } from "../components/investments/assetIcons";
 import { AddAssetModal } from "../components/investments/AddAssetModal";
 import { EditAssetModal } from "../components/investments/EditAssetModal";
+import { CashReconciliationDialog } from "../components/investments/CashReconciliationDialog";
 import { RetailBondDetailsDialog, RetailBondImportDialog, RetailBondManualDialog } from "../components/investments/RetailBondDetailsDialog";
 import { Donut, HistoryChart, WealthChart } from "../components/investments/PortfolioCharts";
 import { GoalCapitalDialog, PortfolioDialog, PortfolioForm, TransferForm, WalletIcon, errorMessage } from "../components/investments/PortfolioDialogs";
@@ -51,6 +52,11 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
   const [bondDetailsAsset, setBondDetailsAsset] = useState<Asset | null>(null);
   const [bondImportPortfolioId, setBondImportPortfolioId] = useState<number | null>(null);
   const [bondManualPortfolioId, setBondManualPortfolioId] = useState<number | null>(null);
+  const [cashReconciliationOpen, setCashReconciliationOpen] = useState(false);
+  const [draggingAssetId, setDraggingAssetId] = useState<number | null>(null);
+  const [dragOverWalletId, setDragOverWalletId] = useState<number | null>(null);
+  const [pendingAssetMove, setPendingAssetMove] = useState<{ asset: Asset; source: PortfolioWallet; target: PortfolioWallet; mergeBonds: boolean } | null>(null);
+  const [assetMoveError, setAssetMoveError] = useState("");
   const requestId = useRef(0);
 
   const refresh = useCallback(async () => {
@@ -104,6 +110,64 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
     finally { setBusy(false); }
   }
 
+  function startAssetDrag(event: ReactDragEvent<HTMLDivElement>, asset: Asset) {
+    if (asset.systemCash || busy) {
+      event.preventDefault();
+      return;
+    }
+    setDraggingAssetId(asset.id);
+    setAssetMoveError("");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-freedom-asset-id", String(asset.id));
+    event.dataTransfer.setData("text/plain", String(asset.id));
+  }
+
+  function dragOverWallet(event: ReactDragEvent<HTMLElement>, wallet: PortfolioWallet) {
+    if (draggingAssetId == null) return;
+    const asset = portfolio.find(item => item.id === draggingAssetId);
+    if (!asset || asset.systemCash || asset.portfolioId === wallet.id) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (dragOverWalletId !== wallet.id) setDragOverWalletId(wallet.id);
+  }
+
+  function dropAssetOnWallet(event: ReactDragEvent<HTMLElement>, target: PortfolioWallet) {
+    event.preventDefault();
+    const rawId = event.dataTransfer.getData("application/x-freedom-asset-id") || event.dataTransfer.getData("text/plain");
+    const assetId = Number(rawId || draggingAssetId);
+    const asset = portfolio.find(item => item.id === assetId);
+    setDraggingAssetId(null);
+    setDragOverWalletId(null);
+    if (!asset || asset.systemCash || asset.portfolioId === target.id) return;
+
+    const source = realWallets.find(wallet => wallet.id === asset.portfolioId);
+    if (!source) return;
+    const mergeBonds = getAssetCategory(asset) === "bonds" && portfolio.some(item =>
+      item.id !== asset.id &&
+      item.portfolioId === target.id &&
+      getAssetCategory(item) === "bonds" &&
+      item.name.toLocaleLowerCase("pl-PL") === "obligacje skarbowe"
+    );
+    setAssetMoveError("");
+    setPendingAssetMove({ asset, source, target, mergeBonds });
+  }
+
+  async function confirmAssetMove() {
+    if (!pendingAssetMove) return;
+    setBusy(true);
+    setAssetMoveError("");
+    try {
+      await portfolioApi.moveAsset(pendingAssetMove.asset.id, pendingAssetMove.target.id);
+      await onPortfolioChanged();
+      await refresh();
+      setPendingAssetMove(null);
+    } catch (cause) {
+      setAssetMoveError(errorMessage(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return <main className="investments-page">
     <header className="investments-header">
       <div className="investments-title"><span className="investment-heading-icon"><ChartNoAxesCombined size={26}/></span><div><h1>Inwestycje</h1><p>Zarządzaj swoimi portfelami i buduj majątek na przyszłość.</p></div></div>
@@ -127,7 +191,7 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
     <section className="investment-panel portfolios-panel">
       <div className="investment-panel-heading">
         <div className="investment-section-title"><span className="investment-section-icon"><WalletCards size={20}/></span><div><h2>Portfele</h2><p>Twoje strategie inwestycyjne w jednym miejscu.</p></div></div>
-        <div className="investment-toolbar"><button type="button" className="investment-button secondary transfer-toolbar" onClick={() => setTransfer({})} disabled={!known || portfolio.length < 1}><ArrowRightLeft size={15}/>Transfer</button>{addPortfolio}</div>
+        <div className="investment-toolbar"><button type="button" className="investment-button secondary" onClick={() => setCashReconciliationOpen(true)}><Landmark size={15}/>Uzgodnij gotówkę</button><button type="button" className="investment-button secondary transfer-toolbar" onClick={() => setTransfer({})} disabled={!known || portfolio.length < 1}><ArrowRightLeft size={15}/>Transfer</button>{addPortfolio}</div>
       </div>
       {loading ? <div className="investment-empty"><LoaderCircle size={20} className="animate-spin"/>Pobieranie portfeli…</div> : !realWallets.length ? <div className="investment-empty">Dodaj pierwszy portfel i nadaj swoim inwestycjom kierunek.</div> :
         <div className="portfolio-cards">{realWallets.map(wallet => {
@@ -136,7 +200,13 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
           const progress = wallet.targetAmount ? wallet.grossValue / wallet.targetAmount * 100 : null;
           const breakdown = assets.map(asset => ({ id: String(asset.id), name: asset.name, value: asset.value, color: asset.color }));
           const debtReservations = liabilityReservationsForWallet(wallet.id, liabilityOverview, portfolio);
-          return <article className="portfolio-card" key={wallet.id} style={{ "--portfolio-accent": wallet.color } as CSSProperties}>
+          return <article
+            className={`portfolio-card ${dragOverWalletId === wallet.id ? "portfolio-card-drop-target" : ""}`}
+            key={wallet.id}
+            style={{ "--portfolio-accent": wallet.color } as CSSProperties}
+            onDragOver={event => dragOverWallet(event, wallet)}
+            onDrop={event => dropAssetOnWallet(event, wallet)}
+          >
             {wallet.imageUrl && (
               <div className="portfolio-card-cover">
                 <img
@@ -175,7 +245,20 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
               <div className="portfolio-composition"><Donut rows={breakdown} small/><div className="portfolio-composition-legend">
                 {assets.slice(0, 4).map(asset => {
                   const change = assetLiveChange(asset);
-                  return <div key={asset.id} className="composition-row"><span className="investment-dot" style={{ background: asset.color }}/><span className="composition-name" title={asset.name}>{percent(asset.value, wallet.grossValue)}&nbsp; {asset.name}</span>{change != null && <span className={`asset-change-badge ${change >= 0 ? "positive" : "negative"}`}><span className="asset-change-icon">{change >= 0 ? <ArrowUpRight size={12}/> : <ArrowDownRight size={12}/>}</span>{formatChangePercent(change)}</span>}<span className="composition-value">{money(asset.value)}</span></div>;
+                  return <div
+                    key={asset.id}
+                    className={`composition-row ${asset.systemCash ? "system-cash" : "draggable"} ${draggingAssetId === asset.id ? "dragging" : ""}`}
+                    draggable={!asset.systemCash && !busy}
+                    onDragStart={event => startAssetDrag(event, asset)}
+                    onDragEnd={() => { setDraggingAssetId(null); setDragOverWalletId(null); }}
+                    title={asset.systemCash ? "Środki nierozdzielone są sterowane automatycznie" : `Przeciągnij ${asset.name} do innego portfela`}
+                  >
+                    {!asset.systemCash && <span className="portfolio-drag-grip" aria-hidden="true"><GripVertical size={13}/></span>}
+                    <span className="investment-dot" style={{ background: asset.color }}/>
+                    <span className="composition-name" title={asset.name}>{percent(asset.value, wallet.grossValue)}&nbsp; {asset.name}</span>
+                    {change != null && <span title={change.title} className={`asset-change-badge ${change.value >= 0 ? "positive" : "negative"}`}><span className="asset-change-icon">{change.value >= 0 ? <ArrowUpRight size={12}/> : <ArrowDownRight size={12}/>}</span>{formatChangePercent(change.value)}</span>}
+                    <span className="composition-value">{money(asset.value)}</span>
+                  </div>;
                 })}
                 {assets.length > 4 && <span className="investment-note">+ {assets.length - 4} pozostałych aktywów</span>}
                 {!assets.length && <span className="investment-note">Dodaj pierwsze aktywo</span>}
@@ -257,11 +340,11 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
                   className={`asset-change-badge large ${monthChange > 0 ? "positive" : "negative"}`}
                   title="Zmiana wartości tej pozycji w PLN względem ostatniego zamkniętego miesiąca"
                 ><span className="asset-change-icon">{monthChange > 0 ? <ArrowUpRight size={14}/> : <ArrowDownRight size={14}/>}</span>m/m {Math.abs(monthChange).toLocaleString("pl-PL", { maximumFractionDigits: 1 })}%</span>}
-                {change != null && <span className={`asset-change-badge large ${change >= 0 ? "positive" : "negative"}`}><span className="asset-change-icon">{change >= 0 ? <ArrowUpRight size={14}/> : <ArrowDownRight size={14}/>}</span>24h {formatChangePercent(change)}</span>}
+                {change != null && <span title={change.title} className={`asset-change-badge large ${change.value >= 0 ? "positive" : "negative"}`}><span className="asset-change-icon">{change.value >= 0 ? <ArrowUpRight size={14}/> : <ArrowDownRight size={14}/>}</span>{change.label} {formatChangePercent(change.value)}</span>}
               </div>
             </div>
             {!asset.systemCash ? <div className="managed-asset-controls">
-              <label><span className="sr-only">Portfel aktywa {asset.name}</span><select disabled={busy} value={asset.portfolioId} onChange={event => void managerAction(() => onUpdateAsset({ ...asset, portfolioId: Number(event.target.value) }))}>{realWallets.map(wallet => <option key={wallet.id} value={wallet.id}>{wallet.name}</option>)}</select></label>
+              <label><span className="sr-only">Portfel aktywa {asset.name}</span><select disabled={busy} value={asset.portfolioId} onChange={event => void managerAction(async () => { await portfolioApi.moveAsset(asset.id, Number(event.target.value)); await onPortfolioChanged(); })}>{realWallets.map(wallet => <option key={wallet.id} value={wallet.id}>{wallet.name}</option>)}</select></label>
               {getAssetCategory(asset) === "bonds" ? <button type="button" disabled={busy} className="investment-button secondary bond-details-button" onClick={() => { setSelectedId(null); setBondDetailsAsset(asset); }}><ListTree size={14}/>Emisje</button> : <button type="button" disabled={busy} className="investment-icon-button" aria-label={`Edytuj ${asset.name}`} onClick={() => { setSelectedId(null); setEditingAsset(asset); }}><Pencil size={16}/></button>}
               <button type="button" disabled={busy || (allocated.get(asset.id) ?? 0) > 0} title={(allocated.get(asset.id) ?? 0) > 0 ? "Najpierw zwolnij rezerwacje na cele lub zobowiązania" : "Usuń aktywo"} className="investment-icon-button" aria-label={`Usuń ${asset.name}`} onClick={() => { setSelectedId(null); setManagerError(""); setDeleteAsset(asset); }}><Trash2 size={16}/></button>
             </div> : <span className="portfolio-system-tag">AUTO</span>}
@@ -269,6 +352,46 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
         })}
       </div>
     </PortfolioDialog>}
+    {pendingAssetMove && <PortfolioDialog
+      title="Przenieść całe aktywo?"
+      subtitle="Ta operacja zmienia strukturę portfeli. Potwierdź, zanim Freedom przeniesie pozycję."
+      busy={busy}
+      onClose={() => { if (!busy) { setPendingAssetMove(null); setAssetMoveError(""); } }}
+    >
+      <div className="investment-form asset-move-confirmation">
+        <div className="asset-move-summary">
+          <span className="managed-asset-icon" style={{ color: pendingAssetMove.asset.color }}><AssetIcon iconKey={getAssetIconKey(pendingAssetMove.asset)} size={24}/></span>
+          <div><small>PRZENOSISZ W CAŁOŚCI</small><strong>{pendingAssetMove.asset.name}</strong><span>{money(pendingAssetMove.asset.value)}</span></div>
+        </div>
+        <div className="asset-move-route">
+          <div><small>Z PORTFELA</small><strong>{pendingAssetMove.source.name}</strong></div>
+          <span className="asset-move-route-arrow"><ArrowRight size={18}/></span>
+          <div><small>DO PORTFELA</small><strong>{pendingAssetMove.target.name}</strong></div>
+        </div>
+        <div className="asset-move-warning">
+          <TriangleAlert size={18}/>
+          <div><strong>Operacja obejmuje całą pozycję.</strong><span>{pendingAssetMove.mergeBonds
+            ? "W portfelu docelowym są już Obligacje skarbowe. Wszystkie emisje zostaną przeniesione, a identyczne emisje (kod + data zakupu) zostaną scalone i zsumowane."
+            : getAssetCategory(pendingAssetMove.asset) === "bonds"
+              ? "Wszystkie emisje obligacji przejdą razem z aktywem do nowego portfela."
+              : "Aktywo zachowa swoją wartość i historię, ale od tej chwili będzie należeć do portfela docelowego."}</span></div>
+        </div>
+        {assetMoveError && <p className="investment-error" role="alert">{assetMoveError}</p>}
+        <footer>
+          <button type="button" className="investment-button secondary" disabled={busy} onClick={() => { setPendingAssetMove(null); setAssetMoveError(""); }}>Anuluj</button>
+          <button type="button" className="investment-button asset-move-confirm-button" disabled={busy} onClick={() => void confirmAssetMove()}>{busy ? "Przenoszenie…" : "Tak, przenieś aktywo"}</button>
+        </footer>
+      </div>
+    </PortfolioDialog>}
+    {cashReconciliationOpen && <CashReconciliationDialog
+      onClose={() => setCashReconciliationOpen(false)}
+      onReconciled={async () => { await onPortfolioChanged(); await refresh(); }}
+      onAddCashAsset={() => {
+        setCashReconciliationOpen(false);
+        const main = realWallets.find(wallet => wallet.type === "MAIN") ?? realWallets[0];
+        if (main) setAddTo(main.id);
+      }}
+    />}
     {bondDetailsAsset && <RetailBondDetailsDialog asset={bondDetailsAsset} onClose={() => setBondDetailsAsset(null)} onChanged={async () => { await onPortfolioChanged(); await refresh(); }}/>}
     {bondManualPortfolioId != null && <RetailBondManualDialog portfolioId={bondManualPortfolioId} onClose={() => setBondManualPortfolioId(null)} onCreated={async () => { await onPortfolioChanged(); await refresh(); }}/>}
     {bondImportPortfolioId != null && <RetailBondImportDialog portfolioId={bondImportPortfolioId} onClose={() => setBondImportPortfolioId(null)} onImported={async () => { await onPortfolioChanged(); await refresh(); }}/>}
@@ -328,9 +451,28 @@ function portfolioMonthlyChanges(assets: Asset[], wallets: PortfolioWallet[], sn
   return result;
 }
 
-function assetLiveChange(asset: Asset): number | null {
-  if (asset.cryptoChange24h != null) return asset.cryptoChange24h;
-  if (asset.stockChangePercent != null) return asset.stockChangePercent;
+type AssetLiveChange = {
+  value: number;
+  label: "24h" | "1d";
+  title: string;
+};
+
+function assetLiveChange(asset: Asset): AssetLiveChange | null {
+  if (asset.cryptoChange24h != null) return {
+    value: asset.cryptoChange24h,
+    label: "24h",
+    title: "Zmiana ceny w ostatnich 24 godzinach",
+  };
+  if (asset.stockChangePercent != null) return {
+    value: asset.stockChangePercent,
+    label: "24h",
+    title: "Zmiana ceny instrumentu względem poprzedniej sesji",
+  };
+  if (getAssetCategory(asset) === "bonds" && asset.bondChange1dPercent != null) return {
+    value: asset.bondChange1dPercent,
+    label: "1d",
+    title: `Zmiana wartości netto obligacji od poprzedniego dnia${asset.bondChange1dAmount != null ? `: ${asset.bondChange1dAmount >= 0 ? "+" : ""}${money(asset.bondChange1dAmount)}` : ""}`,
+  };
   return null;
 }
 

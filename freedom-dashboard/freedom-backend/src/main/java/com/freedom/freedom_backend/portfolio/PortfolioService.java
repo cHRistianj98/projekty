@@ -3,6 +3,7 @@ package com.freedom.freedom_backend.portfolio;
 import com.freedom.freedom_backend.user.User;
 import com.freedom.freedom_backend.ledger.MoneyLedgerService;
 import com.freedom.freedom_backend.liabilityallocation.LiabilityPortfolioReservationService;
+import com.freedom.freedom_backend.retailbond.RetailBondService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,15 +20,18 @@ public class PortfolioService {
     private final JdbcTemplate jdbc;
     private final MoneyLedgerService ledger;
     private final LiabilityPortfolioReservationService portfolioReservations;
+    private final RetailBondService retailBondService;
 
     public PortfolioService(
             JdbcTemplate jdbc,
             MoneyLedgerService ledger,
-            LiabilityPortfolioReservationService portfolioReservations
+            LiabilityPortfolioReservationService portfolioReservations,
+            RetailBondService retailBondService
     ) {
         this.jdbc = jdbc;
         this.ledger = ledger;
         this.portfolioReservations = portfolioReservations;
+        this.retailBondService = retailBondService;
     }
 
     @Transactional(readOnly = true)
@@ -161,6 +165,58 @@ public class PortfolioService {
         );
     }
 
+    public void moveAsset(PortfolioMoveAssetRequest r, User user) {
+        AssetMoveRow source = moveAssetRow(r.assetId(), user.getId());
+        if (source.systemCash()) {
+            throw new IllegalArgumentException("Środki nierozdzielone są sterowane automatycznie i nie można ich przenosić między portfelami.");
+        }
+        if (source.portfolioId().equals(r.targetPortfolioId())) {
+            throw new IllegalArgumentException("Aktywo znajduje się już w tym portfelu.");
+        }
+        ensureTargetPortfolio(r.targetPortfolioId(), user.getId());
+
+        Integer bondPositions = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM retail_bond_positions WHERE asset_id=? AND user_id=?",
+                Integer.class, source.id(), user.getId()
+        );
+        if ("BONDS".equals(source.category()) && bondPositions != null && bondPositions > 0) {
+            retailBondService.moveWholeAssetToPortfolio(source.id(), r.targetPortfolioId(), user);
+            return;
+        }
+
+        int updated = jdbc.update(
+                "UPDATE assets SET portfolio_id=? WHERE id=? AND user_id=? AND system_cash=FALSE",
+                r.targetPortfolioId(), source.id(), user.getId()
+        );
+        if (updated == 0) throw new IllegalArgumentException("Nie udało się przenieść aktywa.");
+    }
+
+    private void ensureTargetPortfolio(Long portfolioId, Long userId) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM portfolios WHERE id=? AND user_id=? AND type<>'GOALS'",
+                Integer.class, portfolioId, userId
+        );
+        if (count == null || count == 0) throw new IllegalArgumentException("Portfel docelowy nie istnieje.");
+    }
+
+    private AssetMoveRow moveAssetRow(Long id, Long uid) {
+        return jdbc.query(
+                "SELECT id,name,value,system_cash,portfolio_id,category FROM assets WHERE id=? AND user_id=?",
+                rs -> {
+                    if (!rs.next()) throw new IllegalArgumentException("Nie znaleziono aktywa.");
+                    return new AssetMoveRow(
+                            rs.getLong("id"),
+                            rs.getString("name"),
+                            rs.getBigDecimal("value"),
+                            rs.getBoolean("system_cash"),
+                            rs.getLong("portfolio_id"),
+                            rs.getString("category")
+                    );
+                },
+                id, uid
+        );
+    }
+
     @Transactional(readOnly = true)
     public List<ValuationEventResponse> valuations(User user) {
         return jdbc.query(
@@ -230,4 +286,5 @@ public class PortfolioService {
     }
 
     private record AssetRow(Long id, String name, BigDecimal value) {}
+    private record AssetMoveRow(Long id, String name, BigDecimal value, boolean systemCash, Long portfolioId, String category) {}
 }

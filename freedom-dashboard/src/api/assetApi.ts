@@ -98,6 +98,8 @@ type BackendAsset = {
   bondTaxableGain?: number | null;
   bondTaxRate?: number | null;
   bondTaxAmount?: number | null;
+  bondChange1dAmount?: number | null;
+  bondChange1dPercent?: number | null;
 };
 
 function authHeaders(): HeadersInit {
@@ -219,6 +221,8 @@ export function fromBackendAsset(row: BackendAsset): Asset {
     ...(row.bondTaxableGain != null ? { bondTaxableGain: Number(row.bondTaxableGain) } : {}),
     ...(row.bondTaxRate != null ? { bondTaxRate: Number(row.bondTaxRate) } : {}),
     ...(row.bondTaxAmount != null ? { bondTaxAmount: Number(row.bondTaxAmount) } : {}),
+    ...(row.bondChange1dAmount != null ? { bondChange1dAmount: Number(row.bondChange1dAmount) } : {}),
+    ...(row.bondChange1dPercent != null ? { bondChange1dPercent: Number(row.bondChange1dPercent) } : {}),
   };
 }
 

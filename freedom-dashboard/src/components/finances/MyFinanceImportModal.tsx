@@ -142,7 +142,7 @@ export function MyFinanceImportModal({ open, onClose, onImported }: Props) {
                   <MoneyRow label={`Wydatki (${preview.newExpenses})`} value={preview.newExpenseAmount} />
                 </div>
                 <div className="mt-4 flex items-center justify-between border-t border-slate-800 pt-4">
-                  <span className="text-sm font-semibold text-slate-300">Zmiana System Cash po imporcie</span>
+                  <span className="text-sm font-semibold text-slate-300">Zmiana nierozdzielonych środków po imporcie</span>
                   <span className={`text-lg font-black ${preview.systemCashChange >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                     {preview.systemCashChange >= 0 ? "+" : ""}{money.format(preview.systemCashChange)}
                   </span>
@@ -187,7 +187,7 @@ export function MyFinanceImportModal({ open, onClose, onImported }: Props) {
                 <Stat label="Kategorie" value={`+${result.categoriesCreated}`} />
               </div>
               <div className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/50 px-5 py-4">
-                <span className="text-sm text-slate-400">Zmiana System Cash</span>
+                <span className="text-sm text-slate-400">Zmiana nierozdzielonych środków</span>
                 <span className={`font-black ${result.systemCashChange >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                   {result.systemCashChange >= 0 ? "+" : ""}{money.format(result.systemCashChange)}
                 </span>

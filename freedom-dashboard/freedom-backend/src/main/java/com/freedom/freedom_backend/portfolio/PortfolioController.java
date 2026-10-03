@@ -13,5 +13,6 @@ public class PortfolioController{
  @PutMapping("/{id}") public PortfolioResponse update(@PathVariable Long id,@Valid @RequestBody PortfolioRequest r,@AuthenticationPrincipal User u){return service.update(id,r,u);}
  @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void delete(@PathVariable Long id,@AuthenticationPrincipal User u){service.delete(id,u);}
  @PostMapping("/transfer") @ResponseStatus(HttpStatus.NO_CONTENT) public void transfer(@Valid @RequestBody PortfolioTransferRequest r,@AuthenticationPrincipal User u){service.transfer(r,u);}
+ @PostMapping("/move-asset") @ResponseStatus(HttpStatus.NO_CONTENT) public void moveAsset(@Valid @RequestBody PortfolioMoveAssetRequest r,@AuthenticationPrincipal User u){service.moveAsset(r,u);}
  @GetMapping("/valuations") public List<ValuationEventResponse> valuations(@AuthenticationPrincipal User u){return service.valuations(u);}
 }

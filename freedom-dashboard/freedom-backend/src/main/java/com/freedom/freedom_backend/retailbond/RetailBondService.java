@@ -278,6 +278,121 @@ public class RetailBondService {
         return summary(assetId, user);
     }
 
+    public void moveWholeAssetToPortfolio(Long assetId, Long targetPortfolioId, User user) {
+        Asset sourceAsset = bondAsset(assetId, user);
+        validatePortfolio(targetPortfolioId, user.getId());
+        if (targetPortfolioId.equals(sourceAsset.getPortfolioId())) {
+            throw new IllegalArgumentException("Aktywo znajduje się już w tym portfelu.");
+        }
+
+        Optional<Asset> targetExisting = assetRepo.findAllByUserId(user.getId()).stream()
+                .filter(asset -> asset.getCategory() == AssetCategory.BONDS)
+                .filter(asset -> targetPortfolioId.equals(asset.getPortfolioId()))
+                .filter(asset -> "Obligacje skarbowe".equalsIgnoreCase(asset.getName()))
+                .findFirst();
+
+        // Jeżeli w portfelu docelowym nie ma jeszcze zbiorczego aktywa obligacyjnego,
+        // najbezpieczniej zachować to samo asset_id. Dzięki temu wszystkie istniejące
+        // rezerwacje i historia pozostają przypięte do tego samego aktywa.
+        if (targetExisting.isEmpty()) {
+            jdbc.update(
+                    "UPDATE assets SET portfolio_id=? WHERE id=? AND user_id=?",
+                    targetPortfolioId, assetId, user.getId()
+            );
+            return;
+        }
+
+        refreshAsset(sourceAsset, user);
+        List<PositionRow> rows = positions(assetId, user.getId());
+        if (rows.stream().anyMatch(row -> row.blockedQuantity() > 0)) {
+            throw new IllegalArgumentException(
+                    "Nie można scalić całego aktywa obligacyjnego, ponieważ część emisji ma zablokowane sztuki. Przenieś dostępne emisje ręcznie albo poczekaj na ich odblokowanie."
+            );
+        }
+        if (ledger.reserved(assetId, user).signum() > 0) {
+            throw new IllegalArgumentException(
+                    "Nie można scalić całego aktywa obligacyjnego, gdy jego środki są zarezerwowane na cel lub zobowiązanie. Najpierw zwolnij rezerwację."
+            );
+        }
+
+        // Używamy tej samej ścieżki co transfer części emisji. Każda emisja jest
+        // UPSERT-owana po (asset_id, emission_code, purchase_date), więc identyczne
+        // emisje w portfelu docelowym automatycznie się sumują.
+        for (PositionRow row : rows) {
+            transferQuantity(assetId, row.id(), targetPortfolioId, row.availableQuantity(), user);
+        }
+
+        Asset emptySource = bondAsset(assetId, user);
+        if (countPositions(assetId) == 0 && emptySource.getValue().signum() == 0) {
+            Long targetAssetId = targetExisting.get().getId();
+            // target_asset_id w goal_contributions ma ON DELETE RESTRICT. Po scaleniu
+            // źródłowy asset przestaje istnieć, więc zachowujemy referencję historyczną
+            // wskazując na ten sam instrument w portfelu docelowym.
+            jdbc.update("UPDATE goal_contributions SET target_asset_id=? WHERE user_id=? AND target_asset_id=?",
+                    targetAssetId, user.getId(), assetId);
+            jdbc.update("UPDATE goal_contributions SET source_asset_id=? WHERE user_id=? AND source_asset_id=?",
+                    targetAssetId, user.getId(), assetId);
+            assetRepo.delete(emptySource);
+        }
+    }
+
+    public DailyChange dailyChange(Long assetId, User user) {
+        bondAsset(assetId, user);
+        List<PositionRow> rows = positions(assetId, user.getId());
+        if (rows.isEmpty()) return null;
+
+        LocalDate valuationDate = rows.getFirst().valuationDate();
+        if (valuationDate == null || rows.stream().anyMatch(row -> !valuationDate.equals(row.valuationDate()))) {
+            return null;
+        }
+
+        BigDecimal currentNet = BigDecimal.ZERO;
+        BigDecimal previousNet = BigDecimal.ZERO;
+        for (PositionRow row : rows) {
+            BigDecimal previous = previousDayNetValue(row);
+            if (previous == null) return null;
+            currentNet = currentNet.add(row.currentNetValue());
+            previousNet = previousNet.add(previous);
+        }
+
+        if (previousNet.signum() <= 0) return null;
+        BigDecimal amount = currentNet.subtract(previousNet).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal percent = amount
+                .multiply(new BigDecimal("100"))
+                .divide(previousNet, 4, RoundingMode.HALF_UP);
+        return new DailyChange(amount, percent);
+    }
+
+    private BigDecimal previousDayNetValue(PositionRow row) {
+        LocalDate previousDate = row.valuationDate().minusDays(1);
+        if (previousDate.isBefore(row.purchaseDate())) return null;
+        if (row.currentRate() == null || row.currentPeriod() == null || row.periodBasePerBond() == null) return null;
+
+        RetailBondProduct product = RetailBondProduct.fromEmission(row.emissionCode());
+        int previousPeriod = periodForDate(row.purchaseDate(), previousDate, product);
+        if (previousPeriod != row.currentPeriod()) {
+            // Na granicy okresu potrzebowalibyśmy historycznej stopy/bazy poprzedniego okresu.
+            // Zamiast zgadywać, nie pokazujemy zmiany przez ten jeden dzień.
+            return null;
+        }
+
+        return calculate(
+                row.emissionCode(),
+                row.quantity(),
+                row.availableQuantity(),
+                row.blockedQuantity(),
+                row.nominalValue(),
+                row.purchaseDate(),
+                row.maturityDate(),
+                previousDate,
+                row.currentRate(),
+                row.currentPeriod(),
+                row.periodBasePerBond()
+        ).netValue();
+    }
+
+    public record DailyChange(BigDecimal amount, BigDecimal percent) {}
+
     private void validateTradableQuantity(PositionRow row, int quantity) {
         if (quantity <= 0) throw new IllegalArgumentException("Liczba obligacji musi być większa od zera.");
         if (quantity > row.availableQuantity()) {

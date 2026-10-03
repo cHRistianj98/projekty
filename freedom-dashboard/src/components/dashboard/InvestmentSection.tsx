@@ -27,7 +27,7 @@ export function InvestmentSection({
       >
         <BriefcaseBusiness
           size={20}
-          className="text-emerald-400"
+          className="text-cyan-400"
         />
 
         <h2
@@ -39,7 +39,7 @@ export function InvestmentSection({
             text-slate-300
           "
         >
-          Majątek i inwestycje
+          Wykresy majątku
         </h2>
       </div>
 

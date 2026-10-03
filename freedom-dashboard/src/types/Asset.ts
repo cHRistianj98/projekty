@@ -119,6 +119,8 @@ export type Asset = {
   bondTaxableGain?: number;
   bondTaxRate?: number;
   bondTaxAmount?: number;
+  bondChange1dAmount?: number;
+  bondChange1dPercent?: number;
 };
 
 export const assetCategoryLabels: Record<AssetCategory, string> = {

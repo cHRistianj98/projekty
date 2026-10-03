@@ -66,5 +66,10 @@ export const portfolioApi = {
       method: "POST", headers: headers(), body: JSON.stringify({ sourceAssetId, targetAssetId, amount }),
     }).then(read<void>),
 
+  moveAsset: (assetId: number, targetPortfolioId: number) =>
+    fetch(`${API}/api/portfolios/move-asset`, {
+      method: "POST", headers: headers(), body: JSON.stringify({ assetId, targetPortfolioId }),
+    }).then(read<void>),
+
   valuations: () => fetch(`${API}/api/portfolios/valuations`, { headers: headers() }).then(read<ValuationEvent[]>),
 };

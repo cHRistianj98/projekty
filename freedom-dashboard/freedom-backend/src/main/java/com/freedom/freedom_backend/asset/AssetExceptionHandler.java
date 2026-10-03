@@ -23,4 +23,15 @@ public class AssetExceptionHandler {
                 "message", exception.getMessage()
         );
     }
+    @ExceptionHandler(IllegalArgumentException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Map<String, Object> handleBadRequest(IllegalArgumentException exception) {
+        return Map.of(
+                "timestamp", Instant.now().toString(),
+                "status", 400,
+                "error", "Bad Request",
+                "message", exception.getMessage()
+        );
+    }
+
 }

@@ -40,7 +40,7 @@ public class MoneyLedgerService {
         Long id = jdbc.queryForObject(
                 "SELECT id FROM assets WHERE user_id=? AND system_cash=TRUE",
                 Long.class, user.getId());
-        if (id == null) throw new IllegalArgumentException("Brak systemowej Gotówki.");
+        if (id == null) throw new IllegalArgumentException("Brak Środków nierozdzielonych.");
         return id;
     }
 
@@ -218,6 +218,26 @@ public class MoneyLedgerService {
         if (remaining.signum() != 0) throw new IllegalStateException("Ledger nie pokrywa salda aktywa źródłowego.");
         changeAssetValue(sourceAssetId, uid, amount.negate());
         changeAssetValue(targetAssetId, uid, amount);
+    }
+
+    public void applyReconciliationAdjustment(Long assetId, BigDecimal delta, User user) {
+        if (delta == null || delta.signum() == 0) return;
+        Long uid = user.getId();
+        reconcileAsset(assetId, uid);
+
+        if (delta.signum() > 0) {
+            creditAdjustment(assetId, delta, uid, "RECONCILIATION_ADJUSTMENT", null);
+            return;
+        }
+
+        BigDecimal amount = delta.abs();
+        if (amount.compareTo(available(assetId, user)) > 0) {
+            throw new IllegalArgumentException(
+                    "Korekta obniżyłaby saldo poniżej środków zarezerwowanych na cele lub zobowiązania."
+            );
+        }
+        consumePositionsOnly(assetId, amount, uid, "RECONCILIATION_ADJUSTMENT", null);
+        changeAssetValue(assetId, uid, amount.negate());
     }
 
     public void consumeAssetValue(Long assetId, BigDecimal amount, User user, String movementType) {

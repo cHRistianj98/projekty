@@ -18,7 +18,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -70,12 +73,121 @@ public class AssetService {
 
     public List<AssetResponse> getAllAssets(User u) {
         retailBondService.refreshAllForUser(u);
-        return repo.findAllByUserId(u.getId()).stream().map(AssetResponse::from).toList();
+        return repo.findAllByUserId(u.getId()).stream()
+                .map(asset -> response(asset, u))
+                .toList();
     }
 
     @Transactional(readOnly = true)
     public AssetResponse getAsset(Long id, User u) {
-        return AssetResponse.from(find(id, u));
+        return response(find(id, u), u);
+    }
+
+    private AssetResponse response(Asset asset, User u) {
+        if (asset.getCategory() != AssetCategory.BONDS) return AssetResponse.from(asset);
+        RetailBondService.DailyChange change = retailBondService.dailyChange(asset.getId(), u);
+        return AssetResponse.from(
+                asset,
+                change == null ? null : change.amount(),
+                change == null ? null : change.percent()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public CashReconciliationResponse getCashReconciliation(User u) {
+        List<CashAssetRow> rows = reconciliationCashAssets(u);
+        BigDecimal total = rows.stream().map(CashAssetRow::value).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new CashReconciliationResponse(
+                cashReconciliationResponses(rows, u),
+                total,
+                total,
+                BigDecimal.ZERO
+        );
+    }
+
+    public CashReconciliationResponse reconcileCash(CashReconciliationRequest request, User u) {
+        List<CashAssetRow> rows = reconciliationCashAssets(u);
+        if (rows.isEmpty()) {
+            throw new IllegalArgumentException("Brak aktywów gotówkowych do uzgodnienia.");
+        }
+
+        Map<Long, BigDecimal> targets = new LinkedHashMap<>();
+        for (CashReconciliationItemRequest item : request.balances()) {
+            if (item.assetId() == null || item.targetValue() == null) {
+                throw new IllegalArgumentException("Każde saldo musi wskazywać aktywo i wartość docelową.");
+            }
+            BigDecimal target = item.targetValue().setScale(2, RoundingMode.HALF_UP);
+            if (target.signum() < 0) {
+                throw new IllegalArgumentException("Saldo po uzgodnieniu nie może być ujemne.");
+            }
+            if (targets.put(item.assetId(), target) != null) {
+                throw new IllegalArgumentException("To samo aktywo występuje w uzgodnieniu więcej niż raz.");
+            }
+        }
+
+        if (targets.size() != rows.size() || rows.stream().anyMatch(row -> !targets.containsKey(row.id()))) {
+            throw new IllegalArgumentException(
+                    "Lista kont lub gotówki zmieniła się. Odśwież okno uzgodnienia i spróbuj ponownie."
+            );
+        }
+
+        BigDecimal previousTotal = rows.stream().map(CashAssetRow::value).reduce(BigDecimal.ZERO, BigDecimal::add);
+        Map<Long, BigDecimal> deficits = new LinkedHashMap<>();
+        Map<Long, BigDecimal> surpluses = new LinkedHashMap<>();
+
+        for (CashAssetRow row : rows) {
+            BigDecimal target = targets.get(row.id());
+            BigDecimal reserved = ledger.reserved(row.id(), u);
+            if (target.compareTo(reserved) < 0) {
+                throw new IllegalArgumentException(
+                        "Saldo „" + reconciliationName(row) + "” nie może być niższe niż "
+                                + reserved.setScale(2, RoundingMode.HALF_UP)
+                                + " zł zarezerwowane na cele lub zobowiązania."
+                );
+            }
+            int comparison = target.compareTo(row.value());
+            if (comparison > 0) deficits.put(row.id(), target.subtract(row.value()));
+            if (comparison < 0) surpluses.put(row.id(), row.value().subtract(target));
+        }
+
+        // First redistribute already existing cash. This preserves the original
+        // money lots and therefore the provenance of imported/manual income.
+        for (Map.Entry<Long, BigDecimal> source : surpluses.entrySet()) {
+            BigDecimal remainingSource = source.getValue();
+            if (remainingSource.signum() == 0) continue;
+            for (Map.Entry<Long, BigDecimal> target : deficits.entrySet()) {
+                BigDecimal remainingTarget = target.getValue();
+                if (remainingTarget.signum() == 0) continue;
+                BigDecimal moved = remainingSource.min(remainingTarget);
+                ledger.transfer(source.getKey(), target.getKey(), moved, u);
+                remainingSource = remainingSource.subtract(moved);
+                target.setValue(remainingTarget.subtract(moved));
+                if (remainingSource.signum() == 0) break;
+            }
+            source.setValue(remainingSource);
+        }
+
+        // Any remaining difference is the real-world correction. It changes net
+        // worth but is deliberately not an income or expense transaction.
+        for (Map.Entry<Long, BigDecimal> target : deficits.entrySet()) {
+            if (target.getValue().signum() > 0) {
+                ledger.applyReconciliationAdjustment(target.getKey(), target.getValue(), u);
+            }
+        }
+        for (Map.Entry<Long, BigDecimal> source : surpluses.entrySet()) {
+            if (source.getValue().signum() > 0) {
+                ledger.applyReconciliationAdjustment(source.getKey(), source.getValue().negate(), u);
+            }
+        }
+
+        List<CashAssetRow> afterRows = reconciliationCashAssets(u);
+        BigDecimal currentTotal = afterRows.stream().map(CashAssetRow::value).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new CashReconciliationResponse(
+                cashReconciliationResponses(afterRows, u),
+                previousTotal,
+                currentTotal,
+                currentTotal.subtract(previousTotal)
+        );
     }
 
     public AssetResponse createAsset(AssetRequest r, User u) {
@@ -112,7 +224,7 @@ public class AssetService {
                 : resolvePortfolio(r.portfolioId() != null ? r.portfolioId() : asset.getPortfolioId(), u.getId());
 
         if (asset.isSystemCash() && r.value().compareTo(asset.getValue()) != 0) {
-            throw new IllegalArgumentException("Systemowa Gotówka jest sterowana przez przychody i wydatki.");
+            throw new IllegalArgumentException("Środki nierozdzielone są sterowane przez przychody, wydatki i uzgodnienia salda.");
         }
 
         PricingSetup pricing = asset.isSystemCash() ? PricingSetup.manual() : pricingSetup(r, category);
@@ -161,12 +273,50 @@ public class AssetService {
 
     public void deleteAsset(Long id, User u) {
         Asset asset = find(id, u);
-        if (asset.isSystemCash()) throw new IllegalArgumentException("Systemowej Gotówki nie można usunąć.");
+        if (asset.isSystemCash()) throw new IllegalArgumentException("Środków nierozdzielonych nie można usunąć.");
         if (ledger.reserved(id, u).signum() > 0) {
             throw new IllegalArgumentException("Najpierw zwolnij środki tego aktywa z celów i zobowiązań.");
         }
         ledger.consumeAssetBeforeDelete(id, u);
         repo.delete(asset);
+    }
+
+    private List<CashAssetRow> reconciliationCashAssets(User u) {
+        return jdbc.query(
+                """
+                SELECT id,name,value,system_cash,portfolio_id
+                FROM assets
+                WHERE user_id=?
+                  AND category='CASH'
+                  AND (system_cash=TRUE OR COALESCE(fx_priced,FALSE)=FALSE)
+                ORDER BY system_cash DESC,id
+                """,
+                (rs, n) -> new CashAssetRow(
+                        rs.getLong("id"),
+                        rs.getString("name"),
+                        rs.getBigDecimal("value"),
+                        rs.getBoolean("system_cash"),
+                        rs.getLong("portfolio_id")
+                ),
+                u.getId()
+        );
+    }
+
+    private List<CashReconciliationAssetResponse> cashReconciliationResponses(List<CashAssetRow> rows, User u) {
+        return rows.stream()
+                .map(row -> new CashReconciliationAssetResponse(
+                        row.id(),
+                        reconciliationName(row),
+                        row.value(),
+                        ledger.reserved(row.id(), u),
+                        row.systemCash(),
+                        row.portfolioId()
+                ))
+                .toList();
+    }
+
+    private String reconciliationName(CashAssetRow row) {
+        return row.systemCash() ? "Środki nierozdzielone" : row.name();
     }
 
     private PricingSetup pricingSetup(AssetRequest request, AssetCategory category) {
@@ -577,4 +727,12 @@ public class AssetService {
 
         private boolean enabled() { return kind != PricingKind.MANUAL; }
     }
+    private record CashAssetRow(
+            Long id,
+            String name,
+            BigDecimal value,
+            boolean systemCash,
+            Long portfolioId
+    ) {}
+
 }

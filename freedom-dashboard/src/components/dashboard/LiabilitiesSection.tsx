@@ -50,15 +50,28 @@ export function LiabilitiesSection({ liabilities }: Props) {
             const progress = liability.originalAmount > 0 ? Math.min((paid / liability.originalAmount) * 100, 100) : 0;
             return (
               <button key={liability.id} type="button" onClick={() => navigate("/liabilities")} className="group relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/60 p-0 text-left transition hover:-translate-y-0.5 hover:border-slate-700">
-                <div className="relative h-24 overflow-hidden border-b border-white/5" style={{ backgroundImage: meta.image }}>
-                  <div className="absolute -right-4 -top-5 opacity-15 transition group-hover:scale-110 group-hover:opacity-25"><Icon size={120} strokeWidth={1.1} /></div>
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/90 to-transparent p-4 pt-10">
-                    <span className="rounded-lg border border-white/10 bg-black/25 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-300 backdrop-blur">{meta.label}</span>
+                <div className="relative h-28 overflow-hidden border-b border-white/5" style={{ backgroundImage: liability.imageUrl ? undefined : meta.image }}>
+                  {liability.imageUrl ? (
+                    <img
+                      src={liability.imageUrl}
+                      alt=""
+                      className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+                      style={{ objectPosition: liability.imagePosition ?? "center" }}
+                    />
+                  ) : (
+                    <div className="absolute -right-4 -top-5 opacity-15 transition group-hover:scale-110 group-hover:opacity-25"><Icon size={120} strokeWidth={1.1} /></div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-black/5" />
+                  <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-4 pt-10">
+                    <div className="min-w-0">
+                      <span className="rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-slate-300 backdrop-blur">{meta.label}</span>
+                      <p className="mt-2 truncate text-base font-black text-white drop-shadow-lg">{liability.name}</p>
+                    </div>
                   </div>
                 </div>
                 <div className="p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div><p className="font-black text-white">{liability.name}</p><p className="mt-1 text-[11px] text-slate-500">Pozostało {money(liability.remainingAmount)}</p></div>
+                    <div><p className="text-[10px] font-black uppercase tracking-wider text-slate-600">Pozostało do spłaty</p><p className="mt-1 font-black text-white">{money(liability.remainingAmount)}</p></div>
                     <div className="text-right"><p className="font-black text-white">{money(liability.monthlyPayment)}</p><p className="text-[10px] text-slate-600">/ miesiąc</p></div>
                   </div>
                   <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-400" style={{ width: `${progress}%` }} /></div>

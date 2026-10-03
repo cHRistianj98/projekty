@@ -77,9 +77,15 @@ public record AssetResponse(
         BigDecimal bondGrossValue,
         BigDecimal bondTaxableGain,
         BigDecimal bondTaxRate,
-        BigDecimal bondTaxAmount
+        BigDecimal bondTaxAmount,
+        BigDecimal bondChange1dAmount,
+        BigDecimal bondChange1dPercent
 ) {
     public static AssetResponse from(Asset a) {
+        return from(a, null, null);
+    }
+
+    public static AssetResponse from(Asset a, BigDecimal bondChange1dAmount, BigDecimal bondChange1dPercent) {
         return new AssetResponse(
                 a.getId(),
                 a.getName(),
@@ -153,7 +159,9 @@ public record AssetResponse(
                 a.getBondGrossValue(),
                 a.getBondTaxableGain(),
                 a.getBondTaxRate(),
-                a.getBondTaxAmount()
+                a.getBondTaxAmount(),
+                bondChange1dAmount,
+                bondChange1dPercent
         );
     }
 }

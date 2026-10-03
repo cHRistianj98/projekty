@@ -30,6 +30,7 @@ import {
 import { Header } from "../components/layout/Header";
 import { GoalsSection } from "../components/dashboard/GoalsSection";
 import { InvestmentSection } from "../components/dashboard/InvestmentSection";
+import { PortfolioOverviewSection } from "../components/dashboard/PortfolioOverviewSection";
 import { LiabilitiesSection } from "../components/dashboard/LiabilitiesSection";
 import { CashflowSection } from "../components/dashboard/CashflowSection";
 import { AddExpenseModal } from "../components/dashboard/AddExpenseModal";
@@ -759,6 +760,121 @@ export function Dashboard({
       </section>
 
       {/* =====================================
+          HERO — NET WORTH
+      ====================================== */}
+
+      <section className="mt-6 overflow-hidden rounded-3xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 via-slate-900 to-slate-950 p-7 shadow-2xl shadow-blue-950/20">
+        <div className="flex flex-col justify-between gap-8 xl:flex-row xl:items-end">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-400">
+              <Gem
+                size={18}
+                className="text-blue-400"
+              />
+
+              {isCurrentMonth
+                ? "Majątek netto"
+                : "Majątek netto na koniec miesiąca"}
+            </div>
+
+            <div className="mt-3 text-4xl font-black tracking-tight text-white md:text-5xl">
+              {hasHistoricalNetWorth ||
+              isCurrentMonth
+                ? formatMoney(
+                    effectiveNetWorth
+                  )
+                : "Brak danych"}
+            </div>
+
+            <div className="mt-3">
+              {netWorthChange !==
+              null ? (
+                <div
+                  className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold ${
+                    netWorthChange >=
+                    0
+                      ? "bg-emerald-500/10 text-emerald-400"
+                      : "bg-red-500/10 text-red-400"
+                  }`}
+                >
+                  {netWorthChange >=
+                  0 ? (
+                    <ArrowUpRight
+                      size={16}
+                    />
+                  ) : (
+                    <ArrowDownRight
+                      size={16}
+                    />
+                  )}
+
+                  {formatSignedMoney(
+                    netWorthChange
+                  )}
+
+                  <span className="font-normal text-slate-500">
+                    w tym miesiącu
+                  </span>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  Brak wystarczających
+                  danych do policzenia
+                  zmiany majątku.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {isCurrentMonth ? (
+            <div className="grid min-w-0 grid-cols-2 gap-3 md:min-w-[420px]">
+              <SmallStat
+                label="Aktywa"
+                value={formatMoney(
+                  totalAssets
+                )}
+                positive
+              />
+
+              <SmallStat
+                label="Zobowiązania"
+                value={formatMoney(
+                  totalLiabilities
+                )}
+              />
+            </div>
+          ) : (
+            <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-5 py-4 text-sm text-slate-500">
+              Aktywa i zobowiązania
+              pokazujemy tylko dla
+              aktualnego stanu.
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* =====================================
+          PRIORITY OVERVIEW
+      ====================================== */}
+
+      {isCurrentMonth && (
+        <>
+          <PortfolioOverviewSection assets={portfolio} />
+
+          <div className="mt-5 rounded-3xl border border-slate-800/80 bg-[#07101d]/55 p-1 sm:p-2">
+            <GoalsSection goals={goals} />
+          </div>
+
+          <LiabilitiesSection liabilities={liabilities} />
+
+          <InvestmentSection
+            portfolio={portfolio}
+            history={netWorthHistory}
+          />
+        </>
+      )}
+
+      {/* =====================================
           DASHBOARD 4.0 — COMMAND CENTER
       ====================================== */}
 
@@ -1103,100 +1219,6 @@ export function Dashboard({
             </p>
           </div>
         )}
-
-      {/* =====================================
-          HERO — NET WORTH
-      ====================================== */}
-
-      <section className="mt-6 overflow-hidden rounded-3xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 via-slate-900 to-slate-950 p-7 shadow-2xl shadow-blue-950/20">
-        <div className="flex flex-col justify-between gap-8 xl:flex-row xl:items-end">
-          <div>
-            <div className="flex items-center gap-2 text-sm font-medium text-slate-400">
-              <Gem
-                size={18}
-                className="text-blue-400"
-              />
-
-              {isCurrentMonth
-                ? "Majątek netto"
-                : "Majątek netto na koniec miesiąca"}
-            </div>
-
-            <div className="mt-3 text-4xl font-black tracking-tight text-white md:text-5xl">
-              {hasHistoricalNetWorth ||
-              isCurrentMonth
-                ? formatMoney(
-                    effectiveNetWorth
-                  )
-                : "Brak danych"}
-            </div>
-
-            <div className="mt-3">
-              {netWorthChange !==
-              null ? (
-                <div
-                  className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold ${
-                    netWorthChange >=
-                    0
-                      ? "bg-emerald-500/10 text-emerald-400"
-                      : "bg-red-500/10 text-red-400"
-                  }`}
-                >
-                  {netWorthChange >=
-                  0 ? (
-                    <ArrowUpRight
-                      size={16}
-                    />
-                  ) : (
-                    <ArrowDownRight
-                      size={16}
-                    />
-                  )}
-
-                  {formatSignedMoney(
-                    netWorthChange
-                  )}
-
-                  <span className="font-normal text-slate-500">
-                    w tym miesiącu
-                  </span>
-                </div>
-              ) : (
-                <p className="text-sm text-slate-500">
-                  Brak wystarczających
-                  danych do policzenia
-                  zmiany majątku.
-                </p>
-              )}
-            </div>
-          </div>
-
-          {isCurrentMonth ? (
-            <div className="grid min-w-0 grid-cols-2 gap-3 md:min-w-[420px]">
-              <SmallStat
-                label="Aktywa"
-                value={formatMoney(
-                  totalAssets
-                )}
-                positive
-              />
-
-              <SmallStat
-                label="Zobowiązania"
-                value={formatMoney(
-                  totalLiabilities
-                )}
-              />
-            </div>
-          ) : (
-            <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-5 py-4 text-sm text-slate-500">
-              Aktywa i zobowiązania
-              pokazujemy tylko dla
-              aktualnego stanu.
-            </div>
-          )}
-        </div>
-      </section>
 
       {/* =====================================
           FREEDOM LEVEL
@@ -1781,25 +1803,6 @@ export function Dashboard({
       {/* =====================================
           EXISTING MODULES
       ====================================== */}
-
-      <div className="mt-5">
-        <GoalsSection
-          goals={goals}
-        />
-      </div>
-
-      <InvestmentSection
-        portfolio={portfolio}
-        history={
-          netWorthHistory
-        }
-      />
-
-      <LiabilitiesSection
-        liabilities={
-          liabilities
-        }
-      />
 
       <CashflowSection
         budget={{
