@@ -9,19 +9,37 @@ import type { PortfolioWallet } from "../../types/Portfolio";
 import { money, percent, portfolioHistory, wealthBreakdown, type Breakdown } from "./portfolioView";
 
 export function Donut({ rows, total, small = false }: { rows: Breakdown[]; total?: number; small?: boolean }) {
-  const positive = rows.filter(row => row.value > 0);
+  const positive = rows.filter(row => row.value > 0).sort((a, b) => b.value - a.value);
   const sum = positive.reduce((value, row) => value + row.value, 0);
+  const shadowId = `donutShadow-${useId().replace(/:/g, "")}`;
   let offset = 0;
   return <div className={small ? "investment-donut small" : "investment-donut"}>
-    <svg viewBox="0 0 120 120" role="img" aria-label={positive.length ? positive.map(row => `${row.name}: ${money(row.value)}`).join(", ") : "Brak aktywów"}>
-      <circle cx="60" cy="60" r="47" fill="none" stroke="#15243b" strokeWidth="20" />
-      {positive.map(row => {
-        const length = row.value / sum * 100;
-        const start = offset; offset += length;
-        return <circle key={row.id} cx="60" cy="60" r="47" fill="none" stroke={row.color} strokeWidth="20"
-          pathLength="100" strokeDasharray={`${Math.max(0, length - (positive.length > 1 ? .45 : 0))} 100`}
-          strokeDashoffset={-start} transform="rotate(-90 60 60)"><title>{row.name}: {money(row.value)}</title></circle>;
-      })}
+    <svg viewBox={small ? "0 0 120 120" : "0 0 120 126"} role="img" aria-label={positive.length ? positive.map(row => `${row.name}: ${money(row.value)}`).join(", ") : "Brak aktywów"}>
+      {!small && <defs>
+        <filter id={shadowId} x="-30%" y="-30%" width="160%" height="180%"><feDropShadow dx="0" dy="5" stdDeviation="4" floodColor="#000814" floodOpacity=".65"/></filter>
+      </defs>}
+      {!small && <g className="investment-donut-depth" transform="translate(0 5)">
+        <circle cx="60" cy="60" r="47" fill="none" stroke="#07111f" strokeWidth="17" />
+        {(() => {
+          let depthOffset = 0;
+          return positive.map(row => {
+            const length = row.value / sum * 100;
+            const start = depthOffset; depthOffset += length;
+            return <circle key={`depth-${row.id}`} cx="60" cy="60" r="47" fill="none" stroke={row.color} strokeWidth="17" pathLength="100" strokeDasharray={`${Math.max(0, length - (positive.length > 1 ? .5 : 0))} 100`} strokeDashoffset={-start} transform="rotate(-90 60 60)"/>;
+          });
+        })()}
+      </g>}
+      <g filter={small ? undefined : `url(#${shadowId})`}>
+        <circle cx="60" cy="60" r="47" fill="none" stroke="#15243b" strokeWidth={small ? 20 : 16} />
+        {positive.map(row => {
+          const length = row.value / sum * 100;
+          const start = offset; offset += length;
+          return <circle key={row.id} cx="60" cy="60" r="47" fill="none" stroke={row.color} strokeWidth={small ? 20 : 16}
+            pathLength="100" strokeDasharray={`${Math.max(0, length - (positive.length > 1 ? .5 : 0))} 100`}
+            strokeDashoffset={-start} transform="rotate(-90 60 60)"><title>{row.name}: {money(row.value)}</title></circle>;
+        })}
+      </g>
+      {!small && <circle cx="60" cy="60" r="35.5" className="investment-donut-inner"/>}
     </svg>
     {!small && <div className="investment-donut-label"><strong>{money(total ?? sum)}</strong><span>Łączny majątek</span></div>}
   </div>;
@@ -31,7 +49,8 @@ export function WealthChart({ assets, wallets, overview, liabilityOverview, tota
   assets: Asset[]; wallets: PortfolioWallet[]; overview: MoneyFlowOverview | null; liabilityOverview?: LiabilityAllocationOverview | null; total: number;
 }) {
   const [mode, setMode] = useState<"portfolios" | "assets" | "goals">("portfolios");
-  const rows = wealthBreakdown(mode, assets, wallets, overview, liabilityOverview ?? null);
+  const rows = [...wealthBreakdown(mode, assets, wallets, overview, liabilityOverview ?? null)]
+    .sort((a, b) => b.value - a.value);
   const chartTotal = rows.reduce((sum, row) => sum + Math.max(0, row.value), 0);
   return <section className="investment-panel wealth-panel">
     <div className="investment-panel-heading">

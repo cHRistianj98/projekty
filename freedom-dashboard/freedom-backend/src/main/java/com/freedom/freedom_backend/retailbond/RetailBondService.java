@@ -77,6 +77,32 @@ public class RetailBondService {
                 updated_at=NOW()
             """;
 
+    private static final String POSITION_TRANSFER_UPSERT_SQL = """
+            INSERT INTO retail_bond_positions(
+                user_id,asset_id,emission_code,quantity,available_quantity,blocked_quantity,
+                nominal_value,current_gross_value,current_net_value,taxable_gain,tax_amount,
+                purchase_date,maturity_date,valuation_date,current_rate,current_period,period_base_per_bond,
+                source,market_checked_at,updated_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())
+            ON CONFLICT(asset_id,emission_code,purchase_date) DO UPDATE SET
+                quantity=retail_bond_positions.quantity + EXCLUDED.quantity,
+                available_quantity=retail_bond_positions.available_quantity + EXCLUDED.available_quantity,
+                blocked_quantity=retail_bond_positions.blocked_quantity + EXCLUDED.blocked_quantity,
+                nominal_value=retail_bond_positions.nominal_value + EXCLUDED.nominal_value,
+                current_gross_value=retail_bond_positions.current_gross_value + EXCLUDED.current_gross_value,
+                current_net_value=retail_bond_positions.current_net_value + EXCLUDED.current_net_value,
+                taxable_gain=retail_bond_positions.taxable_gain + EXCLUDED.taxable_gain,
+                tax_amount=retail_bond_positions.tax_amount + EXCLUDED.tax_amount,
+                maturity_date=EXCLUDED.maturity_date,
+                valuation_date=GREATEST(retail_bond_positions.valuation_date, EXCLUDED.valuation_date),
+                current_rate=COALESCE(EXCLUDED.current_rate, retail_bond_positions.current_rate),
+                current_period=COALESCE(EXCLUDED.current_period, retail_bond_positions.current_period),
+                period_base_per_bond=COALESCE(EXCLUDED.period_base_per_bond, retail_bond_positions.period_base_per_bond),
+                source='TRANSFER',
+                market_checked_at=EXCLUDED.market_checked_at,
+                updated_at=NOW()
+            """;
+
     private final JdbcTemplate jdbc;
     private final AssetRepository assetRepo;
     private final MoneyLedgerService ledger;
@@ -196,6 +222,147 @@ public class RetailBondService {
         int deleted = jdbc.update("DELETE FROM retail_bond_positions WHERE id=? AND asset_id=? AND user_id=?", positionId, assetId, user.getId());
         if (deleted == 0) throw new IllegalArgumentException("Nie znaleziono emisji obligacji.");
         applyAggregate(asset, before, user, false);
+    }
+
+    public RetailBondPortfolioResponse removeQuantity(Long assetId, Long positionId, int quantity, User user) {
+        Asset asset = bondAsset(assetId, user);
+        refreshAsset(asset, user);
+        PositionRow row = position(assetId, positionId, user.getId());
+        validateTradableQuantity(row, quantity);
+
+        PositionSlice removed = slice(row, quantity);
+        BigDecimal free = ledger.available(assetId, user);
+        if (removed.netValue().compareTo(free) > 0) {
+            throw new IllegalArgumentException("Nie można usunąć tej liczby obligacji, ponieważ część wartości aktywa jest zarezerwowana na cele lub zobowiązania.");
+        }
+
+        ledger.consumeAssetValue(assetId, removed.netValue(), user, "BOND_POSITION_REMOVAL");
+        reducePosition(row, removed, quantity, user.getId());
+        syncAggregateWithoutLedger(assetId, user.getId());
+        return summary(assetId, user);
+    }
+
+    public RetailBondPortfolioResponse transferQuantity(
+            Long assetId,
+            Long positionId,
+            Long targetPortfolioId,
+            int quantity,
+            User user
+    ) {
+        Asset sourceAsset = bondAsset(assetId, user);
+        validatePortfolio(targetPortfolioId, user.getId());
+        if (targetPortfolioId.equals(sourceAsset.getPortfolioId())) {
+            throw new IllegalArgumentException("Wybierz inny portfel docelowy.");
+        }
+
+        refreshAsset(sourceAsset, user);
+        Asset targetAsset = findOrCreateBondAsset(targetPortfolioId, user);
+        refreshAsset(targetAsset, user);
+
+        PositionRow row = position(assetId, positionId, user.getId());
+        validateTradableQuantity(row, quantity);
+        PositionSlice moved = slice(row, quantity);
+
+        // Ledger pilnuje rezerwacji i przenosi pochodzenie kapitału bez zmiany łącznego majątku.
+        ledger.transfer(assetId, targetAsset.getId(), moved.netValue(), user);
+
+        reducePosition(row, moved, quantity, user.getId());
+        addTransferredPosition(targetAsset.getId(), user.getId(), row, moved, quantity);
+        syncAggregateWithoutLedger(assetId, user.getId());
+        syncAggregateWithoutLedger(targetAsset.getId(), user.getId());
+
+        jdbc.update(
+                "INSERT INTO portfolio_transfers(user_id,source_asset_id,target_asset_id,source_name_snapshot,target_name_snapshot,amount) VALUES(?,?,?,?,?,?)",
+                user.getId(), assetId, targetAsset.getId(), sourceAsset.getName(), targetAsset.getName(), moved.netValue()
+        );
+        return summary(assetId, user);
+    }
+
+    private void validateTradableQuantity(PositionRow row, int quantity) {
+        if (quantity <= 0) throw new IllegalArgumentException("Liczba obligacji musi być większa od zera.");
+        if (quantity > row.availableQuantity()) {
+            if (row.blockedQuantity() > 0) {
+                throw new IllegalArgumentException("Możesz operować maksymalnie " + row.availableQuantity() + " dostępnymi sztukami. " + row.blockedQuantity() + " szt. jest zablokowanych.");
+            }
+            throw new IllegalArgumentException("Pozycja zawiera tylko " + row.availableQuantity() + " dostępnych sztuk.");
+        }
+    }
+
+    private PositionRow position(Long assetId, Long positionId, Long userId) {
+        List<PositionRow> rows = jdbc.query("""
+                SELECT id,emission_code,quantity,available_quantity,blocked_quantity,nominal_value,current_gross_value,
+                       current_net_value,taxable_gain,tax_amount,purchase_date,maturity_date,valuation_date,current_rate,
+                       current_period,period_base_per_bond,source
+                FROM retail_bond_positions WHERE id=? AND asset_id=? AND user_id=?
+                """, (rs, n) -> new PositionRow(
+                rs.getLong("id"), rs.getString("emission_code"), rs.getInt("quantity"), rs.getInt("available_quantity"), rs.getInt("blocked_quantity"),
+                rs.getBigDecimal("nominal_value"), rs.getBigDecimal("current_gross_value"), rs.getBigDecimal("current_net_value"),
+                rs.getBigDecimal("taxable_gain"), rs.getBigDecimal("tax_amount"), rs.getObject("purchase_date", LocalDate.class),
+                rs.getObject("maturity_date", LocalDate.class), rs.getObject("valuation_date", LocalDate.class), rs.getBigDecimal("current_rate"),
+                (Integer) rs.getObject("current_period"), rs.getBigDecimal("period_base_per_bond"), rs.getString("source")
+        ), positionId, assetId, userId);
+        if (rows.isEmpty()) throw new IllegalArgumentException("Nie znaleziono emisji obligacji.");
+        return rows.getFirst();
+    }
+
+    private PositionSlice slice(PositionRow row, int quantity) {
+        BigDecimal qty = BigDecimal.valueOf(quantity);
+        BigDecimal total = BigDecimal.valueOf(row.quantity());
+        return new PositionSlice(
+                prorate(row.nominalValue(), qty, total),
+                prorate(row.currentGrossValue(), qty, total),
+                prorate(row.taxableGain(), qty, total),
+                prorate(row.taxAmount(), qty, total)
+        );
+    }
+
+    private BigDecimal prorate(BigDecimal value, BigDecimal quantity, BigDecimal totalQuantity) {
+        return value.multiply(quantity).divide(totalQuantity, 2, RoundingMode.HALF_UP);
+    }
+
+    private void reducePosition(PositionRow row, PositionSlice removed, int quantity, Long userId) {
+        int remainingQuantity = row.quantity() - quantity;
+        int remainingAvailable = row.availableQuantity() - quantity;
+        if (remainingQuantity == 0) {
+            jdbc.update("DELETE FROM retail_bond_positions WHERE id=? AND user_id=?", row.id(), userId);
+            return;
+        }
+
+        BigDecimal gross = row.currentGrossValue().subtract(removed.grossValue()).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal tax = row.taxAmount().subtract(removed.taxAmount()).setScale(2, RoundingMode.HALF_UP);
+        jdbc.update("""
+                UPDATE retail_bond_positions SET
+                    quantity=?,available_quantity=?,nominal_value=?,current_gross_value=?,current_net_value=?,
+                    taxable_gain=?,tax_amount=?,updated_at=NOW()
+                WHERE id=? AND user_id=?
+                """,
+                remainingQuantity, remainingAvailable,
+                row.nominalValue().subtract(removed.nominalValue()).setScale(2, RoundingMode.HALF_UP),
+                gross, gross.subtract(tax).setScale(2, RoundingMode.HALF_UP),
+                row.taxableGain().subtract(removed.taxableGain()).setScale(2, RoundingMode.HALF_UP),
+                tax, row.id(), userId
+        );
+    }
+
+    private void addTransferredPosition(Long targetAssetId, Long userId, PositionRow source, PositionSlice moved, int quantity) {
+        BigDecimal net = moved.grossValue().subtract(moved.taxAmount()).setScale(2, RoundingMode.HALF_UP);
+        jdbc.update(
+                POSITION_TRANSFER_UPSERT_SQL,
+                userId, targetAssetId, source.emissionCode(), quantity, quantity, 0,
+                moved.nominalValue(), moved.grossValue(), net, moved.taxableGain(), moved.taxAmount(),
+                source.purchaseDate(), source.maturityDate(), source.valuationDate(), source.currentRate(),
+                source.currentPeriod(), source.periodBasePerBond(), "TRANSFER", timestampWithTimezone(Instant.now())
+        );
+    }
+
+    private void syncAggregateWithoutLedger(Long assetId, Long userId) {
+        Aggregate a = aggregate(assetId, userId);
+        jdbc.update("""
+                UPDATE assets SET value=?,bond_purchase_value=?,bond_gross_value=?,bond_taxable_gain=?,bond_tax_rate=?,bond_tax_amount=?
+                WHERE id=? AND user_id=?
+                """,
+                a.netValue(), a.nominalValue(), a.grossValue(), a.taxableGain(), BELKA, a.taxAmount(), assetId, userId
+        );
     }
 
     public void refreshAllForUser(User user) {
@@ -733,6 +900,10 @@ public class RetailBondService {
     private record HeaderColumns(int emission, int available, int blocked, int nominal, int current, int maturity) {}
     private record ImportedRow(String emissionCode, int availableQuantity, int blockedQuantity, BigDecimal nominalValue, BigDecimal currentGrossValue, LocalDate maturityDate) {}
     private record EarlyRedemptionValuation(BigDecimal feePerBond, BigDecimal fee, BigDecimal tax, BigDecimal value, BigDecimal pricePerBond) {}
+
+    private record PositionSlice(BigDecimal nominalValue, BigDecimal grossValue, BigDecimal taxableGain, BigDecimal taxAmount) {
+        BigDecimal netValue() { return grossValue.subtract(taxAmount).setScale(2, RoundingMode.HALF_UP); }
+    }
 
     private record TaxValuation(BigDecimal gain, BigDecimal tax, BigDecimal net) {}
     private record Aggregate(BigDecimal nominalValue, BigDecimal grossValue, BigDecimal taxableGain, BigDecimal taxAmount, BigDecimal netValue) {}

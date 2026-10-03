@@ -58,6 +58,26 @@ public class RetailBondController {
         return service.getPortfolio(assetId, user);
     }
 
+    @PostMapping("/assets/{assetId}/positions/{positionId}/remove")
+    public RetailBondPortfolioResponse removeQuantity(
+            @PathVariable Long assetId,
+            @PathVariable Long positionId,
+            @Valid @RequestBody RetailBondQuantityRequest request,
+            @AuthenticationPrincipal User user
+    ) {
+        return service.removeQuantity(assetId, positionId, request.quantity(), user);
+    }
+
+    @PostMapping("/assets/{assetId}/positions/{positionId}/transfer")
+    public RetailBondPortfolioResponse transferQuantity(
+            @PathVariable Long assetId,
+            @PathVariable Long positionId,
+            @Valid @RequestBody RetailBondTransferRequest request,
+            @AuthenticationPrincipal User user
+    ) {
+        return service.transferQuantity(assetId, positionId, request.targetPortfolioId(), request.quantity(), user);
+    }
+
     @PostMapping("/assets/{assetId}/refresh")
     public RetailBondPortfolioResponse refresh(@PathVariable Long assetId, @AuthenticationPrincipal User user) {
         return service.refresh(assetId, user);

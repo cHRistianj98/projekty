@@ -53,7 +53,15 @@ function token(): string {
 }
 
 async function handle<T>(response: Response): Promise<T> {
-  if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
+  if (!response.ok) {
+    const body = await response.text();
+    let error = body || `HTTP ${response.status}`;
+    try {
+      const parsed = JSON.parse(body) as { message?: string; error?: string };
+      error = parsed.message || parsed.error || error;
+    } catch { /* plain text response */ }
+    throw new Error(error);
+  }
   return response.json();
 }
 
@@ -124,6 +132,24 @@ export const retailBondApi = {
     const row = await handle<RetailBondPortfolio>(await fetch(`${API_URL}/api/retail-bonds/assets/${assetId}/positions/${positionId}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token()}` },
+    }));
+    return normalize(row);
+  },
+
+  async removeQuantity(assetId: number, positionId: number, quantity: number): Promise<RetailBondPortfolio> {
+    const row = await handle<RetailBondPortfolio>(await fetch(`${API_URL}/api/retail-bonds/assets/${assetId}/positions/${positionId}/remove`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ quantity }),
+    }));
+    return normalize(row);
+  },
+
+  async transferQuantity(assetId: number, positionId: number, targetPortfolioId: number, quantity: number): Promise<RetailBondPortfolio> {
+    const row = await handle<RetailBondPortfolio>(await fetch(`${API_URL}/api/retail-bonds/assets/${assetId}/positions/${positionId}/transfer`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ targetPortfolioId, quantity }),
     }));
     return normalize(row);
   },
