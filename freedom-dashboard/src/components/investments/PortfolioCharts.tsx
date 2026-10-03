@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ChartPie, ChartNoAxesCombined } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, ChartPie, ChartNoAxesCombined } from "lucide-react";
 import type { Asset } from "../../types/Asset";
 import type { MoneyFlowOverview } from "../../types/GoalAllocation";
 import type { LiabilityAllocationOverview } from "../../types/LiabilityAllocation";
@@ -45,13 +45,14 @@ export function Donut({ rows, total, small = false }: { rows: Breakdown[]; total
   </div>;
 }
 
-export function WealthChart({ assets, wallets, overview, liabilityOverview, total }: {
-  assets: Asset[]; wallets: PortfolioWallet[]; overview: MoneyFlowOverview | null; liabilityOverview?: LiabilityAllocationOverview | null; total: number;
+export function WealthChart({ assets, wallets, overview, liabilityOverview, total, snapshots }: {
+  assets: Asset[]; wallets: PortfolioWallet[]; overview: MoneyFlowOverview | null; liabilityOverview?: LiabilityAllocationOverview | null; total: number; snapshots: MonthlySnapshot[];
 }) {
   const [mode, setMode] = useState<"portfolios" | "assets" | "goals">("portfolios");
   const rows = [...wealthBreakdown(mode, assets, wallets, overview, liabilityOverview ?? null)]
     .sort((a, b) => b.value - a.value);
   const chartTotal = rows.reduce((sum, row) => sum + Math.max(0, row.value), 0);
+  const monthlyChanges = mode === "portfolios" ? portfolioMonthlyChanges(assets, wallets, snapshots) : new Map<string, number>();
   return <section className="investment-panel wealth-panel">
     <div className="investment-panel-heading">
       <h2><span className="investment-section-icon"><ChartPie size={19} /></span>Podział majątku</h2>
@@ -63,15 +64,60 @@ export function WealthChart({ assets, wallets, overview, liabilityOverview, tota
     <div className="wealth-chart-body">
       <Donut rows={rows} total={total} />
       <div className="wealth-legend">
-        {rows.filter(row => row.value !== 0).map(row => <div key={row.id}>
-          <span className="investment-dot" style={{ background: row.color }} /><span className="legend-name">{row.name}</span>
-          <strong>{money(row.value)}</strong><span className="legend-share">{row.value >= 0 ? percent(row.value, chartTotal) : "—"}</span>
-        </div>)}
+        {rows.filter(row => row.value !== 0).map(row => {
+          const change = monthlyChanges.get(row.id);
+          return <div key={row.id}>
+            <span className="investment-dot" style={{ background: row.color }} /><span className="legend-name">{row.name}</span>
+            {change != null && Math.abs(change) > 0.005 && <span
+              className={`legend-month-change ${change > 0 ? "positive" : "negative"}`}
+              title="Zmiana wartości całego portfela względem ostatniego zamkniętego miesiąca"
+              aria-label={`Zmiana miesiąc do miesiąca: ${change > 0 ? "wzrost" : "spadek"} ${Math.abs(change).toLocaleString("pl-PL", { maximumFractionDigits: 1 })}%`}
+            >
+              {change > 0 ? <ArrowUpRight size={12}/> : <ArrowDownRight size={12}/>}
+              {Math.abs(change).toLocaleString("pl-PL", { maximumFractionDigits: 1 })}%
+            </span>}
+            <strong>{money(row.value)}</strong><span className="legend-share">{row.value >= 0 ? percent(row.value, chartTotal) : "—"}</span>
+          </div>;
+        })}
         {!rows.some(row => row.value !== 0) && <p className="investment-empty">Dodaj aktywa, aby zobaczyć podział majątku.</p>}
       </div>
     </div>
     {rows.some(row => row.value < 0) && <p className="investment-note">Wykres i udziały pokazują dodatnie wartości. Suma uwzględnia również ujemne salda.</p>}
   </section>;
+}
+
+function portfolioMonthlyChanges(assets: Asset[], wallets: PortfolioWallet[], snapshots: MonthlySnapshot[]) {
+  const result = new Map<string, number>();
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const previous = snapshots
+    .filter(snapshot => snapshot.month < currentMonth)
+    .sort((a, b) => b.month.localeCompare(a.month))[0];
+
+  if (!previous) return result;
+
+  const currentAssetById = new Map(assets.map(asset => [asset.id, asset]));
+
+  for (const wallet of wallets.filter(wallet => wallet.type !== "GOALS")) {
+    const currentValue = assets
+      .filter(asset => asset.portfolioId === wallet.id)
+      .reduce((sum, asset) => sum + asset.value, 0);
+
+    let previousValue = 0;
+    let comparableAssets = 0;
+
+    for (const snapshotAsset of previous.assets) {
+      const currentAsset = currentAssetById.get(snapshotAsset.id);
+      if (currentAsset?.portfolioId !== wallet.id) continue;
+      previousValue += snapshotAsset.value;
+      comparableAssets += 1;
+    }
+
+    if (comparableAssets === 0 || previousValue <= 0) continue;
+    result.set(String(wallet.id), (currentValue - previousValue) / previousValue * 100);
+  }
+
+  return result;
 }
 
 export function HistoryChart({ snapshots, total }: { snapshots: MonthlySnapshot[]; total: number }) {

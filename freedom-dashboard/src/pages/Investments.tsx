@@ -118,7 +118,7 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
     </section>
 
     <div className="investment-charts">
-      <WealthChart assets={portfolio} wallets={wallets} overview={overview} liabilityOverview={liabilityOverview} total={total}/>
+      <WealthChart assets={portfolio} wallets={wallets} overview={overview} liabilityOverview={liabilityOverview} total={total} snapshots={monthlySnapshots}/>
       <HistoryChart snapshots={monthlySnapshots} total={total}/>
     </div>
 
