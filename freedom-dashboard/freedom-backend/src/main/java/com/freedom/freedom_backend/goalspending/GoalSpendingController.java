@@ -20,9 +20,10 @@ public class GoalSpendingController {
     @GetMapping("/spendable")
     public List<SpendableGoalResponse> spendable(
             @RequestParam Long assetId,
+            @RequestParam(required = false) Long transactionId,
             @AuthenticationPrincipal User user
     ) {
-        return service.getSpendableGoals(assetId, user);
+        return service.getSpendableGoals(assetId, transactionId, user);
     }
 
     @PostMapping("/{goalId}/complete")

@@ -92,6 +92,8 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
   const fundedLiabilities = groupFundedLiabilities(liabilityOverview, portfolio, wallets);
   const selected = wallets.find(wallet => wallet.id === selectedId);
   const selectedAssets = portfolio.filter(asset => asset.portfolioId === selectedId).sort((a, b) => b.value - a.value);
+  const portfolioMonthChanges = portfolioMonthlyChanges(portfolio, realWallets, monthlySnapshots);
+  const assetMonthChanges = assetMonthlyChanges(portfolio, monthlySnapshots);
   const known = !loading && !error && overview !== null && liabilityOverview !== null;
   const addPortfolio = <button type="button" className="investment-button" onClick={() => setForm("new")}><Plus size={16}/>Dodaj portfel</button>;
 
@@ -130,6 +132,7 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
       {loading ? <div className="investment-empty"><LoaderCircle size={20} className="animate-spin"/>Pobieranie portfeli…</div> : !realWallets.length ? <div className="investment-empty">Dodaj pierwszy portfel i nadaj swoim inwestycjom kierunek.</div> :
         <div className="portfolio-cards">{realWallets.map(wallet => {
           const assets = portfolio.filter(asset => asset.portfolioId === wallet.id).sort((a, b) => b.value - a.value);
+          const monthChange = portfolioMonthChanges.get(wallet.id);
           const progress = wallet.targetAmount ? wallet.grossValue / wallet.targetAmount * 100 : null;
           const breakdown = assets.map(asset => ({ id: String(asset.id), name: asset.name, value: asset.value, color: asset.color }));
           const debtReservations = liabilityReservationsForWallet(wallet.id, liabilityOverview, portfolio);
@@ -153,7 +156,18 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
                   {menu === wallet.id && <div className="portfolio-menu"><button type="button" onClick={() => setForm(wallet)}><Pencil size={14}/>Edytuj portfel</button><button type="button" onClick={() => { setManagerError(""); setDeleteWallet(wallet); }}><Trash2 size={14}/>Usuń portfel</button></div>}
                 </div>}
               </div>
-              <div className="portfolio-card-value"><strong>{money(wallet.grossValue)}</strong><span>{percent(wallet.grossValue, total)} majątku</span></div>
+              <div className="portfolio-card-value">
+                <strong>{money(wallet.grossValue)}</strong>
+                <span>{percent(wallet.grossValue, total)} majątku</span>
+                {monthChange != null && Math.abs(monthChange) > 0.005 && <span
+                  className={`portfolio-month-change ${monthChange > 0 ? "positive" : "negative"}`}
+                  title="Zmiana wartości portfela względem ostatniego zamkniętego miesiąca"
+                  aria-label={`Zmiana miesiąc do miesiąca: ${monthChange > 0 ? "wzrost" : "spadek"} ${Math.abs(monthChange).toLocaleString("pl-PL", { maximumFractionDigits: 1 })}%`}
+                >
+                  {monthChange > 0 ? <ArrowUpRight size={12}/> : <ArrowDownRight size={12}/>}
+                  {Math.abs(monthChange).toLocaleString("pl-PL", { maximumFractionDigits: 1 })}%
+                </span>}
+              </div>
               <div className="portfolio-progress-block">
                 <div className="investment-progress" role="progressbar" aria-label={`Cel portfela ${wallet.name}`} aria-valuenow={Math.round(Math.min(100, Math.max(0, progress ?? 0)))} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${Math.min(100, Math.max(0, progress ?? 0))}%` }}/></div>
                 <div className="portfolio-progress-label"><span>{wallet.targetAmount ? `Cel: ${money(wallet.targetAmount)}` : wallet.systemPortfolio ? "Gotówka i bieżące środki" : "Brak kwoty docelowej"}</span><span>{progress == null ? "—" : `${Math.round(progress)}%`}</span></div>
@@ -232,12 +246,19 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
         {!selectedAssets.length && <p className="investment-empty">Ten portfel czeka na pierwsze aktywo.</p>}
         {selectedAssets.map(asset => {
           const change = assetLiveChange(asset);
+          const monthChange = assetMonthChanges.get(asset.id);
           return <div className="managed-asset" key={asset.id}>
             <span className="managed-asset-icon" style={{ color: asset.color }}><AssetIcon iconKey={getAssetIconKey(asset)} size={24}/></span>
             <div className="managed-asset-info"><h3>{asset.name} {asset.systemCash && <span className="portfolio-system-tag">SYSTEM</span>} {(asset.marketPriced || asset.fxPriced || asset.stockPriced) && <span className="portfolio-system-tag">LIVE</span>}</h3><span>{assetCategoryLabels[getAssetCategory(asset)]}{asset.fxPriced && asset.cashQuantity != null ? ` · ${asset.cashQuantity.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} ${asset.cashCurrency ?? ""}` : ""}{asset.marketPriced && asset.metalQuantity != null ? ` · ${asset.metalQuantity.toLocaleString("pl-PL")} ${metalUnitLabel(asset.metalUnit)}` : ""}{asset.marketPriced && asset.cryptoQuantity != null ? ` · ${asset.cryptoQuantity.toLocaleString("pl-PL", { maximumFractionDigits: 8 })} ${asset.cryptoSymbol ?? ""}` : ""}{asset.stockPriced && asset.stockQuantity != null ? ` · ${asset.stockQuantity.toLocaleString("pl-PL", { maximumFractionDigits: 6 })} ${asset.stockSymbol ?? ""}` : ""}{asset.marketPriced && asset.realEstateAreaSqm != null ? ` · ${asset.realEstateAreaSqm.toLocaleString("pl-PL")} m²` : ""}</span>{asset.fxPriced && asset.fxRatePln != null && <small>NBP: 1 {asset.cashCurrency} = {asset.fxRatePln.toLocaleString("pl-PL", { minimumFractionDigits: 4, maximumFractionDigits: 4 })} zł{asset.fxEffectiveDate ? ` · kurs z ${asset.fxEffectiveDate}` : ""}</small>}{asset.marketPriced && asset.marketPriceUsd != null && asset.usdPlnRate != null && <small>Spot: ${asset.marketPriceUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })}/oz · USD/PLN {asset.usdPlnRate.toLocaleString("pl-PL", { maximumFractionDigits: 4 })}</small>}{asset.marketPriced && asset.cryptoPricePln != null && <small>CoinGecko: {asset.cryptoPricePln.toLocaleString("pl-PL", { maximumFractionDigits: asset.cryptoPricePln < 1 ? 8 : 2 })} zł / {asset.cryptoSymbol ?? "token"}</small>}{asset.stockPriced && asset.stockCurrentPrice != null && <small>Stooq: {asset.stockCurrentPrice.toLocaleString("pl-PL", { maximumFractionDigits: 6 })} {asset.stockCurrency ?? ""}</small>}{asset.stockPriced && asset.stockGrossValuePln != null && <small>Brutto: {money(asset.stockGrossValuePln)} · koszt: {money(asset.stockCostBasisPln ?? 0)} · wynik: {money(asset.stockUnrealizedGainPln ?? 0)} · est. podatek: -{money(asset.stockTaxAmountPln ?? 0)} · netto: {money(asset.value)}</small>}{asset.marketPriced && asset.realEstateMedianPriceSqm != null && <small>mScanner / RCN: {asset.realEstateMedianPriceSqm.toLocaleString("pl-PL", { maximumFractionDigits: 0 })} zł/m² · {asset.realEstateResolvedArea ?? asset.realEstateCity}{asset.realEstateRecordCount != null ? ` · ${asset.realEstateRecordCount} transakcji` : ""}</small>}{asset.marketPriced && asset.realEstateValuationMode === "MARKET_ANCHORED" && asset.realEstateQualityFactor != null && <small>Kotwica zakupu: {(asset.realEstateQualityFactor >= 1 ? "+" : "")}{((asset.realEstateQualityFactor - 1) * 100).toLocaleString("pl-PL", { maximumFractionDigits: 1 })}% vs rynek · est. {(asset.realEstateEstimatedPriceSqm ?? asset.realEstateMedianPriceSqm ?? 0).toLocaleString("pl-PL", { maximumFractionDigits: 0 })} zł/m²</small>}{getAssetCategory(asset) === "bonds" && asset.bondGrossValue != null && <small className="bond-aggregate-caption">Wartość netto po podatku Belki · szczegóły i emisje pod przyciskiem „Emisje”</small>}<small>Zarezerwowane: {money(allocated.get(asset.id) ?? 0)} · dostępne: {money(asset.value - (allocated.get(asset.id) ?? 0))}</small></div>
             <div className="managed-asset-value">
               <strong>{money(asset.value)}</strong>
-              {change != null && <span className={`asset-change-badge large ${change >= 0 ? "positive" : "negative"}`}><span className="asset-change-icon">{change >= 0 ? <ArrowUpRight size={14}/> : <ArrowDownRight size={14}/>}</span>24h {formatChangePercent(change)}</span>}
+              <div className="managed-asset-changes">
+                {monthChange != null && Math.abs(monthChange) > 0.005 && <span
+                  className={`asset-change-badge large ${monthChange > 0 ? "positive" : "negative"}`}
+                  title="Zmiana wartości tej pozycji w PLN względem ostatniego zamkniętego miesiąca"
+                ><span className="asset-change-icon">{monthChange > 0 ? <ArrowUpRight size={14}/> : <ArrowDownRight size={14}/>}</span>m/m {Math.abs(monthChange).toLocaleString("pl-PL", { maximumFractionDigits: 1 })}%</span>}
+                {change != null && <span className={`asset-change-badge large ${change >= 0 ? "positive" : "negative"}`}><span className="asset-change-icon">{change >= 0 ? <ArrowUpRight size={14}/> : <ArrowDownRight size={14}/>}</span>24h {formatChangePercent(change)}</span>}
+              </div>
             </div>
             {!asset.systemCash ? <div className="managed-asset-controls">
               <label><span className="sr-only">Portfel aktywa {asset.name}</span><select disabled={busy} value={asset.portfolioId} onChange={event => void managerAction(() => onUpdateAsset({ ...asset, portfolioId: Number(event.target.value) }))}>{realWallets.map(wallet => <option key={wallet.id} value={wallet.id}>{wallet.name}</option>)}</select></label>
@@ -257,6 +278,54 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
       <div className="investment-form"><p>{deleteWallet ? `Usunąć portfel „${deleteWallet.name}”? Portfel musi być pusty.` : `Usunąć aktywo „${deleteAsset?.name}”? Jego wartość zostanie odjęta od majątku.`}</p>{managerError && <p role="alert" className="investment-error">{managerError}</p>}<footer><button type="button" className="investment-button secondary" disabled={busy} onClick={() => { setDeleteWallet(null); setDeleteAsset(null); }}>Anuluj</button><button type="button" className="investment-button danger" disabled={busy} onClick={() => void managerAction(async () => { if (deleteWallet) await portfolioApi.remove(deleteWallet.id); else if (deleteAsset) await onDeleteAsset(deleteAsset.id); setDeleteWallet(null); setDeleteAsset(null); })}>{busy ? "Usuwanie…" : "Usuń"}</button></footer></div>
     </PortfolioDialog>}
   </main>;
+}
+
+function latestClosedSnapshot(snapshots: MonthlySnapshot[]): MonthlySnapshot | null {
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  return snapshots
+    .filter(snapshot => snapshot.month < currentMonth)
+    .sort((a, b) => b.month.localeCompare(a.month))[0] ?? null;
+}
+
+function assetMonthlyChanges(assets: Asset[], snapshots: MonthlySnapshot[]): Map<number, number> {
+  const result = new Map<number, number>();
+  const previous = latestClosedSnapshot(snapshots);
+  if (!previous) return result;
+
+  const previousById = new Map(previous.assets.map(asset => [asset.id, asset.value]));
+  for (const asset of assets) {
+    const previousValue = previousById.get(asset.id);
+    if (previousValue == null || previousValue <= 0) continue;
+    result.set(asset.id, (asset.value - previousValue) / previousValue * 100);
+  }
+  return result;
+}
+
+function portfolioMonthlyChanges(assets: Asset[], wallets: PortfolioWallet[], snapshots: MonthlySnapshot[]): Map<number, number> {
+  const result = new Map<number, number>();
+  const previous = latestClosedSnapshot(snapshots);
+  if (!previous) return result;
+
+  const currentAssetById = new Map(assets.map(asset => [asset.id, asset]));
+  for (const wallet of wallets) {
+    const currentValue = assets
+      .filter(asset => asset.portfolioId === wallet.id)
+      .reduce((sum, asset) => sum + asset.value, 0);
+
+    let previousValue = 0;
+    let comparableAssets = 0;
+    for (const snapshotAsset of previous.assets) {
+      const currentAsset = currentAssetById.get(snapshotAsset.id);
+      if (currentAsset?.portfolioId !== wallet.id) continue;
+      previousValue += snapshotAsset.value;
+      comparableAssets += 1;
+    }
+
+    if (comparableAssets === 0 || previousValue <= 0) continue;
+    result.set(wallet.id, (currentValue - previousValue) / previousValue * 100);
+  }
+  return result;
 }
 
 function assetLiveChange(asset: Asset): number | null {

@@ -25,11 +25,21 @@ public class GoalSpendingService {
     }
 
     @Transactional(readOnly = true)
-    public List<SpendableGoalResponse> getSpendableGoals(Long assetId, User user) {
+    public List<SpendableGoalResponse> getSpendableGoals(
+            Long assetId,
+            Long transactionId,
+            User user
+    ) {
         requireAsset(assetId, user.getId());
 
         return jdbc.query(
                 """
+                WITH edited_spending AS (
+                    SELECT goal_id, asset_id, amount
+                    FROM goal_spendings
+                    WHERE user_id = ?
+                      AND transaction_id = ?
+                )
                 SELECT g.id,
                        g.name,
                        g.status,
@@ -37,13 +47,13 @@ public class GoalSpendingService {
                        g.image_url,
                        g.target_amount,
                        g.current_amount,
-                       ga.amount AS reserved_on_asset,
+                       COALESCE(ga.amount, 0) + COALESCE(es.amount, 0) AS reserved_on_asset,
                        COALESCE((
                            SELECT SUM(ga2.amount)
                            FROM goal_allocations ga2
                            WHERE ga2.user_id = g.user_id
                              AND ga2.goal_id = g.id
-                       ), 0) AS total_reserved,
+                       ), 0) + COALESCE(es.amount, 0) AS total_reserved,
                        COALESCE((
                            SELECT SUM(gs.amount)
                            FROM goal_spendings gs
@@ -51,13 +61,17 @@ public class GoalSpendingService {
                              AND gs.goal_id = g.id
                        ), 0) AS spent_amount
                 FROM goals g
-                JOIN goal_allocations ga
+                LEFT JOIN goal_allocations ga
                   ON ga.goal_id = g.id
                  AND ga.user_id = g.user_id
                  AND ga.asset_id = ?
                  AND ga.amount > 0
+                LEFT JOIN edited_spending es
+                  ON es.goal_id = g.id
+                 AND es.asset_id = ?
                 WHERE g.user_id = ?
                   AND g.status IN ('ACTIVE', 'FUNDED')
+                  AND (COALESCE(ga.amount, 0) + COALESCE(es.amount, 0)) > 0
                 ORDER BY CASE g.status WHEN 'FUNDED' THEN 0 ELSE 1 END,
                          g.name
                 """,
@@ -73,9 +87,17 @@ public class GoalSpendingService {
                         rs.getBigDecimal("reserved_on_asset"),
                         rs.getBigDecimal("spent_amount")
                 ),
+                user.getId(),
+                transactionId,
+                assetId,
                 assetId,
                 user.getId()
         );
+    }
+
+    @Transactional(readOnly = true)
+    public List<SpendableGoalResponse> getSpendableGoals(Long assetId, User user) {
+        return getSpendableGoals(assetId, null, user);
     }
 
     /**

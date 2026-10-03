@@ -110,6 +110,10 @@
 .portfolio-card-value { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; margin: 0 0 15px; }
 .portfolio-card-value strong { font-size: 22px; font-weight: 800; letter-spacing: -.6px; }
 .portfolio-card-value > span { color: #abc7e7; font-size: 10px; }
+.portfolio-month-change { display: inline-flex !important; align-items: center; gap: 3px; padding: 3px 6px; border-radius: 999px; font-size: 9px !important; line-height: 1; font-weight: 800; white-space: nowrap; }
+.portfolio-month-change.positive { color: #79e7ba !important; border: 1px solid #1d684f; background: #0d3228; }
+.portfolio-month-change.negative { color: #ffc678 !important; border: 1px solid #80501d; background: #34200d; }
+.portfolio-month-change svg { flex-shrink: 0; }
 .investment-progress { height: 10px; border-radius: 10px; overflow: hidden; background: #0d1b2c; border: 1px solid #4c7aab; }
 .investment-progress > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #288dff, #407cef); box-shadow: 0 0 10px #318bff55; transition: width .3s; }
 .portfolio-progress-label { display: flex; justify-content: space-between; color: #b6d1f0; gap: 6px; font-size: 10px; margin-top: 6px; }
@@ -198,6 +202,7 @@
 .managed-asset-info > span, .managed-asset-info > small { display: block; color: #8ea8c7; font-size: 11px; line-height: 1.7; }
 .managed-asset-value { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 165px; }
 .managed-asset-value > strong { white-space: nowrap; font-size: 24px; font-weight: 800; letter-spacing: -.6px; }
+.managed-asset-changes { display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
 .managed-asset-controls { display: flex; align-items: center; gap: 8px; }
 .managed-asset select { max-width: 160px; padding: 8px; font-size: 11px; }
 @media (min-width: 1600px) { .investments-page { padding-top: 22px; } .portfolio-card { min-height: 260px; } .wealth-chart-body { gap: 36px; } }

@@ -51,9 +51,12 @@ async function read<T>(response: Response): Promise<T> {
 }
 
 export const goalSpendingApi = {
-  async getSpendable(assetId: number): Promise<SpendableGoal[]> {
+  async getSpendable(assetId: number, transactionId?: number): Promise<SpendableGoal[]> {
+    const params = new URLSearchParams({ assetId: String(assetId) });
+    if (transactionId != null) params.set("transactionId", String(transactionId));
+
     const response = await fetch(
-      `${API_BASE_URL}/api/goals/spendable?assetId=${encodeURIComponent(assetId)}`,
+      `${API_BASE_URL}/api/goals/spendable?${params.toString()}`,
       { headers: headers() }
     );
 

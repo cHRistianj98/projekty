@@ -741,6 +741,7 @@ export function Finances({
           expense={
             editingExpense
           }
+          assets={assets}
           onClose={() =>
             setEditingExpense(
               null
