@@ -397,3 +397,112 @@
   font-size: 9px;
   font-weight: 800;
 }
+
+/* Retail Treasury Bonds */
+.investment-dialog.wide.bond-details-dialog {
+  width: min(1240px, calc(100vw - 32px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #2f6692 #081321;
+  scrollbar-gutter: stable;
+}
+.investment-dialog.wide.bond-details-dialog::-webkit-scrollbar { width: 10px; }
+.investment-dialog.wide.bond-details-dialog::-webkit-scrollbar-track {
+  background: #081321;
+  border-left: 1px solid #162c43;
+}
+.investment-dialog.wide.bond-details-dialog::-webkit-scrollbar-thumb {
+  min-height: 46px;
+  border: 2px solid #081321;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #356f9d, #244d72);
+}
+.investment-dialog.wide.bond-details-dialog::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #4b91c5, #2d638f);
+}
+.investment-dialog.wide.bond-details-dialog::-webkit-scrollbar-thumb:active {
+  background: #57a6dc;
+}
+.investment-dialog.wide.bond-details-dialog::-webkit-scrollbar-button {
+  width: 0;
+  height: 0;
+  display: none;
+}
+.investment-dialog.wide.bond-details-dialog::-webkit-scrollbar-corner { background: #081321; }
+.bond-details-body { padding: 22px; overflow-x: hidden; }
+.bond-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.bond-summary-stat { padding: 14px 15px; border: 1px solid #233b57; border-radius: 13px; background: linear-gradient(145deg, #0d1c30, #081321); }
+.bond-summary-stat span { display: block; color: #809bb9; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
+.bond-summary-stat strong { display: block; margin-top: 6px; color: #eef6ff; font-size: 19px; letter-spacing: -.3px; }
+.bond-summary-stat.tax strong { color: #ffd08a; }
+.bond-summary-stat.net { border-color: #21604b; background: linear-gradient(145deg, #11312888, #081321); }
+.bond-summary-stat.net strong { color: #91efc8; }
+.bond-details-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 18px 0 12px; }
+.bond-details-toolbar > div:first-child { display: flex; flex-direction: column; gap: 4px; }
+.bond-details-toolbar strong { font-size: 13px; }
+.bond-details-toolbar span { color: #809bb9; font-size: 10px; }
+.bond-add-form { display: grid; grid-template-columns: 1.1fr .7fr .7fr 1fr 1.4fr auto; gap: 10px; align-items: end; margin-bottom: 13px; padding: 13px; border: 1px solid #234764; border-radius: 13px; background: #0c1b2d; }
+.bond-add-form label { display: flex; flex-direction: column; gap: 6px; color: #9db5d1; font-size: 10px; font-weight: 700; }
+.bond-add-form label small { color: #66819f; line-height: 1.35; font-weight: 500; }
+.bond-add-form input { min-width: 0; border: 1px solid #29445f; border-radius: 8px; background: #07121f; color: #eef5ff; padding: 9px 10px; }
+.bond-add-actions { display: flex; gap: 7px; }
+.bond-position-list { display: flex; flex-direction: column; gap: 8px; }
+.bond-position-row { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, .68fr) minmax(0, .82fr) minmax(0, .78fr) minmax(0, .9fr) minmax(0, 1.02fr) 34px; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 14px 12px 14px 15px; border: 1px solid #1c3551; border-radius: 13px; background: linear-gradient(105deg, #0b192b, #07111e); }
+.bond-position-main, .bond-position-rate, .bond-position-money { min-width: 0; }
+.bond-emission-code { color: #f7d477; font-size: 17px; font-weight: 900; letter-spacing: .4px; }
+.bond-position-meta { margin-top: 5px; color: #7e9ab9; font-size: 10px; }
+.bond-position-rate, .bond-position-money { display: flex; flex-direction: column; gap: 4px; text-align: right; }
+.bond-position-rate span, .bond-position-money span { color: #6f8eaf; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
+.bond-position-rate strong, .bond-position-money strong { color: #e7f1ff; font-size: 13px; white-space: nowrap; }
+.bond-position-rate small, .bond-position-money small { color: #718dab; font-size: 9px; line-height: 1.35; }
+.bond-position-money.tax strong { color: #ffd08a; }
+.bond-position-money.net strong { color: #8ff0c7; font-size: 15px; }
+.bond-position-money.redemption { padding-left: 10px; border-left: 1px solid #26405b; }
+.bond-position-money.redemption strong { color: #7dd3fc; font-size: 15px; }
+.bond-position-money.redemption small { color: #7aa3c5; }
+.bond-redemption-heading { display: inline-flex !important; align-items: center; justify-content: flex-end; gap: 4px; }
+.bond-info-tooltip { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #355774; border-radius: 50%; color: #89bddd; background: #10243a; cursor: help; outline: none; }
+.bond-info-tooltip:hover, .bond-info-tooltip:focus-visible { color: #d7efff; border-color: #5a9aca; background: #173552; }
+.bond-info-tooltip::after { content: attr(data-tooltip); position: absolute; z-index: 30; right: -4px; bottom: calc(100% + 9px); width: 300px; padding: 10px 12px; border: 1px solid #355774; border-radius: 10px; background: #071522f5; color: #c9dcef; box-shadow: 0 12px 34px #0009; font-size: 10px; font-weight: 500; line-height: 1.5; text-align: left; text-transform: none; letter-spacing: normal; white-space: normal; pointer-events: none; opacity: 0; transform: translateY(4px); transition: opacity .14s, transform .14s; }
+.bond-info-tooltip::before { content: ""; position: absolute; z-index: 31; right: 4px; bottom: calc(100% + 5px); width: 8px; height: 8px; border-right: 1px solid #355774; border-bottom: 1px solid #355774; background: #071522; transform: rotate(45deg); opacity: 0; transition: opacity .14s; }
+.bond-info-tooltip:hover::after, .bond-info-tooltip:hover::before, .bond-info-tooltip:focus-visible::after, .bond-info-tooltip:focus-visible::before { opacity: 1; transform: translateY(0); }
+.bond-position-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; min-width: 0; }
+.bond-blocked { color: #f0b976; border: 1px solid #65451e; border-radius: 999px; background: #34240f; padding: 3px 6px; font-size: 8px; font-weight: 800; white-space: nowrap; }
+.bond-import-form { display: flex; flex-direction: column; gap: 14px; padding: 22px; }
+.bond-import-form footer { display: flex; justify-content: flex-end; gap: 8px; }
+.bond-file-drop { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 165px; padding: 20px; border: 1px dashed #32628e; border-radius: 15px; background: linear-gradient(145deg, #10284766, #081321); color: #79c5ff; text-align: center; cursor: pointer; }
+.bond-file-drop strong { color: #e9f4ff; font-size: 14px; }
+.bond-file-drop span { max-width: 420px; color: #7996b6; font-size: 10px; line-height: 1.6; }
+.bond-file-drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.bond-details-button { padding: 7px 9px !important; font-size: 9px !important; }
+@media (max-width: 1100px) {
+  .bond-position-row { grid-template-columns: minmax(150px, 1.4fr) repeat(5, minmax(0, 1fr)) 32px; gap: 7px; padding-left: 11px; padding-right: 8px; }
+  .bond-position-meta { font-size: 9px; }
+  .bond-position-rate strong, .bond-position-money strong { font-size: 12px; }
+  .bond-position-money.net strong, .bond-position-money.redemption strong { font-size: 13px; }
+}
+@media (max-width: 900px) {
+  .bond-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bond-add-form { grid-template-columns: 1fr 1fr; }
+  .bond-gross-input { grid-column: 1 / -1; }
+  .bond-add-actions { grid-column: 1 / -1; justify-content: flex-end; }
+  .bond-position-row { grid-template-columns: 1fr 1fr; }
+  .bond-position-main { grid-column: 1 / -1; }
+  .bond-position-actions { justify-content: flex-end; }
+}
+.bond-toolbar-button { border-color: #5f4c20 !important; color: #f4d786 !important; background: linear-gradient(120deg, #302614, #152033) !important; }
+.bond-toolbar-button:hover { border-color: #9a7a2c !important; }
+.bond-manual-dialog { width: min(760px, calc(100vw - 32px)); }
+.bond-manual-form { display: flex; flex-direction: column; gap: 15px; padding: 22px; }
+.bond-manual-grid { display: grid; grid-template-columns: 1.2fr .7fr .7fr 1fr; gap: 12px; }
+.bond-manual-grid label { display: flex; flex-direction: column; gap: 7px; color: #a9bfd9; font-size: 11px; font-weight: 700; }
+.bond-manual-grid label small { color: #6f8ba9; font-size: 9px; font-weight: 500; line-height: 1.45; }
+.bond-manual-grid input { width: 100%; min-width: 0; border: 1px solid #29445f; border-radius: 9px; background: #07121f; color: #eef5ff; padding: 10px 11px; }
+.bond-manual-grid .bond-gross-input { grid-column: 1 / -1; }
+.bond-manual-form footer { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 700px) {
+  .bond-manual-grid { grid-template-columns: 1fr 1fr; }
+  .bond-manual-grid .bond-gross-input { grid-column: 1 / -1; }
+  .bond-details-toolbar { align-items: flex-start; flex-direction: column; }
+}

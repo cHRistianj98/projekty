@@ -12,6 +12,7 @@ import com.freedom.freedom_backend.market.FxQuoteResponse;
 import com.freedom.freedom_backend.market.StockPricingService;
 import com.freedom.freedom_backend.market.StockQuoteResponse;
 import com.freedom.freedom_backend.user.User;
+import com.freedom.freedom_backend.retailbond.RetailBondService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +40,7 @@ public class AssetService {
     private final StockPricingService stockPricing;
     private final StockTaxValuationService stockTaxValuation;
     private final RetailBondValuationService retailBondValuation;
+    private final RetailBondService retailBondService;
 
     public AssetService(
             AssetRepository repo,
@@ -50,7 +52,8 @@ public class AssetService {
             FxPricingService fxPricing,
             StockPricingService stockPricing,
             StockTaxValuationService stockTaxValuation,
-            RetailBondValuationService retailBondValuation
+            RetailBondValuationService retailBondValuation,
+            RetailBondService retailBondService
     ) {
         this.repo = repo;
         this.jdbc = jdbc;
@@ -62,10 +65,11 @@ public class AssetService {
         this.stockPricing = stockPricing;
         this.stockTaxValuation = stockTaxValuation;
         this.retailBondValuation = retailBondValuation;
+        this.retailBondService = retailBondService;
     }
 
-    @Transactional(readOnly = true)
     public List<AssetResponse> getAllAssets(User u) {
+        retailBondService.refreshAllForUser(u);
         return repo.findAllByUserId(u.getId()).stream().map(AssetResponse::from).toList();
     }
 

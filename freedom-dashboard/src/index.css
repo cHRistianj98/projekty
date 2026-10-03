@@ -17,6 +17,51 @@ body {
   color: #ffffff;
   font-family: Inter, Arial, sans-serif;
 }
+
+
+/* Freedom Engine scrollbars */
+html,
+body,
+#root,
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2f6692 #071321;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #071321;
+}
+
+*::-webkit-scrollbar-thumb {
+  min-width: 42px;
+  min-height: 42px;
+  border: 2px solid #071321;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #356f9d, #244d72);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #4b91c5, #2d638f);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background: #57a6dc;
+}
+
+*::-webkit-scrollbar-corner {
+  background: #071321;
+}
+
+*::-webkit-scrollbar-button {
+  width: 0;
+  height: 0;
+  display: none;
+}
 .freedom-content { margin-left: 196px; }
 .freedom-sidebar { background: linear-gradient(160deg, #071220, #050e1a); overflow-y: auto; gap: 0; }
 .freedom-sidebar .sidebar-player { padding: 12px; margin-top: auto; }
