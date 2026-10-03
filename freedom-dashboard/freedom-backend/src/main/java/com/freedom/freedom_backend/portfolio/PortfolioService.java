@@ -2,6 +2,7 @@ package com.freedom.freedom_backend.portfolio;
 
 import com.freedom.freedom_backend.user.User;
 import com.freedom.freedom_backend.ledger.MoneyLedgerService;
+import com.freedom.freedom_backend.liabilityallocation.LiabilityPortfolioReservationService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,15 +18,21 @@ public class PortfolioService {
 
     private final JdbcTemplate jdbc;
     private final MoneyLedgerService ledger;
+    private final LiabilityPortfolioReservationService portfolioReservations;
 
-    public PortfolioService(JdbcTemplate jdbc, MoneyLedgerService ledger) {
+    public PortfolioService(
+            JdbcTemplate jdbc,
+            MoneyLedgerService ledger,
+            LiabilityPortfolioReservationService portfolioReservations
+    ) {
         this.jdbc = jdbc;
         this.ledger = ledger;
+        this.portfolioReservations = portfolioReservations;
     }
 
     @Transactional(readOnly = true)
     public List<PortfolioResponse> getAll(User user) {
-        return jdbc.query("""
+        List<PortfolioResponse> base = jdbc.query("""
           SELECT p.id,p.name,p.type,p.color,p.icon_key,p.system_portfolio,p.target_amount,p.monthly_contribution,
                  p.image_url,p.image_position,
                  CASE WHEN p.type='GOALS' THEN 0 ELSE COALESCE(SUM(a.value),0) END gross_value,
@@ -56,6 +63,27 @@ public class PortfolioService {
                 rs.getString("image_url"),
                 PortfolioImagePosition.valueOf(rs.getString("image_position"))
         ), user.getId());
+
+        return base.stream().map(portfolio -> {
+            if (portfolio.type() == PortfolioType.GOALS) return portfolio;
+            BigDecimal dynamic = portfolioReservations.reservedForPortfolio(portfolio.id(), user.getId());
+            if (dynamic.signum() <= 0) return portfolio;
+            return new PortfolioResponse(
+                    portfolio.id(),
+                    portfolio.name(),
+                    portfolio.type(),
+                    portfolio.color(),
+                    portfolio.iconKey(),
+                    portfolio.systemPortfolio(),
+                    portfolio.grossValue(),
+                    portfolio.allocatedOut().add(dynamic),
+                    portfolio.value().subtract(dynamic).max(BigDecimal.ZERO),
+                    portfolio.targetAmount(),
+                    portfolio.monthlyContribution(),
+                    portfolio.imageUrl(),
+                    portfolio.imagePosition()
+            );
+        }).toList();
     }
 
     public PortfolioResponse create(PortfolioRequest r, User user) {

@@ -44,6 +44,22 @@ export const liabilityAllocationApi = {
     }).then(read<LiabilityAllocationSummary>);
   },
 
+
+  assignPortfolio(liabilityId: number, portfolioId: number): Promise<LiabilityAllocationSummary> {
+    return fetch(`${API}/api/liabilities/${liabilityId}/portfolio-allocation`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({ portfolioId }),
+    }).then(read<LiabilityAllocationSummary>);
+  },
+
+  releasePortfolio(liabilityId: number, portfolioId: number): Promise<LiabilityAllocationSummary> {
+    return fetch(`${API}/api/liabilities/${liabilityId}/portfolio-allocation/${portfolioId}`, {
+      method: "DELETE",
+      headers: headers(),
+    }).then(read<LiabilityAllocationSummary>);
+  },
+
   release(liabilityId: number, assetId: number, amount: number): Promise<LiabilityAllocationSummary> {
     return fetch(
       `${API}/api/liabilities/${liabilityId}/allocations/${assetId}?amount=${encodeURIComponent(amount)}`,

@@ -32,6 +32,25 @@ public class LiabilityAllocationController {
         return service.allocate(liabilityId, request, user);
     }
 
+
+    @PostMapping("/api/liabilities/{liabilityId}/portfolio-allocation")
+    public LiabilityAllocationSummaryResponse assignPortfolio(
+            @PathVariable Long liabilityId,
+            @Valid @RequestBody LiabilityPortfolioAllocationRequest request,
+            @AuthenticationPrincipal User user
+    ) {
+        return service.assignPortfolio(liabilityId, request, user);
+    }
+
+    @DeleteMapping("/api/liabilities/{liabilityId}/portfolio-allocation/{portfolioId}")
+    public LiabilityAllocationSummaryResponse releasePortfolio(
+            @PathVariable Long liabilityId,
+            @PathVariable Long portfolioId,
+            @AuthenticationPrincipal User user
+    ) {
+        return service.releasePortfolio(liabilityId, portfolioId, user);
+    }
+
     @DeleteMapping("/api/liabilities/{liabilityId}/allocations/{assetId}")
     public LiabilityAllocationSummaryResponse release(
             @PathVariable Long liabilityId,

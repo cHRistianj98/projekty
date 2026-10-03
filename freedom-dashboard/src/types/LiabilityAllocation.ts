@@ -1,9 +1,14 @@
+export type LiabilityAllocationSourceType = "ASSET" | "PORTFOLIO";
+
 export type LiabilityAllocation = {
   id: number;
   liabilityId: number;
   assetId: number | null;
   assetName: string;
   amount: number;
+  sourceType?: LiabilityAllocationSourceType;
+  portfolioId?: number | null;
+  portfolioName?: string | null;
 };
 
 export type LiabilityAllocationSummary = {
@@ -24,6 +29,9 @@ export type LiabilityPortfolioAllocation = {
   assetId: number | null;
   assetName: string;
   amount: number;
+  sourceType?: LiabilityAllocationSourceType;
+  portfolioId?: number | null;
+  portfolioName?: string | null;
 };
 
 export type LiabilityAllocationOverview = {

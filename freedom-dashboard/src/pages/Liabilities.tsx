@@ -30,6 +30,8 @@ import { analyzeDebts, type DebtAction } from "../features/intelligence/debtInte
 import { calculateMonthlyDebtPayments, calculateTotalLiabilities } from "../utils/liabilities";
 import { goalAllocationApi } from "../api/goalAllocationApi";
 import { liabilityAllocationApi } from "../api/liabilityAllocationApi";
+import { portfolioApi } from "../api/portfolioApi";
+import type { PortfolioWallet } from "../types/Portfolio";
 
 
 type Props = {
@@ -73,7 +75,7 @@ export function Liabilities({
 
   useEffect(() => {
     void refreshReservations();
-  }, [liabilities]);
+  }, [liabilities, portfolio]);
 
   const totalLiabilities = calculateTotalLiabilities(liabilities);
   const monthlyPayments = calculateMonthlyDebtPayments(liabilities);
@@ -92,15 +94,35 @@ export function Liabilities({
   }
 
   function allocationsFor(liabilityId: number): LiabilityAllocation[] {
-    return (allocationOverview?.allocations ?? [])
-      .filter(row => row.liabilityId === liabilityId)
+    const rows = (allocationOverview?.allocations ?? []).filter(row => row.liabilityId === liabilityId);
+    const manual: LiabilityAllocation[] = rows
+      .filter(row => row.sourceType !== "PORTFOLIO")
       .map((row, index) => ({
         id: row.assetId ?? -(index + 1),
         liabilityId: row.liabilityId,
         assetId: row.assetId,
         assetName: row.assetName,
         amount: row.amount,
+        sourceType: "ASSET",
       }));
+
+    const dynamic = new Map<number, LiabilityAllocation>();
+    for (const row of rows.filter(item => item.sourceType === "PORTFOLIO" && item.portfolioId != null)) {
+      const portfolioId = row.portfolioId!;
+      const current = dynamic.get(portfolioId);
+      if (current) current.amount += row.amount;
+      else dynamic.set(portfolioId, {
+        id: -1_000_000 - portfolioId,
+        liabilityId: row.liabilityId,
+        assetId: null,
+        assetName: `Portfel · ${row.portfolioName ?? "Portfel"}`,
+        amount: row.amount,
+        sourceType: "PORTFOLIO",
+        portfolioId,
+        portfolioName: row.portfolioName,
+      });
+    }
+    return [...manual, ...dynamic.values()];
   }
 
   return <main className="min-h-screen bg-[#050b16] p-8">
@@ -247,26 +269,58 @@ function LiabilityFundingModal({
   onChanged: () => Promise<void>;
 }) {
   const [summary, setSummary] = useState<LiabilityAllocationSummary | null>(null);
+  const [wallets, setWallets] = useState<PortfolioWallet[]>([]);
+  const [mode, setMode] = useState<"ASSET" | "PORTFOLIO">("ASSET");
   const [assetId, setAssetId] = useState<number | null>(portfolio[0]?.id ?? null);
+  const [portfolioId, setPortfolioId] = useState<number | null>(null);
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  async function refreshDialog() {
+    const [nextSummary, nextWallets] = await Promise.all([
+      liabilityAllocationApi.getSummary(liability.id),
+      portfolioApi.getAll(),
+    ]);
+    setSummary(nextSummary);
+    setWallets(nextWallets);
+    const selectable = nextWallets.filter(wallet => wallet.type !== "GOALS");
+    setPortfolioId(current => current != null && selectable.some(wallet => wallet.id === current)
+      ? current
+      : selectable[0]?.id ?? null);
+  }
+
   useEffect(() => {
     let cancelled = false;
-    liabilityAllocationApi.getSummary(liability.id)
-      .then(value => { if (!cancelled) setSummary(value); })
-      .catch(reason => { console.error(reason); if (!cancelled) setError("Nie udało się pobrać rezerwy zobowiązania."); })
+    Promise.all([
+      liabilityAllocationApi.getSummary(liability.id),
+      portfolioApi.getAll(),
+    ])
+      .then(([nextSummary, nextWallets]) => {
+        if (cancelled) return;
+        setSummary(nextSummary);
+        setWallets(nextWallets);
+        const selectable = nextWallets.filter(wallet => wallet.type !== "GOALS");
+        setPortfolioId(selectable[0]?.id ?? null);
+      })
+      .catch(reason => {
+        console.error(reason);
+        if (!cancelled) setError("Nie udało się pobrać rezerwy zobowiązania.");
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [liability.id]);
 
   const selectedAsset = portfolio.find(asset => asset.id === assetId);
+  const selectableWallets = wallets.filter(wallet => wallet.type !== "GOALS");
+  const selectedWallet = selectableWallets.find(wallet => wallet.id === portfolioId);
+  const linkedPortfolio = summary?.allocations.find(allocation => allocation.sourceType === "PORTFOLIO") ?? null;
   const alreadyReserved = summary?.allocatedAmount ?? 0;
-  const remainingToCover = Math.max(liability.remainingAmount - alreadyReserved, 0);
+  const remainingToCover = summary?.effectiveRemainingAmount ?? Math.max(liability.remainingAmount - alreadyReserved, 0);
   const assetAvailable = selectedAsset ? Math.max(selectedAsset.value - (reservedByAsset.get(selectedAsset.id) ?? 0), 0) : 0;
   const maxAssignable = Math.min(remainingToCover, assetAvailable);
+  const portfolioReserveNow = selectedWallet ? Math.min(remainingToCover, Math.max(selectedWallet.value, 0)) : 0;
   const parsedAmount = Number(amount.replace(/\s/g, "").replace(",", "."));
   const valid = selectedAsset && Number.isFinite(parsedAmount) && parsedAmount > 0 && parsedAmount <= maxAssignable;
 
@@ -279,6 +333,20 @@ function LiabilityFundingModal({
       setSummary(next);
       setAmount("");
       await onChanged();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function assignPortfolio() {
+    if (!selectedWallet || linkedPortfolio) return;
+    setSaving(true); setError("");
+    try {
+      const next = await liabilityAllocationApi.assignPortfolio(liability.id, selectedWallet.id);
+      setSummary(next);
+      await Promise.all([onChanged(), refreshDialog()]);
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -304,6 +372,21 @@ function LiabilityFundingModal({
     }
   }
 
+  async function releasePortfolio(allocation: LiabilityAllocation) {
+    if (allocation.portfolioId == null) return;
+    if (!window.confirm(`Odłączyć cały portfel „${allocation.portfolioName ?? allocation.assetName}” od tego zobowiązania?`)) return;
+    setSaving(true); setError("");
+    try {
+      const next = await liabilityAllocationApi.releasePortfolio(liability.id, allocation.portfolioId);
+      setSummary(next);
+      await Promise.all([onChanged(), refreshDialog()]);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const effectiveRemaining = summary?.effectiveRemainingAmount ?? liability.remainingAmount;
   const image = liability.imageUrl || getDefaultLiabilityImage(liability.type, liability.name);
 
@@ -313,7 +396,7 @@ function LiabilityFundingModal({
         <img src={image} alt="" className="absolute inset-0 h-full w-full object-cover opacity-20" style={{ objectPosition: liability.imagePosition ?? "center" }}/>
         <div className="absolute inset-0 bg-gradient-to-r from-[#0b1322] via-[#0b1322]/95 to-[#0b1322]/70"/>
         <div className="relative flex items-start justify-between gap-4">
-          <div><p className="text-[10px] font-black uppercase tracking-[.16em] text-emerald-400">Asset → Liability Reserve</p><h2 className="mt-1 text-xl font-black text-white">Rezerwa · {liability.name}</h2><p className="mt-2 max-w-xl text-xs leading-5 text-slate-400">Środki pozostają w aktywie i nadal pracują. Nie zmniejszamy salda kredytu w banku ani podstawy naliczania odsetek.</p></div>
+          <div><p className="text-[10px] font-black uppercase tracking-[.16em] text-emerald-400">Asset → Liability Reserve</p><h2 className="mt-1 text-xl font-black text-white">Rezerwa · {liability.name}</h2><p className="mt-2 max-w-xl text-xs leading-5 text-slate-400">Środki pozostają w aktywie i nadal pracują. Możesz przypisać konkretną kwotę albo cały portfel, który będzie aktualizował rezerwę automatycznie.</p></div>
           <button type="button" onClick={onClose} className="cursor-pointer rounded-xl p-2 text-slate-500 transition hover:bg-white/5 hover:text-white"><X size={19}/></button>
         </div>
       </div>
@@ -327,21 +410,46 @@ function LiabilityFundingModal({
 
         {summary?.allocations.length ? <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
           <p className="text-[10px] font-black uppercase tracking-[.14em] text-slate-500">Z czego składa się rezerwa</p>
-          <div className="mt-3 space-y-2">{summary.allocations.map(allocation => <div key={allocation.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-800/70 bg-slate-950/40 px-3 py-2.5">
-            <div className="flex min-w-0 items-center gap-2"><ShieldCheck size={15} className="shrink-0 text-emerald-400"/><span className="truncate text-sm font-semibold text-slate-300">{allocation.assetName}</span></div>
-            <div className="flex items-center gap-2"><strong className="text-sm text-white">{money(allocation.amount)}</strong>{allocation.assetId != null && <button type="button" disabled={saving} onClick={() => void release(allocation)} className="cursor-pointer rounded-lg border border-slate-700 px-2 py-1 text-[10px] font-black text-slate-400 transition hover:border-amber-400/40 hover:text-amber-300">ZWOLNIJ</button>}</div>
-          </div>)}</div>
+          <div className="mt-3 space-y-2">{summary.allocations.map(allocation => {
+            const dynamic = allocation.sourceType === "PORTFOLIO";
+            return <div key={`${allocation.sourceType ?? "ASSET"}-${allocation.id}`} className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 ${dynamic ? "border-cyan-500/20 bg-cyan-500/[.055]" : "border-slate-800/70 bg-slate-950/40"}`}>
+              <div className="flex min-w-0 items-center gap-2">{dynamic ? <WalletCards size={15} className="shrink-0 text-cyan-300"/> : <ShieldCheck size={15} className="shrink-0 text-emerald-400"/>}<span className="truncate text-sm font-semibold text-slate-300">{allocation.assetName}</span>{dynamic && <span className="rounded-md border border-cyan-500/20 bg-cyan-500/10 px-1.5 py-0.5 text-[8px] font-black tracking-[.08em] text-cyan-300">AUTO</span>}</div>
+              <div className="flex items-center gap-2"><strong className={dynamic ? "text-sm text-cyan-200" : "text-sm text-white"}>{money(allocation.amount)}</strong>{dynamic && allocation.portfolioId != null ? <button type="button" disabled={saving} onClick={() => void releasePortfolio(allocation)} className="cursor-pointer rounded-lg border border-slate-700 px-2 py-1 text-[10px] font-black text-slate-400 transition hover:border-amber-400/40 hover:text-amber-300">ODŁĄCZ</button> : allocation.assetId != null && <button type="button" disabled={saving} onClick={() => void release(allocation)} className="cursor-pointer rounded-lg border border-slate-700 px-2 py-1 text-[10px] font-black text-slate-400 transition hover:border-amber-400/40 hover:text-amber-300">ZWOLNIJ</button>}</div>
+            </div>;
+          })}</div>
         </div> : null}
 
-        <form onSubmit={allocate} className="space-y-4 rounded-2xl border border-emerald-500/15 bg-emerald-500/[.035] p-5">
-          <div><p className="text-sm font-black text-white">Przypisz kolejne środki</p><p className="mt-1 text-xs text-slate-500">Jedna złotówka może być zarezerwowana tylko raz — na cel albo na konkretne zobowiązanie.</p></div>
+        <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/30 p-1">
+          <div className="grid grid-cols-2 gap-1">
+            <button type="button" onClick={() => setMode("ASSET")} className={`cursor-pointer rounded-xl px-4 py-2.5 text-xs font-black transition ${mode === "ASSET" ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/25" : "text-slate-500 hover:bg-white/[.03] hover:text-slate-300"}`}><Banknote size={14} className="mr-2 inline"/>Kwota z aktywa</button>
+            <button type="button" onClick={() => setMode("PORTFOLIO")} className={`cursor-pointer rounded-xl px-4 py-2.5 text-xs font-black transition ${mode === "PORTFOLIO" ? "bg-cyan-500/15 text-cyan-300 ring-1 ring-cyan-500/25" : "text-slate-500 hover:bg-white/[.03] hover:text-slate-300"}`}><WalletCards size={14} className="mr-2 inline"/>Cały portfel</button>
+          </div>
+        </div>
+
+        {mode === "ASSET" ? <form onSubmit={allocate} className="space-y-4 rounded-2xl border border-emerald-500/15 bg-emerald-500/[.035] p-5">
+          <div><p className="text-sm font-black text-white">Przypisz konkretną kwotę</p><p className="mt-1 text-xs text-slate-500">Ręczny tryb zostaje bez zmian — wybierz aktywo i dokładną kwotę rezerwy.</p></div>
           <label className="block"><span className="mb-2 block text-[10px] font-black uppercase tracking-[.14em] text-slate-500">Aktywo</span><select value={assetId ?? ""} onChange={event => { setAssetId(Number(event.target.value)); setAmount(""); }} disabled={saving || loading} className="w-full cursor-pointer rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 outline-none focus:border-emerald-400/40">{portfolio.map(asset => <option key={asset.id} value={asset.id}>{asset.name} · {money(Math.max(asset.value - (reservedByAsset.get(asset.id) ?? 0), 0))} wolne</option>)}</select></label>
           {selectedAsset && <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-3 text-xs"><span className="text-slate-500">Dostępne w {selectedAsset.name}</span><strong className="text-slate-200">{money(assetAvailable)}</strong></div>}
           <label className="block"><span className="mb-2 block text-[10px] font-black uppercase tracking-[.14em] text-slate-500">Kwota rezerwy</span><div className="flex gap-2"><input inputMode="decimal" value={amount} onChange={event => setAmount(event.target.value)} placeholder="0,00" disabled={saving} className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-lg font-black text-white outline-none focus:border-emerald-400/40"/><button type="button" disabled={saving || maxAssignable <= 0} onClick={() => setAmount(maxAssignable.toFixed(2))} className="cursor-pointer rounded-xl border border-slate-700 px-3 text-xs font-black text-slate-300 hover:border-emerald-400/40 hover:text-emerald-300 disabled:opacity-40">MAX</button></div></label>
           <p className="text-xs text-slate-500">Możesz przypisać maksymalnie <strong className="text-slate-300">{money(maxAssignable)}</strong> z wybranego aktywa. Do pełnego pokrycia długu brakuje {money(remainingToCover)}.</p>
           {error && <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-300">{error}</div>}
           <div className="flex justify-end gap-3 border-t border-slate-800 pt-4"><button type="button" onClick={onClose} className="cursor-pointer rounded-xl border border-slate-700 px-4 py-3 text-sm font-bold text-slate-300">Zamknij</button><button type="submit" disabled={!valid || saving} className="flex cursor-pointer items-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"><PiggyBank size={16}/>{saving ? "Zapisuję…" : "PRZYPISZ ŚRODKI"}</button></div>
-        </form>
+        </form> : <div className="space-y-4 rounded-2xl border border-cyan-500/15 bg-cyan-500/[.035] p-5">
+          <div><p className="text-sm font-black text-white">Przypisz cały portfel</p><p className="mt-1 text-xs leading-5 text-slate-500">To połączenie jest dynamiczne. Nowe aktywa i wzrost wartości portfela automatycznie zwiększą rezerwę aż do pełnego pokrycia zobowiązania.</p></div>
+
+          {linkedPortfolio ? <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/[.06] p-4">
+            <div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl border border-cyan-500/20 bg-cyan-500/10 text-cyan-300"><WalletCards size={19}/></div><div><p className="text-[9px] font-black uppercase tracking-[.14em] text-cyan-400">Portfel przypisany automatycznie</p><p className="mt-1 text-sm font-black text-white">{linkedPortfolio.portfolioName ?? linkedPortfolio.assetName}</p></div><strong className="ml-auto text-base text-cyan-200">{money(linkedPortfolio.amount)}</strong></div>
+            <p className="mt-3 text-xs leading-5 text-slate-500">Każda nowa wolna złotówka dodana do tego portfela będzie od razu liczona jako rezerwa na to zobowiązanie.</p>
+          </div> : <>
+            <label className="block"><span className="mb-2 block text-[10px] font-black uppercase tracking-[.14em] text-slate-500">Portfel</span><select value={portfolioId ?? ""} onChange={event => setPortfolioId(Number(event.target.value))} disabled={saving || loading || selectableWallets.length === 0} className="w-full cursor-pointer rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 outline-none focus:border-cyan-400/40">{selectableWallets.map(wallet => <option key={wallet.id} value={wallet.id}>{wallet.name} · {money(wallet.grossValue)} w aktywach</option>)}</select></label>
+            {selectedWallet && <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-3"><p className="text-[9px] font-black uppercase tracking-[.12em] text-slate-600">Wolny kapitał teraz</p><strong className="mt-1 block text-sm text-white">{money(selectedWallet.value)}</strong></div><div className="rounded-xl border border-cyan-500/15 bg-cyan-500/[.04] px-4 py-3"><p className="text-[9px] font-black uppercase tracking-[.12em] text-cyan-500">Rezerwa po przypisaniu</p><strong className="mt-1 block text-sm text-cyan-200">{money(portfolioReserveNow)}</strong></div></div>}
+            {selectableWallets.length === 0 && <p className="rounded-xl border border-amber-500/15 bg-amber-500/[.05] px-4 py-3 text-xs text-amber-200">Nie masz portfela, który można przypisać.</p>}
+            <div className="rounded-xl border border-slate-800 bg-slate-950/35 px-4 py-3 text-xs leading-5 text-slate-500"><strong className="text-slate-300">Priorytet bezpieczeństwa:</strong> istniejące ręczne rezerwy na cele i zobowiązania są zachowane. Portfel automatycznie przypisuje tylko pozostałe wolne środki, więc żadna złotówka nie jest liczona dwa razy.</div>
+          </>}
+
+          {error && <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-300">{error}</div>}
+          <div className="flex justify-end gap-3 border-t border-slate-800 pt-4"><button type="button" onClick={onClose} className="cursor-pointer rounded-xl border border-slate-700 px-4 py-3 text-sm font-bold text-slate-300">Zamknij</button>{!linkedPortfolio && <button type="button" disabled={!selectedWallet || saving} onClick={() => void assignPortfolio()} className="flex cursor-pointer items-center gap-2 rounded-xl bg-cyan-500 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"><WalletCards size={16}/>{saving ? "Przypisuję…" : "PRZYPISZ PORTFEL"}</button>}</div>
+        </div>}
       </div>
     </div>
   </div>;

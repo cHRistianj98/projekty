@@ -7,7 +7,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @Transactional
@@ -16,10 +19,16 @@ public class LiabilityAllocationService {
 
     private final JdbcTemplate jdbc;
     private final MoneyLedgerService ledger;
+    private final LiabilityPortfolioReservationService portfolioReservations;
 
-    public LiabilityAllocationService(JdbcTemplate jdbc, MoneyLedgerService ledger) {
+    public LiabilityAllocationService(
+            JdbcTemplate jdbc,
+            MoneyLedgerService ledger,
+            LiabilityPortfolioReservationService portfolioReservations
+    ) {
         this.jdbc = jdbc;
         this.ledger = ledger;
+        this.portfolioReservations = portfolioReservations;
     }
 
     @Transactional(readOnly = true)
@@ -31,7 +40,7 @@ public class LiabilityAllocationService {
     @Transactional(readOnly = true)
     public LiabilityAllocationOverviewResponse getOverview(User user) {
         Long uid = user.getId();
-        List<LiabilityPortfolioAllocationResponse> allocations = jdbc.query("""
+        List<LiabilityPortfolioAllocationResponse> allocations = new ArrayList<>(jdbc.query("""
                 SELECT la.liability_id,
                        l.name AS liability_name,
                        l.image_url,
@@ -58,10 +67,37 @@ public class LiabilityAllocationService {
                         rs.getBigDecimal("remaining_amount"),
                         (Long) rs.getObject("asset_id"),
                         rs.getString("asset_name_snapshot"),
-                        rs.getBigDecimal("amount")
+                        rs.getBigDecimal("amount"),
+                        "ASSET",
+                        null,
+                        null
                 ),
                 uid
-        );
+        ));
+
+        List<LiabilityPortfolioReservationService.DynamicAssetReservation> dynamic =
+                portfolioReservations.reservationsForUser(uid);
+        Map<Long, LiabilityDetails> details = new HashMap<>();
+        for (LiabilityPortfolioReservationService.DynamicAssetReservation row : dynamic) {
+            LiabilityDetails liability = details.computeIfAbsent(
+                    row.liabilityId(),
+                    id -> liabilityDetails(id, uid)
+            );
+            allocations.add(new LiabilityPortfolioAllocationResponse(
+                    row.liabilityId(),
+                    liability.name(),
+                    liability.imageUrl(),
+                    liability.imagePosition(),
+                    liability.originalAmount(),
+                    liability.remainingAmount(),
+                    row.assetId(),
+                    row.assetName(),
+                    row.amount(),
+                    "PORTFOLIO",
+                    row.portfolioId(),
+                    row.portfolioName()
+            ));
+        }
 
         BigDecimal total = allocations.stream()
                 .map(LiabilityPortfolioAllocationResponse::amount)
@@ -117,6 +153,54 @@ public class LiabilityAllocationService {
         return buildSummary(liabilityId, uid);
     }
 
+    public LiabilityAllocationSummaryResponse assignPortfolio(
+            Long liabilityId,
+            LiabilityPortfolioAllocationRequest request,
+            User user
+    ) {
+        Long uid = user.getId();
+        requireLiability(liabilityId, uid);
+        PortfolioRow portfolio = requirePortfolio(request.portfolioId(), uid);
+        if ("GOALS".equals(portfolio.type())) {
+            throw new IllegalArgumentException("Systemowego portfela Cele nie można przypisać do zobowiązania.");
+        }
+
+        var currentForLiability = portfolioReservations.linkForLiability(liabilityId, uid);
+        if (currentForLiability.isPresent()) {
+            if (currentForLiability.get().portfolioId().equals(portfolio.id())) {
+                return buildSummary(liabilityId, uid);
+            }
+            throw new IllegalArgumentException("To zobowiązanie ma już przypisany cały portfel. Najpierw go zwolnij.");
+        }
+
+        var currentForPortfolio = portfolioReservations.linkForPortfolio(portfolio.id(), uid);
+        if (currentForPortfolio.isPresent()) {
+            throw new IllegalArgumentException("Ten portfel jest już przypisany do innego zobowiązania.");
+        }
+
+        jdbc.update("""
+                INSERT INTO liability_portfolio_allocations(user_id, liability_id, portfolio_id)
+                VALUES (?, ?, ?)
+                """, uid, liabilityId, portfolio.id());
+
+        return buildSummary(liabilityId, uid);
+    }
+
+    public LiabilityAllocationSummaryResponse releasePortfolio(
+            Long liabilityId,
+            Long portfolioId,
+            User user
+    ) {
+        Long uid = user.getId();
+        requireLiability(liabilityId, uid);
+        int removed = jdbc.update("""
+                DELETE FROM liability_portfolio_allocations
+                WHERE user_id=? AND liability_id=? AND portfolio_id=?
+                """, uid, liabilityId, portfolioId);
+        if (removed == 0) throw new IllegalArgumentException("Ten portfel nie jest przypisany do zobowiązania.");
+        return buildSummary(liabilityId, uid);
+    }
+
     public LiabilityAllocationSummaryResponse release(
             Long liabilityId,
             Long assetId,
@@ -141,7 +225,10 @@ public class LiabilityAllocationService {
                         rs.getLong("liability_id"),
                         (Long) rs.getObject("asset_id"),
                         rs.getString("asset_name_snapshot"),
-                        rs.getBigDecimal("amount")
+                        rs.getBigDecimal("amount"),
+                        "ASSET",
+                        null,
+                        null
                 ),
                 uid, liabilityId, assetId
         );
@@ -163,7 +250,7 @@ public class LiabilityAllocationService {
 
     private LiabilityAllocationSummaryResponse buildSummary(Long liabilityId, Long uid) {
         LiabilityRow liability = requireLiability(liabilityId, uid);
-        List<LiabilityAllocationItemResponse> allocations = jdbc.query("""
+        List<LiabilityAllocationItemResponse> allocations = new ArrayList<>(jdbc.query("""
                 SELECT id, liability_id, asset_id, asset_name_snapshot, amount
                 FROM liability_allocations
                 WHERE user_id = ?
@@ -176,10 +263,32 @@ public class LiabilityAllocationService {
                         rs.getLong("liability_id"),
                         (Long) rs.getObject("asset_id"),
                         rs.getString("asset_name_snapshot"),
-                        rs.getBigDecimal("amount")
+                        rs.getBigDecimal("amount"),
+                        "ASSET",
+                        null,
+                        null
                 ),
                 uid, liabilityId
-        );
+        ));
+
+        List<LiabilityPortfolioReservationService.DynamicAssetReservation> dynamic =
+                portfolioReservations.reservationsForLiability(liabilityId, uid);
+        BigDecimal dynamicAmount = dynamic.stream()
+                .map(LiabilityPortfolioReservationService.DynamicAssetReservation::amount)
+                .reduce(ZERO, BigDecimal::add);
+
+        portfolioReservations.linkForLiability(liabilityId, uid).ifPresent(link -> allocations.add(
+                new LiabilityAllocationItemResponse(
+                        link.linkId(),
+                        liabilityId,
+                        null,
+                        "Portfel · " + link.portfolioName(),
+                        dynamicAmount,
+                        "PORTFOLIO",
+                        link.portfolioId(),
+                        link.portfolioName()
+                )
+        ));
 
         BigDecimal allocated = allocations.stream()
                 .map(LiabilityAllocationItemResponse::amount)
@@ -196,12 +305,15 @@ public class LiabilityAllocationService {
     }
 
     private BigDecimal totalAllocatedForLiability(Long liabilityId, Long uid) {
-        BigDecimal value = jdbc.queryForObject(
+        BigDecimal explicit = jdbc.queryForObject(
                 "SELECT COALESCE(SUM(amount),0) FROM liability_allocations WHERE user_id=? AND liability_id=?",
                 BigDecimal.class,
                 uid, liabilityId
         );
-        return value == null ? ZERO : value;
+        BigDecimal dynamic = portfolioReservations.reservationsForLiability(liabilityId, uid).stream()
+                .map(LiabilityPortfolioReservationService.DynamicAssetReservation::amount)
+                .reduce(ZERO, BigDecimal::add);
+        return (explicit == null ? ZERO : explicit).add(dynamic);
     }
 
     private LiabilityRow requireLiability(Long liabilityId, Long uid) {
@@ -212,6 +324,26 @@ public class LiabilityAllocationService {
                 """,
                 (rs, rowNum) -> new LiabilityRow(
                         rs.getLong("id"),
+                        rs.getBigDecimal("remaining_amount")
+                ),
+                liabilityId, uid
+        );
+        if (rows.isEmpty()) throw new IllegalArgumentException("Zobowiązanie nie istnieje lub nie należy do użytkownika.");
+        return rows.getFirst();
+    }
+
+    private LiabilityDetails liabilityDetails(Long liabilityId, Long uid) {
+        List<LiabilityDetails> rows = jdbc.query("""
+                SELECT id, name, image_url, image_position, original_amount, remaining_amount
+                FROM liabilities
+                WHERE id=? AND user_id=?
+                """,
+                (rs, rowNum) -> new LiabilityDetails(
+                        rs.getLong("id"),
+                        rs.getString("name"),
+                        rs.getString("image_url"),
+                        rs.getString("image_position"),
+                        rs.getBigDecimal("original_amount"),
                         rs.getBigDecimal("remaining_amount")
                 ),
                 liabilityId, uid
@@ -233,6 +365,32 @@ public class LiabilityAllocationService {
         return rows.getFirst();
     }
 
+    private PortfolioRow requirePortfolio(Long portfolioId, Long uid) {
+        List<PortfolioRow> rows = jdbc.query("""
+                SELECT id, name, type
+                FROM portfolios
+                WHERE id=? AND user_id=?
+                """,
+                (rs, rowNum) -> new PortfolioRow(
+                        rs.getLong("id"),
+                        rs.getString("name"),
+                        rs.getString("type")
+                ),
+                portfolioId, uid
+        );
+        if (rows.isEmpty()) throw new IllegalArgumentException("Portfel nie istnieje lub nie należy do użytkownika.");
+        return rows.getFirst();
+    }
+
     private record LiabilityRow(Long id, BigDecimal remainingAmount) {}
     private record AssetRow(Long id, String name) {}
+    private record PortfolioRow(Long id, String name, String type) {}
+    private record LiabilityDetails(
+            Long id,
+            String name,
+            String imageUrl,
+            String imagePosition,
+            BigDecimal originalAmount,
+            BigDecimal remainingAmount
+    ) {}
 }

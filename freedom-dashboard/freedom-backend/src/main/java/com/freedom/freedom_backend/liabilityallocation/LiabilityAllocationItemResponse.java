@@ -7,5 +7,8 @@ public record LiabilityAllocationItemResponse(
         Long liabilityId,
         Long assetId,
         String assetName,
-        BigDecimal amount
+        BigDecimal amount,
+        String sourceType,
+        Long portfolioId,
+        String portfolioName
 ) {}

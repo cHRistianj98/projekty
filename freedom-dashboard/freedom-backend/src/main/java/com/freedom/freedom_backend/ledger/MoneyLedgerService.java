@@ -2,6 +2,7 @@ package com.freedom.freedom_backend.ledger;
 
 import com.freedom.freedom_backend.user.User;
 import com.freedom.freedom_backend.goalspending.GoalSpendingService;
+import com.freedom.freedom_backend.liabilityallocation.LiabilityPortfolioReservationService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,10 +17,16 @@ public class MoneyLedgerService {
     private static final BigDecimal ZERO = BigDecimal.ZERO;
     private final JdbcTemplate jdbc;
     private final GoalSpendingService goalSpending;
+    private final LiabilityPortfolioReservationService portfolioReservations;
 
-    public MoneyLedgerService(JdbcTemplate jdbc, GoalSpendingService goalSpending) {
+    public MoneyLedgerService(
+            JdbcTemplate jdbc,
+            GoalSpendingService goalSpending,
+            LiabilityPortfolioReservationService portfolioReservations
+    ) {
         this.jdbc = jdbc;
         this.goalSpending = goalSpending;
+        this.portfolioReservations = portfolioReservations;
     }
 
     public Long resolveAsset(Long requestedAssetId, User user) {
@@ -466,12 +473,13 @@ public class MoneyLedgerService {
     }
 
     private BigDecimal totalReserved(Long assetId, Long uid) {
-        BigDecimal value = jdbc.queryForObject("""
+        BigDecimal explicit = jdbc.queryForObject("""
                 SELECT
                     COALESCE((SELECT SUM(amount) FROM goal_allocations WHERE user_id=? AND asset_id=?),0) +
                     COALESCE((SELECT SUM(amount) FROM liability_allocations WHERE user_id=? AND asset_id=?),0)
                 """, BigDecimal.class, uid, assetId, uid, assetId);
-        return value == null ? ZERO : value;
+        BigDecimal dynamicPortfolio = portfolioReservations.reservedForAsset(assetId, uid);
+        return (explicit == null ? ZERO : explicit).add(dynamicPortfolio);
     }
 
     public void clampReservationsForAsset(Long assetId, User user) {
