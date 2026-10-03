@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import {
   Cell,
   Pie,
@@ -5,190 +6,202 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
+import { ArrowRight, LoaderCircle, WalletCards } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
+import { portfolioApi } from "../../api/portfolioApi";
 import type { Asset } from "../../types/Asset";
+import type { PortfolioWallet } from "../../types/Portfolio";
 
 type PortfolioChartProps = {
   portfolio: Asset[];
 };
 
-export function PortfolioChart({
-  portfolio,
-}: PortfolioChartProps) {
-  const total = portfolio.reduce(
-    (sum, asset) => sum + asset.value,
-    0
-  );
+type WalletSlice = {
+  wallet: PortfolioWallet;
+  assets: Asset[];
+  value: number;
+};
+
+const money = (value: number) =>
+  `${value.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} zł`;
+
+export function PortfolioChart({ portfolio }: PortfolioChartProps) {
+  const navigate = useNavigate();
+  const [wallets, setWallets] = useState<PortfolioWallet[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    portfolioApi.getAll()
+      .then((rows) => {
+        if (!cancelled) setWallets(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setWallets([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [portfolio]);
+
+  const walletSlices = useMemo<WalletSlice[]>(() => {
+    return wallets
+      .filter((wallet) => wallet.type !== "GOALS")
+      .map((wallet) => {
+        const assets = portfolio
+          .filter((asset) => asset.portfolioId === wallet.id)
+          .sort((a, b) => b.value - a.value);
+        return {
+          wallet,
+          assets,
+          value: assets.reduce((sum, asset) => sum + asset.value, 0),
+        };
+      })
+      .sort((a, b) => b.value - a.value);
+  }, [portfolio, wallets]);
 
   return (
-    <div
-      className="
-        rounded-2xl
-        border border-slate-800
-        bg-slate-900/70
-        p-5
-      "
-    >
-      {/* HEADER */}
-
-      <div className="mb-5">
-        <h2
-          className="
-            text-sm
-            font-bold
-            uppercase
-            tracking-wider
-            text-slate-300
-          "
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 text-cyan-400">
+            <WalletCards size={17} />
+            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300">
+              Struktura portfeli
+            </h2>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Każdy portfel osobno — bez mieszania wszystkich aktywów w jednym wykresie.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => navigate("/investments")}
+          className="inline-flex items-center gap-1.5 text-xs font-bold text-cyan-400 transition hover:text-cyan-300"
         >
-          Portfel inwestycyjny
-        </h2>
-
-        <p className="mt-1 text-xs text-slate-500">
-          Struktura Twojego majątku
-        </p>
+          Inwestycje <ArrowRight size={13} />
+        </button>
       </div>
 
-      <div
-        className="
-          grid
-          grid-cols-1
-          items-center
-          gap-6
-          xl:grid-cols-[240px_1fr]
-        "
-      >
-        {/* DONUT */}
-
-        <div className="relative h-[240px]">
-          <ResponsiveContainer
-            width="100%"
-            height="100%"
-          >
-            <PieChart>
-              <Pie
-                data={portfolio}
-                dataKey="value"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                innerRadius={70}
-                outerRadius={95}
-                paddingAngle={3}
-                stroke="none"
-              >
-                {portfolio.map((asset) => (
-                  <Cell
-                    key={asset.id}
-                    fill={asset.color}
-                  />
-                ))}
-              </Pie>
-
-              <Tooltip
-                formatter={(value) =>
-                  `${Number(
-                    value
-                  ).toLocaleString(
-                    "pl-PL"
-                  )} zł`
-                }
-                contentStyle={{
-                  backgroundColor:
-                    "#0f172a",
-                  border:
-                    "1px solid #334155",
-                  borderRadius: "12px",
-                  color: "#ffffff",
-                }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-
-          {/* TEXT IN CENTER */}
-
-          <div
-            className="
-              pointer-events-none
-              absolute
-              inset-0
-              flex
-              flex-col
-              items-center
-              justify-center
-            "
-          >
-            <span className="text-2xl font-bold">
-              {total.toLocaleString(
-                "pl-PL"
-              )}{" "}
-              zł
-            </span>
-
-            <span className="mt-1 text-xs text-slate-500">
-              Łącznie
-            </span>
-          </div>
+      {loading ? (
+        <div className="flex min-h-44 items-center justify-center gap-2 text-sm text-slate-500">
+          <LoaderCircle size={18} className="animate-spin" /> Pobieranie portfeli…
         </div>
-
-        {/* LEGEND */}
-
-        <div className="space-y-3">
-          {portfolio.map((asset) => {
-            const percentage =
-              total > 0
-                ? (asset.value / total) *
-                  100
-                : 0;
-
+      ) : walletSlices.length === 0 ? (
+        <div className="flex min-h-44 items-center justify-center text-sm text-slate-500">
+          Brak portfeli do wyświetlenia.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+          {walletSlices.map(({ wallet, assets, value }) => {
+            const positiveAssets = assets.filter((asset) => asset.value > 0);
+            const topAssets = assets.slice(0, 4);
             return (
-              <div
-                key={asset.id}
-                className="
-                  flex
-                  items-center
-                  justify-between
-                  gap-4
-                "
+              <button
+                key={wallet.id}
+                type="button"
+                onClick={() => navigate("/investments")}
+                className="group rounded-2xl border border-slate-800 bg-[#081421] p-4 text-left transition hover:-translate-y-0.5 hover:border-cyan-500/25 hover:bg-[#0a1828]"
               >
-                <div className="flex items-center gap-3">
-                  <div
-                    className="
-                      h-3
-                      w-3
-                      rounded-full
-                    "
-                    style={{
-                      backgroundColor:
-                        asset.color,
-                    }}
-                  />
-
-                  <span className="text-sm text-slate-300">
-                    {asset.name}
-                  </span>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: wallet.color }}
+                      />
+                      <h3 className="truncate text-sm font-black text-white">{wallet.name}</h3>
+                      {wallet.systemPortfolio && (
+                        <span className="rounded-md border border-blue-400/20 bg-blue-400/10 px-1.5 py-0.5 text-[8px] font-black tracking-wider text-blue-300">
+                          SYSTEM
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      {assets.length} {assets.length === 1 ? "aktywo" : "aktywów"}
+                    </p>
+                  </div>
+                  <strong className="shrink-0 text-base font-black text-white">{money(value)}</strong>
                 </div>
 
-                <div className="text-right">
-                  <span className="text-sm font-semibold">
-                    {asset.value.toLocaleString(
-                      "pl-PL"
-                    )}{" "}
-                    zł
-                  </span>
-
-                  <span className="ml-3 text-xs text-slate-500">
-                    {percentage.toFixed(
-                      1
+                <div className="mt-3 grid grid-cols-[92px_minmax(0,1fr)] items-center gap-3">
+                  <div className="relative h-[92px] w-[92px]">
+                    {positiveAssets.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={positiveAssets}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={27}
+                            outerRadius={41}
+                            paddingAngle={2}
+                            stroke="none"
+                          >
+                            {positiveAssets.map((asset) => (
+                              <Cell key={asset.id} fill={asset.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            formatter={(raw) => money(Number(raw))}
+                            contentStyle={{
+                              backgroundColor: "#0f172a",
+                              border: "1px solid #334155",
+                              borderRadius: "10px",
+                              color: "#fff",
+                              fontSize: "11px",
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="absolute inset-2 rounded-full border-[10px] border-slate-800" />
                     )}
-                    %
-                  </span>
+                  </div>
+
+                  <div className="min-w-0 space-y-2">
+                    {topAssets.map((asset) => {
+                      const share = value > 0 && asset.value > 0 ? asset.value / value * 100 : null;
+                      const unallocatedDeficit = asset.systemCash && asset.value < 0;
+                      return (
+                        <div key={asset.id} className="flex min-w-0 items-center gap-2 text-[11px]">
+                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: asset.color }} />
+                          <span className="min-w-0 flex-1 truncate text-slate-300" title={asset.name}>
+                            {asset.systemCash ? "Środki nierozdzielone" : asset.name}
+                          </span>
+                          {unallocatedDeficit ? (
+                            <span className="shrink-0 font-black text-amber-300">{money(asset.value)}</span>
+                          ) : (
+                            <>
+                              {share != null && (
+                                <span className="shrink-0 text-slate-600">{share.toFixed(1)}%</span>
+                              )}
+                              <span className="shrink-0 font-bold text-slate-200">{money(asset.value)}</span>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {assets.length > 4 && (
+                      <p className="pt-0.5 text-[10px] font-semibold text-slate-600">
+                        + {assets.length - 4} pozostałych aktywów
+                      </p>
+                    )}
+                    {!assets.length && (
+                      <p className="text-[11px] text-slate-600">Portfel jest pusty.</p>
+                    )}
+                  </div>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
-      </div>
+      )}
     </div>
   );
 }

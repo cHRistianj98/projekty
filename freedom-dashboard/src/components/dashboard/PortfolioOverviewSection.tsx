@@ -32,7 +32,7 @@ export function PortfolioOverviewSection({ assets }: Props) {
     [wallets],
   );
 
-  const visible = realWallets.slice(0, 4);
+  const visible = realWallets;
   const total = realWallets.reduce((sum, wallet) => sum + wallet.grossValue, 0);
 
   return (
@@ -44,7 +44,7 @@ export function PortfolioOverviewSection({ assets }: Props) {
             <p className="text-[10px] font-black uppercase tracking-[0.2em]">Kapitał według strategii</p>
           </div>
           <h2 className="mt-2 text-xl font-black text-white">Portfele</h2>
-          <p className="mt-1 text-xs text-slate-500">Najważniejsze strategie inwestycyjne i ich aktualna wartość.</p>
+          <p className="mt-1 text-xs text-slate-500">Wszystkie strategie inwestycyjne i ich aktualna wartość.</p>
         </div>
         <button type="button" onClick={() => navigate("/investments")} className="inline-flex items-center gap-2 text-xs font-black text-cyan-400 transition hover:text-cyan-300">
           Zarządzaj portfelami <ArrowRight size={15}/>

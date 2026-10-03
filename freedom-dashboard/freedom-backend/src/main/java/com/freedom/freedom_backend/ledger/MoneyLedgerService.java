@@ -56,16 +56,46 @@ public class MoneyLedgerService {
 
     public void recordIncome(Long transactionId, Long assetId, BigDecimal amount, User user) {
         ensurePositive(amount);
+        Long uid = user.getId();
+
+        // Środki nierozdzielone are a clearing account. If previous imported
+        // expenses pushed them below zero, the next unattributed income first
+        // clears that deficit. Only the surplus becomes a normal provenance lot.
+        if (isSystemCash(assetId, uid)) {
+            BigDecimal current = assetValue(assetId, uid);
+            BigDecimal settled = current.signum() < 0 ? amount.min(current.abs()) : ZERO;
+            if (settled.signum() > 0) {
+                changeSystemCashValue(assetId, uid, settled);
+                movement(uid, null, "UNALLOCATED_DEFICIT_SETTLEMENT", null, assetId, transactionId, settled);
+            }
+
+            BigDecimal funded = amount.subtract(settled);
+            if (funded.signum() == 0) return;
+
+            Long lotId = jdbc.queryForObject(
+                    "INSERT INTO money_lots(user_id,origin_type,origin_transaction_id,origin_asset_id,original_amount) VALUES(?,'INCOME',?,?,?) RETURNING id",
+                    Long.class, uid, transactionId, assetId, funded);
+            addPosition(uid, lotId, assetId, funded);
+            changeSystemCashValue(assetId, uid, funded);
+            movement(uid, lotId, "INCOME", null, assetId, transactionId, funded);
+            return;
+        }
+
         Long lotId = jdbc.queryForObject(
                 "INSERT INTO money_lots(user_id,origin_type,origin_transaction_id,origin_asset_id,original_amount) VALUES(?,'INCOME',?,?,?) RETURNING id",
-                Long.class, user.getId(), transactionId, assetId, amount);
-        addPosition(user.getId(), lotId, assetId, amount);
-        changeAssetValue(assetId, user.getId(), amount);
-        movement(user.getId(), lotId, "INCOME", null, assetId, transactionId, amount);
+                Long.class, uid, transactionId, assetId, amount);
+        addPosition(uid, lotId, assetId, amount);
+        changeAssetValue(assetId, uid, amount);
+        movement(uid, lotId, "INCOME", null, assetId, transactionId, amount);
     }
 
     public void recordExpense(Long transactionId, Long assetId, BigDecimal amount, User user) {
         ensurePositive(amount);
+        if (isSystemCash(assetId, user.getId())) {
+            recordUnallocatedExpense(transactionId, assetId, amount, user);
+            return;
+        }
+
         reconcileAsset(assetId, user.getId());
         if (amount.compareTo(available(assetId, user)) > 0) {
             throw new IllegalArgumentException("Za mało wolnych środków w wybranym aktywie.");
@@ -87,6 +117,15 @@ public class MoneyLedgerService {
     public void recordExpenseFromImportSource(Long transactionId, Long assetId, BigDecimal amount,
                                               User user, String importSource) {
         ensurePositive(amount);
+
+        // Imports do not know whether a payment came from a bank account or
+        // physical cash. The clearing account is therefore intentionally allowed
+        // to go below zero until the next cash reconciliation.
+        if (isSystemCash(assetId, user.getId())) {
+            recordUnallocatedExpense(transactionId, assetId, amount, user);
+            return;
+        }
+
         reconcileAsset(assetId, user.getId());
         if (amount.compareTo(available(assetId, user)) > 0) {
             throw new IllegalArgumentException("Za mało wolnych środków w wybranym aktywie.");
@@ -117,23 +156,42 @@ public class MoneyLedgerService {
     }
 
     public void reverseExpense(Long transactionId, Long fallbackAssetId, BigDecimal amount, User user) {
+        Long uid = user.getId();
         List<Usage> usages = jdbc.query(
                 "SELECT lot_id,asset_id,amount FROM transaction_lot_usages WHERE user_id=? AND transaction_id=? ORDER BY id",
                 (rs, n) -> new Usage(rs.getLong("lot_id"), (Long) rs.getObject("asset_id"), rs.getBigDecimal("amount")),
-                user.getId(), transactionId);
-        if (usages.isEmpty()) {
+                uid, transactionId);
+        BigDecimal deficit = netMovementAmount(
+                uid,
+                transactionId,
+                "UNALLOCATED_DEFICIT_EXPENSE",
+                "UNALLOCATED_DEFICIT_EXPENSE_REVERSAL"
+        );
+
+        if (usages.isEmpty() && deficit.signum() == 0) {
             Long assetId = fallbackAssetId != null ? fallbackAssetId : resolveAsset(null, user);
-            creditAdjustment(assetId, amount, user.getId(), "LEGACY_EXPENSE_REVERSAL", transactionId);
+            creditAdjustment(assetId, amount, uid, "LEGACY_EXPENSE_REVERSAL", transactionId);
             return;
         }
         for (Usage usage : usages) {
             Long assetId = usage.assetId() != null ? usage.assetId() : fallbackAssetId;
             if (assetId == null) assetId = resolveAsset(null, user);
-            addPosition(user.getId(), usage.lotId(), assetId, usage.amount());
-            changeAssetValue(assetId, user.getId(), usage.amount());
-            movement(user.getId(), usage.lotId(), "EXPENSE_REVERSAL", null, assetId, transactionId, usage.amount());
+            addPosition(uid, usage.lotId(), assetId, usage.amount());
+            if (isSystemCash(assetId, uid)) changeSystemCashValue(assetId, uid, usage.amount());
+            else changeAssetValue(assetId, uid, usage.amount());
+            movement(uid, usage.lotId(), "EXPENSE_REVERSAL", null, assetId, transactionId, usage.amount());
         }
-        jdbc.update("DELETE FROM transaction_lot_usages WHERE user_id=? AND transaction_id=?", user.getId(), transactionId);
+
+        if (deficit.signum() > 0) {
+            Long assetId = fallbackAssetId != null ? fallbackAssetId : resolveAsset(null, user);
+            if (!isSystemCash(assetId, uid)) {
+                throw new IllegalStateException("Deficyt Środków nierozdzielonych wskazuje inne aktywo.");
+            }
+            changeSystemCashValue(assetId, uid, deficit);
+            movement(uid, null, "UNALLOCATED_DEFICIT_EXPENSE_REVERSAL", null, assetId, transactionId, deficit);
+        }
+
+        jdbc.update("DELETE FROM transaction_lot_usages WHERE user_id=? AND transaction_id=?", uid, transactionId);
     }
 
     /**
@@ -144,57 +202,71 @@ public class MoneyLedgerService {
      */
     public List<Long> reverseIncome(Long transactionId, Long fallbackAssetId, BigDecimal amount, User user) {
         Long uid = user.getId();
+        BigDecimal settledDeficit = netMovementAmount(
+                uid,
+                transactionId,
+                "UNALLOCATED_DEFICIT_SETTLEMENT",
+                "UNALLOCATED_DEFICIT_SETTLEMENT_REVERSAL"
+        );
+        BigDecimal fundedAmount = amount.subtract(settledDeficit).max(ZERO);
+
         List<Long> lots = jdbc.query(
                 "SELECT id FROM money_lots WHERE user_id=? AND origin_transaction_id=? AND origin_type='INCOME' ORDER BY id",
                 (rs, n) -> rs.getLong(1), uid, transactionId);
 
-        if (lots.isEmpty()) {
-            withdrawLegacy(amount, uid);
-            return List.of();
-        }
-
-        BigDecimal current = sumPositions(lots, uid);
-        BigDecimal spent = amount.subtract(current).max(ZERO);
         List<Long> cascaded = new ArrayList<>();
-
-        if (spent.signum() > 0) {
-            BigDecimal otherFree = totalFreeExcludingLots(uid, lots);
-            if (otherFree.compareTo(spent) >= 0) {
-                resourceExpenseUsagesAwayFromLots(uid, lots, transactionId);
+        if (fundedAmount.signum() > 0) {
+            if (lots.isEmpty()) {
+                withdrawLegacy(fundedAmount, uid);
             } else {
-                List<Long> dependentExpenses = dependentExpenseIds(uid, lots);
-                for (Long expenseId : dependentExpenses) {
-                    ExpenseRow expense = expenseRow(expenseId, uid);
-                    reverseExpense(expense.id(), expense.assetId(), expense.amount(), user);
-                    goalSpending.reverseSpending(expense.id(), user);
-                    jdbc.update("DELETE FROM transactions WHERE id=? AND user_id=?", expense.id(), uid);
-                    cascaded.add(expense.id());
+                BigDecimal current = sumPositions(lots, uid);
+                BigDecimal spent = fundedAmount.subtract(current).max(ZERO);
+
+                if (spent.signum() > 0) {
+                    BigDecimal otherFree = totalFreeExcludingLots(uid, lots);
+                    if (otherFree.compareTo(spent) >= 0) {
+                        resourceExpenseUsagesAwayFromLots(uid, lots, transactionId);
+                    } else {
+                        List<Long> dependentExpenses = dependentExpenseIds(uid, lots);
+                        for (Long expenseId : dependentExpenses) {
+                            ExpenseRow expense = expenseRow(expenseId, uid);
+                            reverseExpense(expense.id(), expense.assetId(), expense.amount(), user);
+                            goalSpending.reverseSpending(expense.id(), user);
+                            jdbc.update("DELETE FROM transactions WHERE id=? AND user_id=?", expense.id(), uid);
+                            cascaded.add(expense.id());
+                        }
+
+                        BigDecimal restoredSource = sumPositions(lots, uid);
+                        BigDecimal stillMissing = fundedAmount.subtract(restoredSource).max(ZERO);
+                        if (stillMissing.signum() > 0) {
+                            debitAcrossAssets(uid, stillMissing, lots, "INCOME_RESOURCE", transactionId);
+                        }
+                    }
                 }
 
-                // A source can also have been consumed by a non-transaction event
-                // (for example a completed goal). In that case re-source only the
-                // still-missing fragment from other currently free capital.
-                BigDecimal restoredSource = sumPositions(lots, uid);
-                BigDecimal stillMissing = amount.subtract(restoredSource).max(ZERO);
-                if (stillMissing.signum() > 0) {
-                    debitAcrossAssets(uid, stillMissing, lots, "INCOME_RESOURCE", transactionId);
+                for (Long lotId : lots) {
+                    List<Position> rows = positionsForLot(lotId, uid);
+                    for (Position row : rows) {
+                        if (row.amount().signum() <= 0) continue;
+                        changeAssetValue(row.assetId(), uid, row.amount().negate());
+                        movement(uid, lotId, "INCOME_REVERSAL", row.assetId(), null, transactionId, row.amount());
+                        jdbc.update("DELETE FROM money_positions WHERE id=?", row.id());
+                        clampReservations(row.assetId(), uid);
+                    }
                 }
+                jdbc.update("DELETE FROM money_lots WHERE user_id=? AND origin_transaction_id=? AND origin_type='INCOME'", uid, transactionId);
             }
         }
 
-        // After optional cascading, every remaining fragment of the income lot is
-        // physically removed from whichever assets currently hold it.
-        for (Long lotId : lots) {
-            List<Position> rows = positionsForLot(lotId, uid);
-            for (Position row : rows) {
-                if (row.amount().signum() <= 0) continue;
-                changeAssetValue(row.assetId(), uid, row.amount().negate());
-                movement(uid, lotId, "INCOME_REVERSAL", row.assetId(), null, transactionId, row.amount());
-                jdbc.update("DELETE FROM money_positions WHERE id=?", row.id());
-                clampReservations(row.assetId(), uid);
+        if (settledDeficit.signum() > 0) {
+            Long assetId = fallbackAssetId != null ? fallbackAssetId : resolveAsset(null, user);
+            if (!isSystemCash(assetId, uid)) {
+                throw new IllegalStateException("Rozliczenie deficytu wskazuje inne aktywo niż Środki nierozdzielone.");
             }
+            changeSystemCashValue(assetId, uid, settledDeficit.negate());
+            movement(uid, null, "UNALLOCATED_DEFICIT_SETTLEMENT_REVERSAL", assetId, null, transactionId, settledDeficit);
         }
-        jdbc.update("DELETE FROM money_lots WHERE user_id=? AND origin_transaction_id=? AND origin_type='INCOME'", uid, transactionId);
+
         return cascaded;
     }
 
@@ -226,6 +298,19 @@ public class MoneyLedgerService {
         reconcileAsset(assetId, uid);
 
         if (delta.signum() > 0) {
+            if (isSystemCash(assetId, uid)) {
+                BigDecimal current = assetValue(assetId, uid);
+                BigDecimal settle = current.signum() < 0 ? delta.min(current.abs()) : ZERO;
+                if (settle.signum() > 0) {
+                    changeSystemCashValue(assetId, uid, settle);
+                    movement(uid, null, "RECONCILIATION_DEFICIT_SETTLEMENT", null, assetId, null, settle);
+                }
+                BigDecimal remainder = delta.subtract(settle);
+                if (remainder.signum() > 0) {
+                    creditAdjustment(assetId, remainder, uid, "RECONCILIATION_ADJUSTMENT", null);
+                }
+                return;
+            }
             creditAdjustment(assetId, delta, uid, "RECONCILIATION_ADJUSTMENT", null);
             return;
         }
@@ -378,6 +463,79 @@ public class MoneyLedgerService {
         addPosition(uid, lotId, assetId, amount);
         changeAssetValue(assetId, uid, amount);
         movement(uid, lotId, originType, null, assetId, txId, amount);
+    }
+
+    private void recordUnallocatedExpense(Long transactionId, Long assetId, BigDecimal amount, User user) {
+        Long uid = user.getId();
+        reconcileAsset(assetId, uid);
+
+        BigDecimal reserved = totalReserved(assetId, uid);
+        BigDecimal current = assetValue(assetId, uid);
+        BigDecimal freePositive = current.subtract(reserved).max(ZERO);
+
+        // Existing explicit reservations must remain backed by real money. In the
+        // normal clearing-account flow there are no reservations here, so expenses
+        // can continue below zero without affecting goals or liabilities.
+        if (reserved.signum() > 0 && amount.compareTo(freePositive) > 0) {
+            throw new IllegalArgumentException(
+                    "Środki nierozdzielone mają aktywne rezerwacje. Najpierw je zwolnij lub uzgodnij gotówkę."
+            );
+        }
+
+        BigDecimal trackedToConsume = amount.min(freePositive);
+        BigDecimal remainingTracked = trackedToConsume;
+        for (Position row : positions(assetId, uid, null)) {
+            if (remainingTracked.signum() == 0) break;
+            BigDecimal used = row.amount().min(remainingTracked);
+            subtractPosition(row.id(), used);
+            jdbc.update("INSERT INTO transaction_lot_usages(user_id,transaction_id,lot_id,asset_id,amount) VALUES(?,?,?,?,?)",
+                    uid, transactionId, row.lotId(), assetId, used);
+            movement(uid, row.lotId(), "EXPENSE", assetId, null, transactionId, used);
+            remainingTracked = remainingTracked.subtract(used);
+        }
+        if (remainingTracked.signum() != 0) {
+            throw new IllegalStateException("Ledger nie pokrywa dodatniej części Środków nierozdzielonych.");
+        }
+
+        BigDecimal deficit = amount.subtract(trackedToConsume);
+        if (deficit.signum() > 0) {
+            movement(uid, null, "UNALLOCATED_DEFICIT_EXPENSE", assetId, null, transactionId, deficit);
+        }
+        changeSystemCashValue(assetId, uid, amount.negate());
+    }
+
+    private BigDecimal netMovementAmount(Long uid, Long transactionId, String positiveType, String reversalType) {
+        BigDecimal amount = jdbc.queryForObject("""
+                SELECT COALESCE(SUM(CASE
+                    WHEN movement_type=? THEN amount
+                    WHEN movement_type=? THEN -amount
+                    ELSE 0
+                END),0)
+                FROM money_movements
+                WHERE user_id=? AND transaction_id=? AND movement_type IN (?,?)
+                """, BigDecimal.class,
+                positiveType, reversalType, uid, transactionId, positiveType, reversalType);
+        return amount == null ? ZERO : amount.max(ZERO);
+    }
+
+    private boolean isSystemCash(Long assetId, Long uid) {
+        Boolean system = jdbc.queryForObject(
+                "SELECT system_cash FROM assets WHERE id=? AND user_id=?",
+                Boolean.class,
+                assetId,
+                uid
+        );
+        return Boolean.TRUE.equals(system);
+    }
+
+    private void changeSystemCashValue(Long assetId, Long uid, BigDecimal delta) {
+        int updated = jdbc.update(
+                "UPDATE assets SET value=value+? WHERE id=? AND user_id=? AND system_cash=TRUE",
+                delta,
+                assetId,
+                uid
+        );
+        if (updated == 0) throw new IllegalArgumentException("Środki nierozdzielone nie istnieją.");
     }
 
     private void reconcileAsset(Long assetId, Long uid) {

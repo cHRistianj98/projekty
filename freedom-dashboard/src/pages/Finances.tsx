@@ -1,4 +1,4 @@
-import { useState, type ComponentType } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 
 import {
   Banknote,
@@ -47,6 +47,8 @@ import type {
   RecurringTransaction,
 } from "../types/RecurringTransaction";
 import type { Asset } from "../types/Asset";
+import type { PortfolioWallet } from "../types/Portfolio";
+import { portfolioApi } from "../api/portfolioApi";
 
 type FinancesProps = {
   budget: MonthlyBudget;
@@ -211,6 +213,38 @@ export function Finances({
   ] = useState(
     getCurrentMonth()
   );
+
+  const [wallets, setWallets] = useState<PortfolioWallet[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    portfolioApi.getAll()
+      .then((rows) => { if (!cancelled) setWallets(rows); })
+      .catch(() => { if (!cancelled) setWallets([]); });
+    return () => { cancelled = true; };
+  }, [assets]);
+
+  const assetById = useMemo(
+    () => new Map(assets.map((asset) => [asset.id, asset])),
+    [assets]
+  );
+
+  const walletById = useMemo(
+    () => new Map(wallets.map((wallet) => [wallet.id, wallet])),
+    [wallets]
+  );
+
+  function transactionSource(assetId?: number) {
+    if (assetId == null) return undefined;
+    const asset = assetById.get(assetId);
+    if (!asset) return undefined;
+    const wallet = asset.portfolioId == null ? undefined : walletById.get(asset.portfolioId);
+    return {
+      portfolioName: wallet?.name ?? "Portfel",
+      assetName: asset.systemCash ? "Środki nierozdzielone" : asset.name,
+      systemCash: Boolean(asset.systemCash),
+    };
+  }
 
   const monthlyIncomes =
     budget.incomes.filter(
@@ -598,6 +632,7 @@ export function Finances({
                   categoryIconKey={incomeItem.categoryIconKey ?? "Wallet"}
                   categoryColor={incomeItem.categoryColor ?? "#10b981"}
                   tone="income"
+                  source={transactionSource(incomeItem.assetId)}
                   onEdit={() => setEditingIncome(incomeItem)}
                   onDelete={() => onDeleteIncome(incomeItem.id)}
                 />
@@ -705,6 +740,7 @@ export function Finances({
                             categoryIconKey={expense.categoryIconKey ?? fallbackIconKey(config.category)}
                             categoryColor={expense.categoryColor ?? fallbackCategoryColor(config.category)}
                             tone="expense"
+                            source={transactionSource(expense.assetId)}
                             onEdit={() => setEditingExpense(expense)}
                             onDelete={() => onDeleteExpense(expense.id)}
                           />
@@ -863,6 +899,11 @@ type TransactionVisualRowProps = {
   categoryIconKey: string;
   categoryColor: string;
   tone: "income" | "expense";
+  source?: {
+    portfolioName: string;
+    assetName: string;
+    systemCash: boolean;
+  };
   onEdit: () => void;
   onDelete: () => void;
 };
@@ -876,6 +917,7 @@ function TransactionVisualRow({
   categoryIconKey,
   categoryColor,
   tone,
+  source,
   onEdit,
   onDelete,
 }: TransactionVisualRowProps) {
@@ -931,6 +973,25 @@ function TransactionVisualRow({
             {recurring && <Repeat2 size={12} />}
             {recurring ? "Powtarzalny" : "Jednorazowy"}
           </span>
+
+          {source && (
+            <>
+              <span>•</span>
+              <span
+                className={`inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 font-bold ${
+                  source.systemCash
+                    ? "border-amber-400/20 bg-amber-400/[0.07] text-amber-300"
+                    : "border-blue-400/15 bg-blue-400/[0.06] text-blue-300"
+                }`}
+                title={`Źródło: ${source.portfolioName} → ${source.assetName}`}
+              >
+                <WalletCards size={12} className="shrink-0" />
+                <span className="max-w-32 truncate">{source.portfolioName}</span>
+                <ChevronRight size={11} className="shrink-0 opacity-60" />
+                <span className="max-w-44 truncate">{source.assetName}</span>
+              </span>
+            </>
+          )}
         </div>
       </div>
 
