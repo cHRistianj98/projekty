@@ -52,7 +52,11 @@ export function WealthChart({ assets, wallets, overview, liabilityOverview, tota
   const rows = [...wealthBreakdown(mode, assets, wallets, overview, liabilityOverview ?? null)]
     .sort((a, b) => b.value - a.value);
   const chartTotal = rows.reduce((sum, row) => sum + Math.max(0, row.value), 0);
-  const monthlyChanges = mode === "portfolios" ? portfolioMonthlyChanges(assets, wallets, snapshots) : new Map<string, number>();
+  const monthlyChanges = mode === "portfolios"
+    ? portfolioMonthlyChanges(assets, wallets, snapshots)
+    : mode === "assets"
+      ? assetCategoryMonthlyChanges(assets, snapshots)
+      : new Map<string, number>();
   return <section className="investment-panel wealth-panel">
     <div className="investment-panel-heading">
       <h2><span className="investment-section-icon"><ChartPie size={19} /></span>Podział majątku</h2>
@@ -70,7 +74,7 @@ export function WealthChart({ assets, wallets, overview, liabilityOverview, tota
             <span className="investment-dot" style={{ background: row.color }} /><span className="legend-name">{row.name}</span>
             {change != null && Math.abs(change) > 0.005 && <span
               className={`legend-month-change ${change > 0 ? "positive" : "negative"}`}
-              title="Zmiana wartości całego portfela względem ostatniego zamkniętego miesiąca"
+              title={mode === "assets" ? "Zmiana wartości klasy aktywów względem ostatniego zamkniętego miesiąca" : "Zmiana wartości całego portfela względem ostatniego zamkniętego miesiąca"}
               aria-label={`Zmiana miesiąc do miesiąca: ${change > 0 ? "wzrost" : "spadek"} ${Math.abs(change).toLocaleString("pl-PL", { maximumFractionDigits: 1 })}%`}
             >
               {change > 0 ? <ArrowUpRight size={12}/> : <ArrowDownRight size={12}/>}
@@ -115,6 +119,38 @@ function portfolioMonthlyChanges(assets: Asset[], wallets: PortfolioWallet[], sn
 
     if (comparableAssets === 0 || previousValue <= 0) continue;
     result.set(String(wallet.id), (currentValue - previousValue) / previousValue * 100);
+  }
+
+  return result;
+}
+
+function assetCategoryMonthlyChanges(assets: Asset[], snapshots: MonthlySnapshot[]) {
+  const result = new Map<string, number>();
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const previous = snapshots
+    .filter(snapshot => snapshot.month < currentMonth)
+    .sort((a, b) => b.month.localeCompare(a.month))[0];
+
+  if (!previous) return result;
+
+  const currentByCategory = new Map<string, number>();
+  for (const asset of assets) {
+    const category = asset.category ?? "other";
+    currentByCategory.set(category, (currentByCategory.get(category) ?? 0) + asset.value);
+  }
+
+  const previousByCategory = new Map<string, number>();
+  for (const asset of previous.assets) {
+    const category = asset.category;
+    if (!category) continue;
+    previousByCategory.set(category, (previousByCategory.get(category) ?? 0) + asset.value);
+  }
+
+  for (const [category, currentValue] of currentByCategory) {
+    const previousValue = previousByCategory.get(category);
+    if (previousValue == null || previousValue <= 0) continue;
+    result.set(category, (currentValue - previousValue) / previousValue * 100);
   }
 
   return result;
