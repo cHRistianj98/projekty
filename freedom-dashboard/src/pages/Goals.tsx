@@ -19,6 +19,7 @@ import {
 
 import { AddGoalModal } from "../components/goals/AddGoalModal";
 import { EditGoalModal } from "../components/goals/EditGoalModal";
+import { GOAL_TYPE_OPTIONS, getGoalTypeLabel, readGoalImageFile } from "../components/goals/goalCatalog";
 
 import type { Goal } from "../types/Goal";
 import type { Asset } from "../types/Asset";
@@ -84,6 +85,20 @@ export function Goals({
 
   const [completingGoal, setCompletingGoal] = useState<Goal | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
+
+  const portfolioValueSignature = portfolio
+    .map((asset) => `${asset.id}:${asset.value}`)
+    .join("|");
+
+  useEffect(() => {
+    // Dynamic Portfel → Cel follows live asset valuations. Whenever the parent
+    // refreshes crypto/stocks/FX/etc., refetch goals so their progress cards use
+    // the new dynamic reservation immediately.
+    void onGoalsChanged();
+    // onGoalsChanged is intentionally omitted: App currently passes it inline,
+    // while portfolioValueSignature is the actual trigger we care about.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [portfolioValueSignature]);
 
   const activeGoals = goals.filter((goal) => goal.status !== "COMPLETED");
   const completedGoals = goals.filter((goal) => goal.status === "COMPLETED");
@@ -1022,9 +1037,6 @@ function GoalFundingModal({
   const selectableWallets = wallets.filter((wallet) => wallet.type !== "GOALS" && !usedDynamicPortfolioIds.has(wallet.id));
   const selectedWallet = selectableWallets.find((wallet) => wallet.id === portfolioId);
   const linkedPortfolio = summary?.allocations.find((allocation) => allocation.sourceType === "PORTFOLIO") ?? null;
-  const portfolioReserveNow = selectedWallet
-    ? Math.min(remaining, Math.max(selectedWallet.value, 0))
-    : 0;
 
   const reservedByAsset = new Map<number, number>();
   for (const allocation of allGoalReservations?.allocations ?? []) {
@@ -1037,6 +1049,16 @@ function GoalFundingModal({
       reservedByAsset.set(allocation.assetId, (reservedByAsset.get(allocation.assetId) ?? 0) + allocation.amount);
     }
   }
+
+  const selectedWalletFreeValue = selectedWallet
+    ? portfolio
+        .filter((asset) => asset.portfolioId === selectedWallet.id && !asset.systemCash)
+        .reduce(
+          (sum, asset) => sum + Math.max(asset.value - (reservedByAsset.get(asset.id) ?? 0), 0),
+          0
+        )
+    : 0;
+  const portfolioReserveNow = Math.min(remaining, selectedWalletFreeValue);
 
   const targetUnallocated = targetAsset
     ? Math.max(targetAsset.value - (reservedByAsset.get(targetAsset.id) ?? 0), 0)
@@ -1390,7 +1412,7 @@ function GoalFundingModal({
                   {selectableWallets.map((wallet) => <option key={wallet.id} value={wallet.id}>{wallet.name} · {wallet.grossValue.toLocaleString("pl-PL")} zł brutto</option>)}
                 </select>
               </label>
-              {selectedWallet && <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-3"><p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-600">Wolne w portfelu teraz</p><strong className="mt-1 block text-sm text-white">{selectedWallet.value.toLocaleString("pl-PL")} zł</strong></div><div className="rounded-xl border border-cyan-500/15 bg-cyan-500/[0.04] px-4 py-3"><p className="text-[9px] font-black uppercase tracking-[0.12em] text-cyan-500">Doda do celu teraz</p><strong className="mt-1 block text-sm text-cyan-200">{portfolioReserveNow.toLocaleString("pl-PL")} zł</strong></div></div>}
+              {selectedWallet && <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-3"><p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-600">Wolne w portfelu teraz</p><strong className="mt-1 block text-sm text-white">{selectedWalletFreeValue.toLocaleString("pl-PL")} zł</strong></div><div className="rounded-xl border border-cyan-500/15 bg-cyan-500/[0.04] px-4 py-3"><p className="text-[9px] font-black uppercase tracking-[0.12em] text-cyan-500">Doda do celu teraz</p><strong className="mt-1 block text-sm text-cyan-200">{portfolioReserveNow.toLocaleString("pl-PL")} zł</strong></div></div>}
               <div className="rounded-xl border border-slate-800 bg-slate-950/35 px-4 py-3 text-xs leading-5 text-slate-500"><strong className="text-slate-300">Bez podwójnego liczenia:</strong> ręczne rezerwy na inne cele i zobowiązania mają pierwszeństwo. Ten tryb wykorzystuje wyłącznie pozostały wolny kapitał. Jeden portfel może być dynamicznie przypisany tylko do jednego celu albo zobowiązania.</div>
             </>}
           </div>}
@@ -1486,38 +1508,20 @@ function GoalVisualModal({
   >(goal.imagePosition ?? "center");
   const [previewError, setPreviewError] = useState(false);
 
-  function handleFileSelect(file?: File) {
+  async function handleFileSelect(file?: File) {
     if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      window.alert("Wybierz plik graficzny.");
-      return;
+    try {
+      setImageUrl(await readGoalImageFile(file));
+      setPreviewError(false);
+    } catch (reason) {
+      window.alert(reason instanceof Error ? reason.message : "Nie udało się dodać zdjęcia.");
     }
-
-    const maxSize = 5 * 1024 * 1024;
-    if (file.size > maxSize) {
-      window.alert("Zdjęcie może mieć maksymalnie 5 MB.");
-      return;
-    }
-
-    const reader = new FileReader();
-
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setImageUrl(reader.result);
-        setPreviewError(false);
-      }
-    };
-
-    reader.readAsDataURL(file);
   }
 
-  const presets = [
-    { label: "Dom", value: "/goals/house.webp" },
-    { label: "BMW X5 M", value: "/goals/bmw-x5m.webp" },
-    { label: "BMW F36 430i", value: "/goals/bmw-f36.webp" },
-    { label: "Kapitał", value: "/goals/money.webp" },
-  ];
+  const presets = GOAL_TYPE_OPTIONS.map((item) => ({
+    label: item.shortLabel,
+    value: item.image,
+  }));
 
   function chooseImage(value: string) {
     setImageUrl(value);
@@ -1595,14 +1599,14 @@ function GoalVisualModal({
                 accept="image/png,image/jpeg,image/webp,image/gif"
                 className="hidden"
                 onChange={(event) => {
-                  handleFileSelect(event.target.files?.[0]);
+                  void handleFileSelect(event.target.files?.[0]);
                   event.currentTarget.value = "";
                 }}
               />
             </label>
 
             <p className="mt-2 text-xs leading-5 text-slate-600">
-              PNG, JPG, WEBP lub GIF · maks. 5 MB. Plik zostanie zapisany razem z celem.
+              PNG, JPG, WEBP lub GIF · maks. 8 MB. Freedom zmniejszy zdjęcie i zapisze je jako lekki WEBP razem z celem.
             </p>
           </div>
 
@@ -1661,7 +1665,7 @@ function GoalVisualModal({
                   key={position}
                   type="button"
                   onClick={() => setImagePosition(position)}
-                  className={`rounded-lg border px-3 py-2 text-xs font-black uppercase transition ${
+                  className={`cursor-pointer rounded-lg border px-3 py-2 text-xs font-black uppercase transition ${
                     imagePosition === position
                       ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-300"
                       : "border-slate-700 bg-slate-900 text-slate-500"
@@ -1713,13 +1717,7 @@ function GoalVisualModal({
 }
 
 function formatGoalType(type: Goal["type"]) {
-  return {
-    EMERGENCY_FUND: "Poduszka",
-    HOME: "Dom",
-    CAR: "Samochód",
-    TRAVEL: "Podróże",
-    OTHER: "Inny",
-  }[type ?? "OTHER"];
+  return getGoalTypeLabel(type);
 }
 
 type InfoProps = {

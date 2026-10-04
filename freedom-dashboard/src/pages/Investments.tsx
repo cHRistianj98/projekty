@@ -20,6 +20,7 @@ import { CashReconciliationDialog } from "../components/investments/CashReconcil
 import { RetailBondDetailsDialog, RetailBondImportDialog, RetailBondManualDialog } from "../components/investments/RetailBondDetailsDialog";
 import { Donut, HistoryChart, WealthChart } from "../components/investments/PortfolioCharts";
 import { GoalCapitalDialog, PortfolioDialog, PortfolioForm, TransferForm, WalletIcon, errorMessage } from "../components/investments/PortfolioDialogs";
+import { getGoalTypeImage } from "../components/goals/goalCatalog";
 import { fundedGoals, money, percent, reservationsByAsset, type FundedGoal } from "../components/investments/portfolioView";
 import "./Investments.css";
 
@@ -36,13 +37,7 @@ type InvestmentsProps = {
 
 function resolveGoalMiniImage(goal: FundedGoal) {
   if (goal.imageUrl) return { src: goal.imageUrl, position: goal.imagePosition ?? "center" };
-  const normalized = goal.name.toLocaleLowerCase("pl-PL");
-  if (goal.type === "CAR" || /(bmw|auto|samoch|car)/.test(normalized)) return { src: "/liabilities/car.webp", position: "center" as const };
-  if (goal.type === "HOME" || /(dom|mieszkani|działk|dzialk|home)/.test(normalized)) return { src: "/liabilities/house.webp", position: "center" as const };
-  if (goal.type === "EMERGENCY_FUND" || /(poduszk|awaryjn|rezerwa)/.test(normalized)) return { src: "/portfolios/emergency-fund.webp", position: "center" as const };
-  if (goal.type === "TRAVEL" || /(podróż|podroz|wakac|urlop|travel)/.test(normalized)) return { src: "/portfolios/short-term.webp", position: "center" as const };
-  if (/(zęb|zeb|dent|lecz)/.test(normalized)) return { src: "/portfolios/main.webp", position: "center" as const };
-  return null;
+  return { src: getGoalTypeImage(goal.type), position: "center" as const };
 }
 
 export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, onUpdateAsset, onDeleteAsset, onPortfolioChanged, onReleaseMoney }: InvestmentsProps) {

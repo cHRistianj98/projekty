@@ -10,6 +10,21 @@ export type GoalType =
   | "HOME"
   | "CAR"
   | "TRAVEL"
+  | "VACATION"
+  | "EDUCATION"
+  | "HEALTH"
+  | "DENTAL"
+  | "WEDDING"
+  | "CHILD"
+  | "RENOVATION"
+  | "ELECTRONICS"
+  | "BUSINESS"
+  | "INVESTMENT"
+  | "DEBT_PAYOFF"
+  | "RETIREMENT"
+  | "HOBBY"
+  | "SECOND_PROPERTY"
+  | "LUXURY_PURCHASE"
   | "OTHER";
 
 export type Goal = {

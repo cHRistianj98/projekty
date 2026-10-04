@@ -2,6 +2,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 
 import type { Goal, GoalPriority, GoalType } from "../../types/Goal";
+import { GOAL_TYPE_OPTIONS } from "./goalCatalog";
 
 type EditGoalModalProps = {
   goal: Goal;
@@ -109,7 +110,7 @@ export function EditGoalModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-800 hover:text-white"
+            className="cursor-pointer rounded-lg p-2 text-slate-500 transition hover:bg-slate-800 hover:text-white"
           >
             <X size={20} />
           </button>
@@ -171,13 +172,11 @@ export function EditGoalModal({
               onChange={(event) =>
                 setGoalType(event.target.value as GoalType)
               }
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none transition focus:border-blue-500"
+              className="w-full cursor-pointer rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none transition focus:border-blue-500"
             >
-              <option value="EMERGENCY_FUND">Poduszka bezpieczeństwa</option>
-              <option value="HOME">Dom / nieruchomość</option>
-              <option value="CAR">Samochód</option>
-              <option value="TRAVEL">Podróże</option>
-              <option value="OTHER">Inny cel</option>
+              {GOAL_TYPE_OPTIONS.map((item) => (
+                <option key={item.value} value={item.value}>{item.label}</option>
+              ))}
             </select>
           </div>
 
@@ -192,7 +191,7 @@ export function EditGoalModal({
                     key={item}
                     type="button"
                     onClick={() => setPriority(item)}
-                    className={`rounded-xl border px-3 py-2.5 text-xs font-black transition ${
+                    className={`cursor-pointer rounded-xl border px-3 py-2.5 text-xs font-black transition ${
                       priority === item
                         ? item === "HIGH"
                           ? "border-rose-500/40 bg-rose-500/10 text-rose-400"
@@ -217,7 +216,7 @@ export function EditGoalModal({
               type="date"
               value={targetDate}
               onChange={(event) => setTargetDate(event.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none transition focus:border-blue-500"
+              className="w-full cursor-pointer rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none transition focus:border-blue-500"
             />
           </div>
 
@@ -238,7 +237,7 @@ export function EditGoalModal({
                       )
                     }
                     className={`
-                      h-9 w-9 rounded-full transition
+                      h-9 w-9 cursor-pointer rounded-full transition
                       ${
                         color ===
                         availableColor
@@ -260,14 +259,14 @@ export function EditGoalModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
+              className="cursor-pointer rounded-xl border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
             >
               Anuluj
             </button>
 
             <button
               type="submit"
-              className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold transition hover:bg-blue-500"
+              className="cursor-pointer rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold transition hover:bg-blue-500"
             >
               Zapisz zmiany
             </button>
@@ -313,7 +312,7 @@ function Field({
         onChange={(event) =>
           onChange(event.target.value)
         }
-        className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none transition focus:border-blue-500"
+        className="w-full cursor-pointer rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none transition focus:border-blue-500"
       />
     </div>
   );
