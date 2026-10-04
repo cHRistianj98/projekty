@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 
-import { CategoryIcon } from "../components/categories/CategoryIcon";
+import { CategoryMiniImage } from "../components/categories/CategoryMiniImage";
 import { categoryApi } from "../api/categoryApi";
 
 import type {
@@ -479,22 +479,12 @@ function BudgetPlanModal({
                             key={category.id}
                             className="group flex cursor-text items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/45 p-3 transition focus-within:border-emerald-500/35 hover:border-slate-700"
                           >
-                            <div
-                              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ring-1 ring-white/10"
-                              style={{
-                                color: category.color,
-                                backgroundColor:
-                                  `${category.color}20`,
-                                boxShadow:
-                                  `0 8px 24px ${category.color}12`,
-                              }}
-                            >
-                              <CategoryIcon
-                                iconKey={
-                                  category.iconKey
-                                }
-                              />
-                            </div>
+                            <CategoryMiniImage
+                              name={category.name}
+                              iconKey={category.iconKey}
+                              color={category.color}
+                              size="md"
+                            />
 
                             <div className="min-w-0 flex-1">
                               <div className="truncate text-sm font-bold text-slate-100">
@@ -624,20 +614,12 @@ function BudgetCategoryCard(
       }}
     >
       <div className="flex items-start gap-3">
-        <div
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1 ring-white/10"
-          style={{
-            color: row.color,
-            backgroundColor: `${row.color}20`,
-            boxShadow:
-              `0 8px 25px ${row.color}14`,
-          }}
-        >
-          <CategoryIcon
-            iconKey={row.iconKey}
-            className="h-5 w-5"
-          />
-        </div>
+        <CategoryMiniImage
+          name={row.name}
+          iconKey={row.iconKey}
+          color={row.color}
+          size="lg"
+        />
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
@@ -717,20 +699,12 @@ function ExpenseVisualRow({
 
   return (
     <div className="group flex items-center gap-4 border-b border-slate-800/80 px-5 py-4 last:border-b-0 transition hover:bg-white/[0.025]">
-      <div
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ring-1 ring-white/10"
-        style={{
-          color: visual.color,
-          backgroundColor:
-            `${visual.color}20`,
-          boxShadow:
-            `0 8px 24px ${visual.color}12`,
-        }}
-      >
-        <CategoryIcon
-          iconKey={visual.iconKey}
-        />
-      </div>
+      <CategoryMiniImage
+        name={visual.name}
+        iconKey={visual.iconKey}
+        color={visual.color}
+        size="md"
+      />
 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
