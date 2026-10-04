@@ -10,6 +10,7 @@ export const portfolioColors = ["#318bff", "#35d5a4", "#ffbf3f", "#f74763", "#8b
 export type Breakdown = { id: string; name: string; value: number; color: string };
 export type FundedGoal = {
   id: number; name: string; amount: number; target: number; color: string;
+  imageUrl?: string; imagePosition?: "center" | "top" | "bottom"; type?: Goal["type"];
   sources: string[]; allocations: PortfolioAllocation[];
 };
 
@@ -50,12 +51,14 @@ export function fundedGoals(overview: MoneyFlowOverview | null, goals: Goal[], a
     const goal = goals.find(item => item.id === allocation.goalId);
     const row = result.get(allocation.goalId) ?? {
       id: allocation.goalId, name: allocation.goalName, amount: 0, target: goal?.targetAmount ?? 0,
-      color: goal?.color ?? "#8b5cf6", sources: [], allocations: [],
+      color: goal?.color ?? "#8b5cf6", imageUrl: goal?.imageUrl, imagePosition: goal?.imagePosition, type: goal?.type, sources: [], allocations: [],
     };
     row.amount += allocation.amount;
     row.allocations.push(allocation);
     const asset = assets.find(item => item.id === allocation.assetId);
-    const source = wallets.find(item => item.id === asset?.portfolioId)?.name ?? "Nieprzypisane źródło";
+    const source = wallets.find(item => item.id === (allocation.portfolioId ?? asset?.portfolioId))?.name
+      ?? allocation.portfolioName
+      ?? "Nieprzypisane źródło";
     if (!row.sources.includes(source)) row.sources.push(source);
     result.set(row.id, row);
   }

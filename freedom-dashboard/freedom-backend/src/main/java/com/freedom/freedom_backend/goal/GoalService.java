@@ -1,6 +1,7 @@
 package com.freedom.freedom_backend.goal;
 
 import com.freedom.freedom_backend.user.User;
+import com.freedom.freedom_backend.goalallocation.GoalPortfolioReservationService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,13 +16,16 @@ public class GoalService {
 
     private final GoalRepository goalRepository;
     private final JdbcTemplate jdbc;
+    private final GoalPortfolioReservationService portfolioReservations;
 
     public GoalService(
             GoalRepository goalRepository,
-            JdbcTemplate jdbc
+            JdbcTemplate jdbc,
+            GoalPortfolioReservationService portfolioReservations
     ) {
         this.goalRepository = goalRepository;
         this.jdbc = jdbc;
+        this.portfolioReservations = portfolioReservations;
     }
 
     @Transactional(readOnly = true)
@@ -109,10 +113,19 @@ public class GoalService {
 
     private GoalResponse toResponse(Goal goal) {
         Long uid = goal.getUser().getId();
-        return GoalResponse.from(
-                goal,
-                reservedAmount(goal.getId(), uid),
-                spentAmount(goal.getId(), uid)
+        BigDecimal reserved = reservedAmount(goal.getId(), uid);
+        BigDecimal spent = spentAmount(goal.getId(), uid);
+        BigDecimal current = goal.getStatus() == GoalStatus.COMPLETED
+                ? goal.getCurrentAmount()
+                : reserved.add(spent);
+        GoalStatus status = goal.getStatus() == GoalStatus.COMPLETED
+                ? GoalStatus.COMPLETED
+                : current.compareTo(goal.getTargetAmount()) >= 0 ? GoalStatus.FUNDED : GoalStatus.ACTIVE;
+
+        return new GoalResponse(
+                goal.getId(), goal.getName(), current, goal.getTargetAmount(), goal.getMonthlyContribution(),
+                goal.getTargetDate(), goal.getPriority(), goal.getType(), goal.getColor(), goal.getImageUrl(),
+                goal.getImagePosition(), status, goal.getCompletedAt(), reserved, spent
         );
     }
 
@@ -127,7 +140,8 @@ public class GoalService {
                 uid,
                 goalId
         );
-        return value == null ? ZERO : value;
+        return (value == null ? ZERO : value)
+                .add(portfolioReservations.reservedForGoal(goalId, uid));
     }
 
     private BigDecimal spentAmount(Long goalId, Long uid) {

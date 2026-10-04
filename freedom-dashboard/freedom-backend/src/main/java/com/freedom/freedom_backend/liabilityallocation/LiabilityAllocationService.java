@@ -177,6 +177,12 @@ public class LiabilityAllocationService {
         if (currentForPortfolio.isPresent()) {
             throw new IllegalArgumentException("Ten portfel jest już przypisany do innego zobowiązania.");
         }
+        Integer goalLink = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM goal_portfolio_allocations WHERE user_id=? AND portfolio_id=?",
+                Integer.class, uid, portfolio.id());
+        if (goalLink != null && goalLink > 0) {
+            throw new IllegalArgumentException("Ten portfel jest już przypisany do celu.");
+        }
 
         jdbc.update("""
                 INSERT INTO liability_portfolio_allocations(user_id, liability_id, portfolio_id)

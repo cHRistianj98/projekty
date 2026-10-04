@@ -2,6 +2,7 @@ package com.freedom.freedom_backend.ledger;
 
 import com.freedom.freedom_backend.user.User;
 import com.freedom.freedom_backend.goalspending.GoalSpendingService;
+import com.freedom.freedom_backend.goalallocation.GoalPortfolioReservationService;
 import com.freedom.freedom_backend.liabilityallocation.LiabilityPortfolioReservationService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -19,15 +20,18 @@ public class MoneyLedgerService {
     private final JdbcTemplate jdbc;
     private final GoalSpendingService goalSpending;
     private final LiabilityPortfolioReservationService portfolioReservations;
+    private final GoalPortfolioReservationService goalPortfolioReservations;
 
     public MoneyLedgerService(
             JdbcTemplate jdbc,
             GoalSpendingService goalSpending,
-            LiabilityPortfolioReservationService portfolioReservations
+            LiabilityPortfolioReservationService portfolioReservations,
+            GoalPortfolioReservationService goalPortfolioReservations
     ) {
         this.jdbc = jdbc;
         this.goalSpending = goalSpending;
         this.portfolioReservations = portfolioReservations;
+        this.goalPortfolioReservations = goalPortfolioReservations;
     }
 
     public Long resolveAsset(Long requestedAssetId, User user) {
@@ -722,8 +726,11 @@ public class MoneyLedgerService {
                     COALESCE((SELECT SUM(amount) FROM goal_allocations WHERE user_id=? AND asset_id=?),0) +
                     COALESCE((SELECT SUM(amount) FROM liability_allocations WHERE user_id=? AND asset_id=?),0)
                 """, BigDecimal.class, uid, assetId, uid, assetId);
-        BigDecimal dynamicPortfolio = portfolioReservations.reservedForAsset(assetId, uid);
-        return (explicit == null ? ZERO : explicit).add(dynamicPortfolio);
+        BigDecimal dynamicLiabilityPortfolio = portfolioReservations.reservedForAsset(assetId, uid);
+        BigDecimal dynamicGoalPortfolio = goalPortfolioReservations.reservedForAsset(assetId, uid);
+        return (explicit == null ? ZERO : explicit)
+                .add(dynamicLiabilityPortfolio)
+                .add(dynamicGoalPortfolio);
     }
 
     public void clampReservationsForAsset(Long assetId, User user) {

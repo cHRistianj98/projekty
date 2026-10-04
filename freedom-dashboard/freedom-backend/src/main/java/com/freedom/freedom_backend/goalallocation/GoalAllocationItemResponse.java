@@ -7,6 +7,8 @@ public record GoalAllocationItemResponse(
         Long goalId,
         Long assetId,
         String assetName,
-        BigDecimal amount
-) {
-}
+        BigDecimal amount,
+        String sourceType,
+        Long portfolioId,
+        String portfolioName
+) {}

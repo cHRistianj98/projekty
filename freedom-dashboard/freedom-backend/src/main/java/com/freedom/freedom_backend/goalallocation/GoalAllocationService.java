@@ -19,13 +19,16 @@ public class GoalAllocationService {
 
     private final JdbcTemplate jdbc;
     private final MoneyLedgerService ledger;
+    private final GoalPortfolioReservationService portfolioReservations;
 
     public GoalAllocationService(
             JdbcTemplate jdbc,
-            MoneyLedgerService ledger
+            MoneyLedgerService ledger,
+            GoalPortfolioReservationService portfolioReservations
     ) {
         this.jdbc = jdbc;
         this.ledger = ledger;
+        this.portfolioReservations = portfolioReservations;
     }
 
     @Transactional(readOnly = true)
@@ -60,9 +63,8 @@ public class GoalAllocationService {
 
         BigDecimal amount = request.amount();
 
-        BigDecimal remaining =
-                goal.targetAmount()
-                        .subtract(goal.currentAmount());
+        BigDecimal currentCovered = currentCovered(goalId, userId);
+        BigDecimal remaining = goal.targetAmount().subtract(currentCovered).max(BigDecimal.ZERO);
 
         if (amount.compareTo(remaining) > 0) {
             throw new IllegalArgumentException(
@@ -150,7 +152,14 @@ public class GoalAllocationService {
             FROM goal_allocations ga JOIN goals g ON g.id=ga.goal_id
             WHERE ga.user_id=? AND ga.amount>0 ORDER BY g.name,ga.amount DESC
             """,(rs,n)->new PortfolioAllocationResponse(rs.getLong("goal_id"),rs.getString("goal_name"),
-                nullableLong(rs,"asset_id"),rs.getString("asset_name_snapshot"),rs.getBigDecimal("amount")),uid);
+                nullableLong(rs,"asset_id"),rs.getString("asset_name_snapshot"),rs.getBigDecimal("amount"),
+                "ASSET", null, null),uid);
+        for (GoalPortfolioReservationService.DynamicAssetReservation row : portfolioReservations.reservationsForUser(uid)) {
+            rows.add(new PortfolioAllocationResponse(
+                    row.goalId(), row.goalName(), row.assetId(), row.assetName(), row.amount(),
+                    "PORTFOLIO", row.portfolioId(), row.portfolioName()
+            ));
+        }
         BigDecimal total=rows.stream().map(PortfolioAllocationResponse::amount).reduce(BigDecimal.ZERO,BigDecimal::add);
         List<Long> executed=jdbc.query("SELECT id FROM goals WHERE user_id=? AND status='COMPLETED'",
                 (rs,n)->rs.getLong("id"),uid);
@@ -169,6 +178,56 @@ public class GoalAllocationService {
         );
     }
 
+    public GoalAllocationSummaryResponse assignPortfolio(
+            Long goalId,
+            GoalPortfolioAllocationRequest request,
+            User user
+    ) {
+        Long uid = user.getId();
+        GoalRow goal = requireGoal(goalId, uid);
+        if (goal.status() == GoalStatus.COMPLETED) {
+            throw new IllegalArgumentException("Nie można przypisać portfela do zakończonego celu.");
+        }
+        PortfolioRow portfolio = requirePortfolio(request.portfolioId(), uid);
+        if ("GOALS".equals(portfolio.type())) {
+            throw new IllegalArgumentException("Systemowego portfela Cele nie można przypisać do celu.");
+        }
+
+        var currentForGoal = portfolioReservations.linkForGoal(goalId, uid);
+        if (currentForGoal.isPresent()) {
+            if (currentForGoal.get().portfolioId().equals(portfolio.id())) return buildSummary(goalId, uid);
+            throw new IllegalArgumentException("Ten cel ma już przypisany cały portfel. Najpierw go odłącz.");
+        }
+        if (portfolioReservations.linkForPortfolio(portfolio.id(), uid).isPresent()) {
+            throw new IllegalArgumentException("Ten portfel jest już przypisany do innego celu.");
+        }
+        Integer liabilityLink = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM liability_portfolio_allocations WHERE user_id=? AND portfolio_id=?",
+                Integer.class, uid, portfolio.id());
+        if (liabilityLink != null && liabilityLink > 0) {
+            throw new IllegalArgumentException("Ten portfel jest już przypisany do zobowiązania.");
+        }
+
+        jdbc.update("""
+                INSERT INTO goal_portfolio_allocations(user_id, goal_id, portfolio_id)
+                VALUES (?, ?, ?)
+                """, uid, goalId, portfolio.id());
+        recomputeGoalProgress(goalId, uid);
+        return buildSummary(goalId, uid);
+    }
+
+    public GoalAllocationSummaryResponse releasePortfolio(Long goalId, Long portfolioId, User user) {
+        Long uid = user.getId();
+        requireGoal(goalId, uid);
+        int removed = jdbc.update("""
+                DELETE FROM goal_portfolio_allocations
+                WHERE user_id=? AND goal_id=? AND portfolio_id=?
+                """, uid, goalId, portfolioId);
+        if (removed == 0) throw new IllegalArgumentException("Ten portfel nie jest przypisany do celu.");
+        recomputeGoalProgress(goalId, uid);
+        return buildSummary(goalId, uid);
+    }
+
     public GoalAllocationSummaryResponse release(Long goalId, Long assetId, BigDecimal amount, User user) {
         Long uid = user.getId();
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) throw new IllegalArgumentException("Kwota musi być większa od zera.");
@@ -176,7 +235,7 @@ public class GoalAllocationService {
         List<GoalAllocationItemResponse> rows = jdbc.query("""
             SELECT id,goal_id,asset_id,asset_name_snapshot,amount FROM goal_allocations
             WHERE user_id=? AND goal_id=? AND asset_id=?
-            """,(rs,n)->new GoalAllocationItemResponse(rs.getLong("id"),rs.getLong("goal_id"),nullableLong(rs,"asset_id"),rs.getString("asset_name_snapshot"),rs.getBigDecimal("amount")),uid,goalId,assetId);
+            """,(rs,n)->new GoalAllocationItemResponse(rs.getLong("id"),rs.getLong("goal_id"),nullableLong(rs,"asset_id"),rs.getString("asset_name_snapshot"),rs.getBigDecimal("amount"),"ASSET",null,null),uid,goalId,assetId);
         if(rows.isEmpty()) throw new IllegalArgumentException("Brak takiej alokacji.");
         GoalAllocationItemResponse row=rows.getFirst();
         if(amount.compareTo(row.amount())>0) throw new IllegalArgumentException("Nie można cofnąć więcej niż przypisano.");
@@ -323,11 +382,24 @@ public class GoalAllocationService {
                                         rs.getLong("goal_id"),
                                         nullableLong(rs, "asset_id"),
                                         rs.getString("asset_name_snapshot"),
-                                        rs.getBigDecimal("amount")
+                                        rs.getBigDecimal("amount"),
+                                        "ASSET", null, null
                                 ),
                         userId,
                         goalId
                 );
+
+        List<GoalPortfolioReservationService.DynamicAssetReservation> dynamic =
+                portfolioReservations.reservationsForGoal(goalId, userId);
+        BigDecimal dynamicAmount = dynamic.stream()
+                .map(GoalPortfolioReservationService.DynamicAssetReservation::amount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        portfolioReservations.linkForGoal(goalId, userId).ifPresent(link -> allocations.add(
+                new GoalAllocationItemResponse(
+                        link.linkId(), goalId, null, "Portfel · " + link.portfolioName(), dynamicAmount,
+                        "PORTFOLIO", link.portfolioId(), link.portfolioName()
+                )
+        ));
 
         List<GoalContributionResponse> contributions =
                 jdbc.query(
@@ -367,7 +439,7 @@ public class GoalAllocationService {
 
         return new GoalAllocationSummaryResponse(
                 goalId,
-                goal.currentAmount(),
+                goal.status() == GoalStatus.COMPLETED ? goal.currentAmount() : currentCovered(goalId, userId),
                 allocations,
                 contributions
         );
@@ -389,6 +461,7 @@ public class GoalAllocationService {
         );
 
         reserved = reserved == null ? BigDecimal.ZERO : reserved;
+        reserved = reserved.add(portfolioReservations.reservedForGoal(goalId, userId));
         spent = spent == null ? BigDecimal.ZERO : spent;
         BigDecimal covered = reserved.add(spent);
         GoalStatus next = covered.compareTo(goal.targetAmount()) >= 0
@@ -399,6 +472,27 @@ public class GoalAllocationService {
                 "UPDATE goals SET current_amount=?,status=?,completed_at=NULL WHERE id=? AND user_id=?",
                 covered, next.name(), goalId, userId
         );
+    }
+
+    private BigDecimal currentCovered(Long goalId, Long userId) {
+        BigDecimal explicit = jdbc.queryForObject(
+                "SELECT COALESCE(SUM(amount),0) FROM goal_allocations WHERE user_id=? AND goal_id=?",
+                BigDecimal.class, userId, goalId);
+        BigDecimal spent = jdbc.queryForObject(
+                "SELECT COALESCE(SUM(amount),0) FROM goal_spendings WHERE user_id=? AND goal_id=?",
+                BigDecimal.class, userId, goalId);
+        return (explicit == null ? BigDecimal.ZERO : explicit)
+                .add(portfolioReservations.reservedForGoal(goalId, userId))
+                .add(spent == null ? BigDecimal.ZERO : spent);
+    }
+
+    private PortfolioRow requirePortfolio(Long portfolioId, Long userId) {
+        List<PortfolioRow> rows = jdbc.query(
+                "SELECT id,name,type FROM portfolios WHERE id=? AND user_id=?",
+                (rs, n) -> new PortfolioRow(rs.getLong("id"), rs.getString("name"), rs.getString("type")),
+                portfolioId, userId);
+        if (rows.isEmpty()) throw new IllegalArgumentException("Portfel nie istnieje lub nie należy do użytkownika.");
+        return rows.getFirst();
     }
 
     private Long nullableLong(
@@ -425,4 +519,6 @@ public class GoalAllocationService {
             BigDecimal value
     ) {
     }
+
+    private record PortfolioRow(Long id, String name, String type) {}
 }

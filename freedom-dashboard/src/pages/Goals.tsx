@@ -23,10 +23,12 @@ import { EditGoalModal } from "../components/goals/EditGoalModal";
 import type { Goal } from "../types/Goal";
 import type { Asset } from "../types/Asset";
 import { goalAllocationApi } from "../api/goalAllocationApi";
+import { portfolioApi } from "../api/portfolioApi";
 import { goalSpendingApi } from "../api/goalSpendingApi";
 import { liabilityAllocationApi } from "../api/liabilityAllocationApi";
 import type { AllocateGoalMoneyRequest, GoalAllocationSummary, MoneyFlowOverview } from "../types/GoalAllocation";
 import type { GoalCompletionMode } from "../types/GoalSpending";
+import type { PortfolioWallet } from "../types/Portfolio";
 import type { LiabilityAllocationOverview } from "../types/LiabilityAllocation";
 
 import {
@@ -574,6 +576,7 @@ export function Goals({
           portfolio={portfolio}
           onClose={() => setFundingGoal(null)}
           onRelease={async(assetId,amount)=>{await onReleaseMoney(fundingGoal.id,assetId,amount);}}
+          onChanged={onGoalsChanged}
           onAllocate={async (request) => {
             await onAllocateMoney(
               fundingGoal.id,
@@ -896,6 +899,7 @@ type GoalFundingModalProps = {
     request: AllocateGoalMoneyRequest
   ) => Promise<void>;
   onRelease:(assetId:number,amount:number)=>Promise<void>;
+  onChanged:()=>Promise<void>;
 };
 
 function GoalFundingModal({
@@ -904,6 +908,7 @@ function GoalFundingModal({
   onClose,
   onAllocate,
   onRelease,
+  onChanged,
 }: GoalFundingModalProps) {
   const remaining = Math.max(
     goal.targetAmount - goal.currentAmount,
@@ -911,7 +916,7 @@ function GoalFundingModal({
   );
 
   const [mode, setMode] = useState<
-    "ALLOCATE_EXISTING" | "TRANSFER_AND_ALLOCATE"
+    "ALLOCATE_EXISTING" | "TRANSFER_AND_ALLOCATE" | "PORTFOLIO"
   >("ALLOCATE_EXISTING");
 
   const [amount, setAmount] = useState(
@@ -936,6 +941,8 @@ function GoalFundingModal({
     useState<GoalAllocationSummary | null>(
       null
     );
+  const [wallets, setWallets] = useState<PortfolioWallet[]>([]);
+  const [portfolioId, setPortfolioId] = useState<number | null>(null);
   const [allGoalReservations, setAllGoalReservations] = useState<MoneyFlowOverview | null>(null);
   const [liabilityReservations, setLiabilityReservations] = useState<LiabilityAllocationOverview | null>(null);
 
@@ -951,16 +958,28 @@ function GoalFundingModal({
 
     async function loadSummary() {
       try {
-        const [loaded, allGoals, liabilities] = await Promise.all([
+        const [loaded, allGoals, liabilities, loadedWallets] = await Promise.all([
           goalAllocationApi.getSummary(goal.id),
           goalAllocationApi.getOverview(),
           liabilityAllocationApi.getOverview(),
+          portfolioApi.getAll(),
         ]);
 
         if (!cancelled) {
           setSummary(loaded);
           setAllGoalReservations(allGoals);
           setLiabilityReservations(liabilities);
+          setWallets(loadedWallets);
+          const usedPortfolioIds = new Set<number>();
+          for (const row of allGoals.allocations ?? []) {
+            if (row.sourceType === "PORTFOLIO" && row.portfolioId != null && row.goalId !== goal.id) usedPortfolioIds.add(row.portfolioId);
+          }
+          for (const row of liabilities.allocations ?? []) {
+            if (row.sourceType === "PORTFOLIO" && row.portfolioId != null) usedPortfolioIds.add(row.portfolioId);
+          }
+          const selectable = loadedWallets.filter((wallet) => wallet.type !== "GOALS" && !usedPortfolioIds.has(wallet.id));
+          const currentLink = loaded.allocations.find((allocation) => allocation.sourceType === "PORTFOLIO");
+          setPortfolioId(currentLink?.portfolioId ?? selectable[0]?.id ?? null);
         }
       } catch (caught) {
         console.error(
@@ -993,6 +1012,20 @@ function GoalFundingModal({
     (asset) => asset.id === targetAssetId
   );
 
+  const usedDynamicPortfolioIds = new Set<number>();
+  for (const row of allGoalReservations?.allocations ?? []) {
+    if (row.sourceType === "PORTFOLIO" && row.portfolioId != null && row.goalId !== goal.id) usedDynamicPortfolioIds.add(row.portfolioId);
+  }
+  for (const row of liabilityReservations?.allocations ?? []) {
+    if (row.sourceType === "PORTFOLIO" && row.portfolioId != null) usedDynamicPortfolioIds.add(row.portfolioId);
+  }
+  const selectableWallets = wallets.filter((wallet) => wallet.type !== "GOALS" && !usedDynamicPortfolioIds.has(wallet.id));
+  const selectedWallet = selectableWallets.find((wallet) => wallet.id === portfolioId);
+  const linkedPortfolio = summary?.allocations.find((allocation) => allocation.sourceType === "PORTFOLIO") ?? null;
+  const portfolioReserveNow = selectedWallet
+    ? Math.min(remaining, Math.max(selectedWallet.value, 0))
+    : 0;
+
   const reservedByAsset = new Map<number, number>();
   for (const allocation of allGoalReservations?.allocations ?? []) {
     if (allocation.assetId != null) {
@@ -1020,21 +1053,26 @@ function GoalFundingModal({
   const modeIsValid =
     mode === "ALLOCATE_EXISTING"
       ? parsedAmount <= targetUnallocated
-      : Boolean(
-          sourceAsset &&
-            targetAsset &&
-            sourceAsset.id !== targetAsset.id &&
-            parsedAmount <= sourceAvailable
-        );
+      : mode === "TRANSFER_AND_ALLOCATE"
+        ? Boolean(
+            sourceAsset &&
+              targetAsset &&
+              sourceAsset.id !== targetAsset.id &&
+              parsedAmount <= sourceAvailable
+          )
+        : false;
 
   const valid =
+    mode !== "PORTFOLIO" &&
     amountIsBasicValid &&
     modeIsValid &&
     targetAssetId !== null;
 
-  const nextGoalAmount = valid
-    ? goal.currentAmount + parsedAmount
-    : goal.currentAmount;
+  const nextGoalAmount = mode === "PORTFOLIO"
+    ? Math.min(goal.targetAmount, goal.currentAmount + portfolioReserveNow)
+    : valid
+      ? goal.currentAmount + parsedAmount
+      : goal.currentAmount;
 
   async function submit(
     event: React.FormEvent
@@ -1071,7 +1109,7 @@ function GoalFundingModal({
     try {
       await onAllocate({
         amount: parsedAmount,
-        mode,
+        mode: mode === "TRANSFER_AND_ALLOCATE" ? "TRANSFER_AND_ALLOCATE" : "ALLOCATE_EXISTING",
         sourceAssetId:
           mode === "TRANSFER_AND_ALLOCATE"
             ? sourceAssetId
@@ -1082,6 +1120,37 @@ function GoalFundingModal({
       setError(
         "Backend odrzucił operację. Sprawdź dostępne środki i spróbuj ponownie."
       );
+      setIsSaving(false);
+    }
+  }
+
+  async function assignPortfolio() {
+    if (!selectedWallet || linkedPortfolio || isSaving) return;
+    setIsSaving(true);
+    setError(null);
+    try {
+      const next = await goalAllocationApi.assignPortfolio(goal.id, selectedWallet.id);
+      setSummary(next);
+      await onChanged();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Nie udało się przypisać portfela do celu.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function releasePortfolio() {
+    if (!linkedPortfolio?.portfolioId || isSaving) return;
+    if (!window.confirm(`Odłączyć cały portfel „${linkedPortfolio.portfolioName ?? linkedPortfolio.assetName}” od celu „${goal.name}”?`)) return;
+    setIsSaving(true);
+    setError(null);
+    try {
+      const next = await goalAllocationApi.releasePortfolio(goal.id, linkedPortfolio.portfolioId);
+      setSummary(next);
+      await onChanged();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Nie udało się odłączyć portfela od celu.");
+    } finally {
       setIsSaving(false);
     }
   }
@@ -1158,7 +1227,7 @@ function GoalFundingModal({
               Co robisz?
             </p>
 
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-3">
               <button
                 type="button"
                 onClick={() =>
@@ -1198,9 +1267,26 @@ function GoalFundingModal({
                   Poduszka +2k. Net Worth bez zmian.
                 </p>
               </button>
+
+
+              <button
+                type="button"
+                onClick={() => setMode("PORTFOLIO")}
+                className={`cursor-pointer rounded-2xl border p-4 text-left transition ${
+                  mode === "PORTFOLIO"
+                    ? "border-cyan-400/40 bg-cyan-500/10"
+                    : "border-slate-800 bg-slate-950/35 hover:border-slate-700"
+                }`}
+              >
+                <p className="font-black text-white">Cały portfel · AUTO</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Np. Krypto → BMW. Wzrosty i spadki portfela automatycznie zmieniają realizację celu.
+                </p>
+              </button>
             </div>
           </div>
 
+          {mode !== "PORTFOLIO" ? <>
           <div>
             <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
               Kwota
@@ -1280,6 +1366,35 @@ function GoalFundingModal({
               )}
           </div>
 
+          </> : <div className="space-y-4 rounded-2xl border border-cyan-500/15 bg-cyan-500/[0.035] p-5">
+            <div>
+              <p className="text-sm font-black text-white">Dynamicznie przypisz cały portfel</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                Aktywa nie są przenoszone. Cel wykorzystuje wolną wartość portfela aż do swojego limitu. Gdy portfel rośnie, postęp celu rośnie; gdy spada — postęp maleje.
+              </p>
+            </div>
+
+            {linkedPortfolio ? (
+              <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/[0.06] p-4">
+                <div className="flex items-center gap-3">
+                  <div className="grid h-10 w-10 place-items-center rounded-xl border border-cyan-500/20 bg-cyan-500/10 text-cyan-300"><WalletCards size={19}/></div>
+                  <div className="min-w-0"><p className="text-[9px] font-black uppercase tracking-[0.14em] text-cyan-400">Portfel przypisany automatycznie</p><p className="mt-1 truncate text-sm font-black text-white">{linkedPortfolio.portfolioName ?? linkedPortfolio.assetName}</p></div>
+                  <strong className="ml-auto text-base text-cyan-200">{linkedPortfolio.amount.toLocaleString("pl-PL")} zł</strong>
+                </div>
+                <p className="mt-3 text-xs leading-5 text-slate-500">To jest bieżąca wartość portfela faktycznie pracująca na cel, po innych ręcznych rezerwacjach i z limitem do budżetu celu.</p>
+                <button type="button" disabled={isSaving} onClick={() => void releasePortfolio()} className="mt-3 cursor-pointer rounded-xl border border-slate-700 px-3 py-2 text-[10px] font-black text-slate-400 transition hover:border-amber-400/40 hover:text-amber-300 disabled:opacity-50">ODŁĄCZ PORTFEL</button>
+              </div>
+            ) : <>
+              <label className="block"><span className="mb-2 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Portfel</span>
+                <select value={portfolioId ?? ""} onChange={(event) => setPortfolioId(Number(event.target.value))} disabled={isSaving || selectableWallets.length === 0} className="w-full cursor-pointer rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-bold text-slate-200 outline-none focus:border-cyan-400/40">
+                  {selectableWallets.map((wallet) => <option key={wallet.id} value={wallet.id}>{wallet.name} · {wallet.grossValue.toLocaleString("pl-PL")} zł brutto</option>)}
+                </select>
+              </label>
+              {selectedWallet && <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-3"><p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-600">Wolne w portfelu teraz</p><strong className="mt-1 block text-sm text-white">{selectedWallet.value.toLocaleString("pl-PL")} zł</strong></div><div className="rounded-xl border border-cyan-500/15 bg-cyan-500/[0.04] px-4 py-3"><p className="text-[9px] font-black uppercase tracking-[0.12em] text-cyan-500">Doda do celu teraz</p><strong className="mt-1 block text-sm text-cyan-200">{portfolioReserveNow.toLocaleString("pl-PL")} zł</strong></div></div>}
+              <div className="rounded-xl border border-slate-800 bg-slate-950/35 px-4 py-3 text-xs leading-5 text-slate-500"><strong className="text-slate-300">Bez podwójnego liczenia:</strong> ręczne rezerwy na inne cele i zobowiązania mają pierwszeństwo. Ten tryb wykorzystuje wyłącznie pozostały wolny kapitał. Jeden portfel może być dynamicznie przypisany tylko do jednego celu albo zobowiązania.</div>
+            </>}
+          </div>}
+
           {summary &&
             summary.allocations.length > 0 && (
               <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
@@ -1291,13 +1406,15 @@ function GoalFundingModal({
                   {summary.allocations.map(
                     (allocation) => (
                       <div
-                        key={allocation.id}
-                        className="flex items-center justify-between text-sm"
+                        key={`${allocation.sourceType ?? "ASSET"}-${allocation.id}`}
+                        className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm ${allocation.sourceType === "PORTFOLIO" ? "border-cyan-500/20 bg-cyan-500/[0.055]" : "border-slate-800/70 bg-slate-950/30"}`}
                       >
-                        <span className="text-slate-400">
-                          {allocation.assetName}
+                        <span className="flex min-w-0 items-center gap-2 text-slate-400">
+                          {allocation.sourceType === "PORTFOLIO" && <WalletCards size={14} className="shrink-0 text-cyan-300"/>}
+                          <span className="truncate">{allocation.assetName}</span>
+                          {allocation.sourceType === "PORTFOLIO" && <span className="rounded-md border border-cyan-500/20 bg-cyan-500/10 px-1.5 py-0.5 text-[8px] font-black text-cyan-300">AUTO</span>}
                         </span>
-                        <div className="flex items-center gap-2"><span className="font-black text-white">{allocation.amount.toLocaleString("pl-PL")} zł</span>{allocation.assetId!==null&&<button type="button" onClick={async()=>{const raw=window.prompt("Ile zł cofnąć z celu?",String(allocation.amount));if(!raw)return;const value=Number(raw.replace(",","."));if(!Number.isFinite(value)||value<=0)return;await onRelease(allocation.assetId!,value);setSummary(await goalAllocationApi.getSummary(goal.id));}} className="rounded-lg border border-slate-700 px-2 py-1 text-[10px] font-black text-slate-400 hover:border-amber-400/40 hover:text-amber-300">COFNIJ</button>}</div>
+                        <div className="flex items-center gap-2"><span className={allocation.sourceType === "PORTFOLIO" ? "font-black text-cyan-200" : "font-black text-white"}>{allocation.amount.toLocaleString("pl-PL")} zł</span>{allocation.sourceType === "PORTFOLIO" ? allocation.portfolioId != null && <button type="button" disabled={isSaving} onClick={() => void releasePortfolio()} className="rounded-lg border border-slate-700 px-2 py-1 text-[10px] font-black text-slate-400 hover:border-amber-400/40 hover:text-amber-300">ODŁĄCZ</button> : allocation.assetId!==null&&<button type="button" onClick={async()=>{const raw=window.prompt("Ile zł cofnąć z celu?",String(allocation.amount));if(!raw)return;const value=Number(raw.replace(",","."));if(!Number.isFinite(value)||value<=0)return;await onRelease(allocation.assetId!,value);setSummary(await goalAllocationApi.getSummary(goal.id));await onChanged();}} className="rounded-lg border border-slate-700 px-2 py-1 text-[10px] font-black text-slate-400 hover:border-amber-400/40 hover:text-amber-300">COFNIJ</button>}</div>
                       </div>
                     )
                   )}
@@ -1320,17 +1437,28 @@ function GoalFundingModal({
               Anuluj
             </button>
 
-            <button
-              type="submit"
-              disabled={!valid || isSaving}
-              className="cursor-pointer rounded-xl bg-emerald-500 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {isSaving
-                ? "Księguję..."
-                : mode === "ALLOCATE_EXISTING"
-                  ? "PRZYPISZ DO CELU"
-                  : "TRANSFER + CEL"}
-            </button>
+            {mode === "PORTFOLIO" ? (
+              !linkedPortfolio && <button
+                type="button"
+                disabled={!selectedWallet || isSaving}
+                onClick={() => void assignPortfolio()}
+                className="cursor-pointer rounded-xl bg-cyan-500 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isSaving ? "Przypisuję..." : "PRZYPISZ CAŁY PORTFEL"}
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!valid || isSaving}
+                className="cursor-pointer rounded-xl bg-emerald-500 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isSaving
+                  ? "Księguję..."
+                  : mode === "ALLOCATE_EXISTING"
+                    ? "PRZYPISZ DO CELU"
+                    : "TRANSFER + CEL"}
+              </button>
+            )}
           </div>
         </form>
       </div>

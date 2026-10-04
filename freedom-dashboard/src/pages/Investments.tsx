@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { ArrowDownRight, ArrowRight, ArrowRightLeft, ArrowUpRight, ChartNoAxesCombined, ChartPie, CreditCard, FileSpreadsheet, GripVertical, Landmark, ListTree, LoaderCircle, MoreVertical, Pencil, Plus, ScrollText, Target, Trash2, TrendingUp, TriangleAlert, WalletCards } from "lucide-react";
+import { ArrowDownRight, ArrowRight, ArrowRightLeft, ArrowUpRight, Banknote, ChartNoAxesCombined, ChartPie, Check, ClipboardCopy, CreditCard, FileSpreadsheet, GripVertical, Landmark, ListTree, LoaderCircle, MoreVertical, Pencil, Plus, ScrollText, Sparkles, Target, Trash2, TrendingUp, TriangleAlert, WalletCards } from "lucide-react";
 import type { Asset } from "../types/Asset";
 import { assetCategoryLabels, getAssetCategory, getAssetIconKey, metalUnitLabel } from "../types/Asset";
 import type { Goal } from "../types/Goal";
 import type { MonthlySnapshot } from "../types/MonthlySnapshot";
 import type { MoneyFlowOverview } from "../types/GoalAllocation";
 import type { LiabilityAllocationOverview, LiabilityPortfolioAllocation } from "../types/LiabilityAllocation";
+import type { Liability } from "../types/Liability";
 import type { PortfolioWallet } from "../types/Portfolio";
 import { goalAllocationApi } from "../api/goalAllocationApi";
 import { liabilityAllocationApi } from "../api/liabilityAllocationApi";
+import { liabilityApi } from "../api/liabilityApi";
 import { portfolioApi } from "../api/portfolioApi";
 import { AssetIcon } from "../components/investments/assetIcons";
 import { AddAssetModal } from "../components/investments/AddAssetModal";
@@ -32,10 +34,22 @@ type InvestmentsProps = {
   onReleaseMoney: (goalId: number, assetId: number, amount: number) => Promise<void>;
 };
 
+function resolveGoalMiniImage(goal: FundedGoal) {
+  if (goal.imageUrl) return { src: goal.imageUrl, position: goal.imagePosition ?? "center" };
+  const normalized = goal.name.toLocaleLowerCase("pl-PL");
+  if (goal.type === "CAR" || /(bmw|auto|samoch|car)/.test(normalized)) return { src: "/liabilities/car.webp", position: "center" as const };
+  if (goal.type === "HOME" || /(dom|mieszkani|działk|dzialk|home)/.test(normalized)) return { src: "/liabilities/house.webp", position: "center" as const };
+  if (goal.type === "EMERGENCY_FUND" || /(poduszk|awaryjn|rezerwa)/.test(normalized)) return { src: "/portfolios/emergency-fund.webp", position: "center" as const };
+  if (goal.type === "TRAVEL" || /(podróż|podroz|wakac|urlop|travel)/.test(normalized)) return { src: "/portfolios/short-term.webp", position: "center" as const };
+  if (/(zęb|zeb|dent|lecz)/.test(normalized)) return { src: "/portfolios/main.webp", position: "center" as const };
+  return null;
+}
+
 export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, onUpdateAsset, onDeleteAsset, onPortfolioChanged, onReleaseMoney }: InvestmentsProps) {
   const [wallets, setWallets] = useState<PortfolioWallet[]>([]);
   const [overview, setOverview] = useState<MoneyFlowOverview | null>(null);
   const [liabilityOverview, setLiabilityOverview] = useState<LiabilityAllocationOverview | null>(null);
+  const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [form, setForm] = useState<PortfolioWallet | "new" | null>(null);
@@ -57,20 +71,25 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
   const [dragOverWalletId, setDragOverWalletId] = useState<number | null>(null);
   const [pendingAssetMove, setPendingAssetMove] = useState<{ asset: Asset; source: PortfolioWallet; target: PortfolioWallet; mergeBonds: boolean } | null>(null);
   const [assetMoveError, setAssetMoveError] = useState("");
+  const [analysisPrompt, setAnalysisPrompt] = useState<string | null>(null);
+  const [analysisPromptMode, setAnalysisPromptMode] = useState<"PERCENT" | "AMOUNT">("PERCENT");
+  const [promptCopied, setPromptCopied] = useState(false);
   const requestId = useRef(0);
 
   const refresh = useCallback(async () => {
     const request = ++requestId.current;
     try {
-      const [nextWallets, nextOverview, nextLiabilityOverview] = await Promise.all([
+      const [nextWallets, nextOverview, nextLiabilityOverview, nextLiabilities] = await Promise.all([
         portfolioApi.getAll(),
         goalAllocationApi.getOverview(),
         liabilityAllocationApi.getOverview(),
+        liabilityApi.getAll(),
       ]);
       if (request === requestId.current) {
         setWallets(nextWallets);
         setOverview(nextOverview);
         setLiabilityOverview(nextLiabilityOverview);
+        setLiabilities(nextLiabilities);
         setError("");
       }
     } catch (cause) {
@@ -168,6 +187,35 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
     }
   }
 
+  function generateAnalysisPrompt(mode: "PERCENT" | "AMOUNT") {
+    setAnalysisPromptMode(mode);
+    setAnalysisPrompt(buildPortfolioAnalysisPrompt({
+      assets: portfolio,
+      wallets: realWallets,
+      goals,
+      goalOverview: overview,
+      liabilities,
+      liabilityOverview,
+      mode,
+    }));
+    setPromptCopied(false);
+  }
+
+  function openAnalysisPrompt() {
+    generateAnalysisPrompt("PERCENT");
+  }
+
+  async function copyAnalysisPrompt() {
+    if (!analysisPrompt) return;
+    try {
+      await copyTextToClipboard(analysisPrompt);
+      setPromptCopied(true);
+      window.setTimeout(() => setPromptCopied(false), 2200);
+    } catch {
+      setPromptCopied(false);
+    }
+  }
+
   return <main className="investments-page">
     <header className="investments-header">
       <div className="investments-title"><span className="investment-heading-icon"><ChartNoAxesCombined size={26}/></span><div><h1>Inwestycje</h1><p>Zarządzaj swoimi portfelami i buduj majątek na przyszłość.</p></div></div>
@@ -191,7 +239,7 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
     <section className="investment-panel portfolios-panel">
       <div className="investment-panel-heading">
         <div className="investment-section-title"><span className="investment-section-icon"><WalletCards size={20}/></span><div><h2>Portfele</h2><p>Twoje strategie inwestycyjne w jednym miejscu.</p></div></div>
-        <div className="investment-toolbar"><button type="button" className="investment-button secondary" onClick={() => setCashReconciliationOpen(true)}><Landmark size={15}/>Uzgodnij gotówkę</button><button type="button" className="investment-button secondary transfer-toolbar" onClick={() => setTransfer({})} disabled={!known || portfolio.length < 1}><ArrowRightLeft size={15}/>Transfer</button>{addPortfolio}</div>
+        <div className="investment-toolbar"><button type="button" className="investment-button secondary ai-prompt-toolbar" onClick={openAnalysisPrompt} disabled={!known || !realWallets.length || !portfolio.length} title="Wygeneruj lokalnie prompt do analizy portfeli, celów i zobowiązań — bez wysyłania danych do API"><Sparkles size={15}/>Generuj prompt</button><button type="button" className="investment-button secondary" onClick={() => setCashReconciliationOpen(true)}><Landmark size={15}/>Uzgodnij gotówkę</button><button type="button" className="investment-button secondary transfer-toolbar" onClick={() => setTransfer({})} disabled={!known || portfolio.length < 1}><ArrowRightLeft size={15}/>Transfer</button>{addPortfolio}</div>
       </div>
       {loading ? <div className="investment-empty"><LoaderCircle size={20} className="animate-spin"/>Pobieranie portfeli…</div> : !realWallets.length ? <div className="investment-empty">Dodaj pierwszy portfel i nadaj swoim inwestycjom kierunek.</div> :
         <div className="portfolio-cards">{realWallets.map(wallet => {
@@ -284,7 +332,19 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
       </div>
       {!funded.length && <div className="investment-empty">{loading ? "Pobieranie rezerwacji…" : "Przypisz środki do celu, aby zobaczyć je tutaj."}</div>}
       <div className="goal-capital-rows">{funded.map(goal => <article className="goal-capital-row" key={goal.id}>
-        <div className="goal-capital-name"><span className="portfolio-card-icon"><Target size={22}/></span><div><h3>{goal.name}</h3><p>Z portfeli: {goal.sources.join(", ")}</p></div></div>
+        <div className="goal-capital-name">
+          {(() => {
+            const image = resolveGoalMiniImage(goal);
+            return image ? (
+              <div className="goal-capital-thumb">
+                <img src={image.src} alt="" style={{ objectPosition: image.position }} />
+              </div>
+            ) : (
+              <span className="portfolio-card-icon"><Target size={22}/></span>
+            );
+          })()}
+          <div><h3>{goal.name}</h3><p>Z portfeli: {goal.sources.join(", ")}</p></div>
+        </div>
         <strong className="goal-capital-amount">{money(goal.amount)}</strong>
         <div className="goal-capital-progress"><div className="investment-progress purple"><span style={{ width: `${goal.target > 0 ? Math.min(100, goal.amount / goal.target * 100) : 0}%` }}/></div><span>{goal.target > 0 ? percent(goal.amount, goal.target) : "—"}</span></div>
         <div className="goal-capital-sources">{goal.allocations.slice(0, 3).map((row, index) => <div key={`${row.assetId}-${index}`}><span className="investment-dot" style={{ background: portfolio.find(asset => asset.id === row.assetId)?.color ?? "#8b5cf6" }}/><span>{row.assetName}</span><strong>{money(row.amount)}</strong></div>)}{goal.allocations.length > 3 && <span className="investment-note">+ {goal.allocations.length - 3} źródeł</span>}</div>
@@ -313,6 +373,65 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
         </article>;
       })}</div>
     </section>
+
+    {analysisPrompt && <PortfolioDialog
+      wide
+      className="portfolio-ai-prompt-dialog"
+      title="Prompt do analizy finansów"
+      subtitle={analysisPromptMode === "PERCENT"
+        ? "Wersja prywatna: portfele, cele i zobowiązania opisane wyłącznie procentami — bez kwot."
+        : "Wersja pełna: rzeczywiste kwoty PLN, aby AI mogło zaproponować dokładny plan alokacji kapitału."}
+      icon={<Sparkles size={22}/>}
+      onClose={() => { setAnalysisPrompt(null); setPromptCopied(false); }}
+    >
+      <div className="portfolio-ai-prompt">
+        <div className="portfolio-ai-mode-switch" role="group" aria-label="Wersja promptu">
+          <button
+            type="button"
+            className={analysisPromptMode === "PERCENT" ? "active" : ""}
+            onClick={() => generateAnalysisPrompt("PERCENT")}
+          >
+            <ChartPie size={15}/> Procentowy
+            <small>bez kwot</small>
+          </button>
+          <button
+            type="button"
+            className={analysisPromptMode === "AMOUNT" ? "active amount" : ""}
+            onClick={() => generateAnalysisPrompt("AMOUNT")}
+          >
+            <Banknote size={15}/> Kwotowy
+            <small>konkretny plan PLN</small>
+          </button>
+        </div>
+        <div className="portfolio-ai-prompt-badges" aria-label="Właściwości promptu">
+          <span><Sparkles size={12}/>Bez API</span>
+          <span>{analysisPromptMode === "PERCENT" ? "Wyłącznie %" : "Rzeczywiste PLN"}</span>
+          <span>Cele + zobowiązania</span>
+          <span>Odpowiedź po polsku</span>
+        </div>
+        <div className="portfolio-ai-prompt-hint">
+          <strong>Gotowy do wklejenia.</strong>
+          <span>{analysisPromptMode === "PERCENT"
+            ? "AI dostaje strukturę portfeli, postęp celów, terminy, oprocentowanie zobowiązań oraz procentowe przypisania kapitału. Ma ocenić, czy obecny plan prowadzi do realizacji celów i jak go poprawić."
+            : "AI dostaje realne kwoty i ma rozpisać konkretnie, ile PLN skierować do każdego portfela, celu, inwestycji lub nadpłaty zobowiązania oraz w jakiej kolejności."}</span>
+        </div>
+        <textarea
+          className="portfolio-ai-prompt-textarea"
+          readOnly
+          spellCheck={false}
+          value={analysisPrompt}
+          aria-label="Wygenerowany prompt do analizy portfeli"
+          onFocus={event => event.currentTarget.select()}
+        />
+        <footer className="portfolio-ai-prompt-actions">
+          <button type="button" className="investment-button secondary" onClick={() => { setAnalysisPrompt(null); setPromptCopied(false); }}>Zamknij</button>
+          <button type="button" className={`investment-button portfolio-ai-copy ${promptCopied ? "copied" : ""}`} onClick={() => void copyAnalysisPrompt()}>
+            {promptCopied ? <Check size={16}/> : <ClipboardCopy size={16}/>}
+            {promptCopied ? "Skopiowano" : "Skopiuj prompt"}
+          </button>
+        </footer>
+      </div>
+    </PortfolioDialog>}
 
     {form && <PortfolioForm wallet={form === "new" ? undefined : form} onClose={() => setForm(null)} onSave={async input => { if (form === "new") await portfolioApi.create(input); else await portfolioApi.update(form.id, input); await refresh(); }}/>}
     {transfer && <TransferForm assets={portfolio} wallets={realWallets} allocated={allocated} sourceId={transfer.sourceId} onClose={() => setTransfer(null)} onAddAsset={walletId => { setTransfer(null); setAddTo(walletId); }} onTransfer={async (source, target, amount) => { await portfolioApi.transfer(source, target, amount); await onPortfolioChanged(); await refresh(); }}/>}
@@ -404,6 +523,438 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
       <div className="investment-form"><p>{deleteWallet ? `Usunąć portfel „${deleteWallet.name}”? Portfel musi być pusty.` : `Usunąć aktywo „${deleteAsset?.name}”? Jego wartość zostanie odjęta od majątku.`}</p>{managerError && <p role="alert" className="investment-error">{managerError}</p>}<footer><button type="button" className="investment-button secondary" disabled={busy} onClick={() => { setDeleteWallet(null); setDeleteAsset(null); }}>Anuluj</button><button type="button" className="investment-button danger" disabled={busy} onClick={() => void managerAction(async () => { if (deleteWallet) await portfolioApi.remove(deleteWallet.id); else if (deleteAsset) await onDeleteAsset(deleteAsset.id); setDeleteWallet(null); setDeleteAsset(null); })}>{busy ? "Usuwanie…" : "Usuń"}</button></footer></div>
     </PortfolioDialog>}
   </main>;
+}
+
+type PortfolioPromptMode = "PERCENT" | "AMOUNT";
+
+type PortfolioPromptInput = {
+  assets: Asset[];
+  wallets: PortfolioWallet[];
+  goals: Goal[];
+  goalOverview: MoneyFlowOverview | null;
+  liabilities: Liability[];
+  liabilityOverview: LiabilityAllocationOverview | null;
+  mode: PortfolioPromptMode;
+};
+
+function buildPortfolioAnalysisPrompt({
+  assets,
+  wallets,
+  goals,
+  goalOverview,
+  liabilities,
+  liabilityOverview,
+  mode,
+}: PortfolioPromptInput): string {
+  const analysableAssets = assets.filter(asset => !asset.systemCash);
+  const totalValue = analysableAssets.reduce((sum, asset) => sum + asset.value, 0);
+  const walletValues = new Map(wallets.map(wallet => [
+    wallet.id,
+    analysableAssets.filter(asset => asset.portfolioId === wallet.id).reduce((sum, asset) => sum + asset.value, 0),
+  ]));
+  const sortedWallets = wallets.slice().sort((a, b) => (walletValues.get(b.id) ?? 0) - (walletValues.get(a.id) ?? 0));
+  const amountMode = mode === "AMOUNT";
+  const lines: string[] = [
+    "Jesteś doświadczonym analitykiem portfelowym i planistą finansowym. Przeanalizuj poniższą strukturę mojego majątku, portfeli, celów i zobowiązań. Odpowiedz po polsku.",
+    "",
+    "CEL ANALIZY",
+    "Chcę maksymalizować oczekiwaną długoterminową stopę zwrotu, ale jednocześnie realizować cele finansowe w terminie, zachować odpowiednią płynność i rozsądnie zarządzać zobowiązaniami. Nie traktuj maksymalizacji zysku w oderwaniu od ryzyka, terminów celów i kosztu długu.",
+    "",
+    "WAŻNE ZASADY",
+  ];
+
+  if (amountMode) {
+    lines.push(
+      "- Ta wersja celowo zawiera rzeczywiste kwoty. Używaj PLN i podawaj konkretne kwoty działań.",
+      "- Na końcu przygotuj wykonawczy plan: dokładnie ile PLN skierować do którego portfela, aktywa, celu lub nadpłaty zobowiązania.",
+      "- Jeżeli rekomendujesz sprzedaż/przeniesienie kapitału, napisz ile PLN sprzedać lub przenieść, skąd i dokąd.",
+      "- Jeżeli nie da się policzyć dokładnej kwoty bez dodatkowej informacji, wskaż brakującą informację i podaj warunkową regułę zamiast zgadywać."
+    );
+  } else {
+    lines.push(
+      "- Celowo nie podaję żadnych kwot. Pracuj wyłącznie na udziałach procentowych i punktach procentowych.",
+      "- Nie próbuj odgadywać mojego majątku ani przeliczać udziałów na wartości pieniężne.",
+      "- Rekomendacje dla celów i zobowiązań również zapisuj procentowo: jako % celu, % zobowiązania, % portfela lub % całego majątku."
+    );
+  }
+
+  lines.push(
+    "- Każdy portfel oceń osobno, a potem oceń cały majątek jako jeden system.",
+    "- Dla każdego celu oceń, czy jest realizowany prawidłowo, czy obecne tempo wystarczy do terminu i czy źródła finansowania są sensowne.",
+    "- Dla każdego zobowiązania oceń koszt długu, stopień zabezpieczenia kapitałem i sens nadpłaty względem inwestowania. Nie zakładaj, że spłata długu zawsze jest najlepsza.",
+    "- Uwzględnij zależność między celami a portfelami: kapitał zarezerwowany na bliski cel nie powinien być oceniany jak kapitał z horyzontem 20 lat.",
+    "- Jeżeli z nazwy instrumentu nie da się pewnie ustalić indeksu, regionu, sektora, kosztów lub składu, zaznacz niepewność zamiast zgadywać.",
+    "- Środki nierozdzielone są technicznym clearingiem Freedom Engine i zostały pominięte w danych inwestycyjnych.",
+    "- Weź pod uwagę nakładanie się ekspozycji między ETF-ami, akcjami, obligacjami, walutami, metalami, nieruchomościami i krypto.",
+    "",
+    "DANE — STRUKTURA PORTFELI"
+  );
+
+  for (const wallet of sortedWallets) {
+    const walletAssets = analysableAssets
+      .filter(asset => asset.portfolioId === wallet.id)
+      .slice()
+      .sort((a, b) => b.value - a.value);
+    const walletValue = walletValues.get(wallet.id) ?? 0;
+    lines.push("");
+    if (amountMode) {
+      lines.push(`PORTFEL: ${wallet.name} — ${formatPromptMoney(walletValue)} (${formatPromptPercent(walletValue, totalValue)} całego analizowanego majątku)`);
+      if ((wallet.monthlyContribution ?? 0) > 0) lines.push(`- planowana wpłata miesięczna: ${formatPromptMoney(wallet.monthlyContribution ?? 0)}`);
+      if ((wallet.targetAmount ?? 0) > 0) lines.push(`- cel wartości portfela: ${formatPromptMoney(wallet.targetAmount ?? 0)}; realizacja ${formatPromptPercent(walletValue, wallet.targetAmount ?? 0)}`);
+    } else {
+      lines.push(`PORTFEL: ${wallet.name} — ${formatPromptPercent(walletValue, totalValue)} całego analizowanego majątku`);
+      if ((wallet.monthlyContribution ?? 0) > 0) lines.push(`- planowana wpłata miesięczna: ${formatPromptPercent(wallet.monthlyContribution ?? 0, walletValue)} obecnej wartości portfela miesięcznie`);
+      if ((wallet.targetAmount ?? 0) > 0) lines.push(`- realizacja celu wartości portfela: ${formatPromptPercent(walletValue, wallet.targetAmount ?? 0)}`);
+    }
+    if (!walletAssets.length || walletValue === 0) {
+      lines.push("- brak aktywów o niezerowym udziale");
+      continue;
+    }
+    for (const asset of walletAssets) {
+      const category = assetCategoryLabels[getAssetCategory(asset)];
+      lines.push(amountMode
+        ? `- ${asset.name} [${category}] — ${formatPromptMoney(asset.value)} (${formatPromptPercent(asset.value, walletValue)} portfela)`
+        : `- ${asset.name} [${category}] — ${formatPromptPercent(asset.value, walletValue)} portfela`);
+    }
+  }
+
+  const classTotals = new Map<string, number>();
+  for (const asset of analysableAssets) {
+    const label = assetCategoryLabels[getAssetCategory(asset)];
+    classTotals.set(label, (classTotals.get(label) ?? 0) + asset.value);
+  }
+  const classes = [...classTotals.entries()].sort((a, b) => b[1] - a[1]);
+  lines.push("", "ŁĄCZNA STRUKTURA KLAS AKTYWÓW");
+  for (const [label, value] of classes) {
+    lines.push(amountMode
+      ? `- ${label} — ${formatPromptMoney(value)} (${formatPromptPercent(value, totalValue)})`
+      : `- ${label} — ${formatPromptPercent(value, totalValue)}`);
+  }
+
+  appendGoalsToPrompt(lines, { goals, goalOverview, assets, wallets, totalValue, amountMode });
+  appendLiabilitiesToPrompt(lines, { liabilities, liabilityOverview, assets, wallets, totalValue, amountMode });
+  appendPortfolioCommitmentsToPrompt(lines, { goalOverview, liabilityOverview, assets, wallets, amountMode });
+
+  lines.push(
+    "",
+    "ODPOWIEDŹ PRZYGOTUJ W TEJ STRUKTURZE",
+    "1. Ocena całości — dywersyfikacja, koncentracja, potencjał wzrostu, płynność oraz relacja aktywów do zobowiązań i celów.",
+    "2. Ocena każdego portfela — co jest dobre, co ogranicza oczekiwany zwrot, jakie są ryzyka i czy rola portfela pasuje do finansowanych z niego celów/zobowiązań.",
+    "3. Cele finansowe — oceń każdy cel osobno: postęp, tempo, termin, obecne źródła finansowania i czy plan jest realistyczny. Wskaż cele zagrożone lub nadmiernie finansowane.",
+    "4. Zobowiązania — oceń każde osobno: koszt, tempo spłaty, kapitał zarezerwowany na spłatę i czy lepiej nadpłacać, utrzymać obecny plan czy inwestować nadwyżki.",
+    "5. Nakładanie się ekspozycji — wskaż duplikaty oraz instrumenty dające podobną ekspozycję.",
+    "6. Co zwiększyć / co zmniejszyć — zaproponuj konkretne zmiany i wyjaśnij ich wpływ na zwrot, ryzyko i realizację celów.",
+    "7. Docelowa alokacja — zaproponuj strukturę każdego portfela i całego majątku. Każda proponowana struktura procentowa musi sumować się do 100%.",
+    "8. Plan realizacji celów — dla każdego celu podaj rekomendowane tempo finansowania, portfel/aktywa źródłowe oraz kolejność finansowania względem innych celów.",
+    "9. Plan obsługi zobowiązań — wskaż priorytet nadpłat i minimalny kapitał, który warto pozostawić płynny zamiast przeznaczać na spłatę.",
+    "10. Priorytety — uporządkuj zmiany od najbardziej wpływowej do najmniej istotnej.",
+    "11. Ryzyka — co może pójść źle oraz jaki horyzont inwestycyjny jest potrzebny."
+  );
+
+  if (amountMode) {
+    lines.push(
+      "",
+      "NA KOŃCU OBOWIĄZKOWO DODAJ TABELĘ „KONKRETNY PLAN W PLN”",
+      "Dla każdego działania podaj: PRIORYTET | SKĄD | DOKĄD | KWOTA PLN | KIEDY | UZASADNIENIE.",
+      "Uwzględnij osobno jednorazowe przesunięcia obecnego kapitału i rekomendowane miesięczne wpłaty.",
+      "Jeżeli sugerujesz zakupy inwestycyjne, podaj dokładnie ile PLN do każdej klasy/instrumentu; jeżeli sugerujesz realizację celu lub nadpłatę długu, również podaj dokładną kwotę PLN.",
+      "Sprawdź arytmetykę: suma rekomendowanych przesunięć nie może przekraczać kapitału, który wskazujesz jako źródło."
+    );
+  } else {
+    lines.push(
+      "",
+      "NA KOŃCU DODAJ TABELĘ „PLAN PROCENTOWY”",
+      "Dla każdego działania podaj: PRIORYTET | SKĄD | DOKĄD | ZMIANA W PP / % CELU | KIEDY | UZASADNIENIE.",
+      "Nie używaj w tej tabeli ani nigdzie indziej wartości pieniężnych."
+    );
+  }
+
+  lines.push("", "Nie ograniczaj się do ogólników typu „dywersyfikuj”. Odnoś się do konkretnych portfeli, aktywów, celów, zobowiązań i ich przypisań z danych powyżej.");
+  return lines.join("\n");
+}
+
+type GoalPromptContext = {
+  goals: Goal[];
+  goalOverview: MoneyFlowOverview | null;
+  assets: Asset[];
+  wallets: PortfolioWallet[];
+  totalValue: number;
+  amountMode: boolean;
+};
+
+function appendGoalsToPrompt(lines: string[], context: GoalPromptContext) {
+  const { goals, goalOverview, assets, wallets, totalValue, amountMode } = context;
+  lines.push("", "CELE FINANSOWE I ICH FINANSOWANIE");
+  if (!goals.length) {
+    lines.push("- brak zdefiniowanych celów");
+    return;
+  }
+
+  const sortedGoals = goals.slice().sort((a, b) => goalPriorityRank(a.priority) - goalPriorityRank(b.priority) || goalRemaining(b) - goalRemaining(a));
+  for (const goal of sortedGoals) {
+    const allocations = (goalOverview?.allocations ?? []).filter(row => row.goalId === goal.id);
+    const reservedByAllocations = allocations.reduce((sum, row) => sum + row.amount, 0);
+    const reserved = goalOverview ? reservedByAllocations : (goal.reservedAmount ?? 0);
+    const spent = goal.spentAmount ?? 0;
+    const currentForAnalysis = goal.status === "COMPLETED"
+      ? goal.currentAmount
+      : Math.min(goal.targetAmount, reserved + spent);
+    const remaining = goal.status === "COMPLETED" ? 0 : Math.max(goal.targetAmount - currentForAnalysis, 0);
+    const requiredMonthly = goal.targetDate ? remaining / monthsUntil(goal.targetDate) : null;
+    const sources = groupGoalAllocationsByWallet(allocations, assets, wallets);
+
+    lines.push("");
+    lines.push(`CEL: ${goal.name}${goal.status ? ` — status ${goal.status}` : ""}${goal.priority ? ` — priorytet ${goal.priority}` : ""}`);
+    if (goal.targetDate) lines.push(`- termin: ${goal.targetDate} (${monthsUntil(goal.targetDate)} mies. do terminu wg dzisiejszej daty, minimum 1 mies. dla bieżącego miesiąca)`);
+    if (amountMode) {
+      lines.push(`- budżet celu: ${formatPromptMoney(goal.targetAmount)}`);
+      lines.push(`- zrealizowano: ${formatPromptMoney(currentForAnalysis)} (${formatPromptPercent(currentForAnalysis, goal.targetAmount)})`);
+      lines.push(`- obecnie zarezerwowane: ${formatPromptMoney(reserved)}; wydano: ${formatPromptMoney(spent)}; brakuje: ${formatPromptMoney(remaining)}`);
+      lines.push(`- planowana wpłata miesięczna: ${formatPromptMoney(goal.monthlyContribution)}`);
+      if (requiredMonthly != null) lines.push(`- tempo potrzebne do terminu przy prostym podziale brakującej kwoty: ${formatPromptMoney(requiredMonthly)} / mies.`);
+    } else {
+      lines.push(`- realizacja celu: ${formatPromptPercent(currentForAnalysis, goal.targetAmount)}`);
+      lines.push(`- obecnie zarezerwowane: ${formatPromptPercent(reserved, goal.targetAmount)} celu; wydano: ${formatPromptPercent(spent, goal.targetAmount)} celu; pozostaje: ${formatPromptPercent(remaining, goal.targetAmount)} celu`);
+      lines.push(`- planowana wpłata miesięczna: ${formatPromptPercent(goal.monthlyContribution, goal.targetAmount)} wartości celu / mies.`);
+      if (requiredMonthly != null) lines.push(`- tempo potrzebne do terminu: ${formatPromptPercent(requiredMonthly, goal.targetAmount)} wartości celu / mies.`);
+    }
+
+    if (!sources.length) {
+      lines.push("- przypisane źródła z portfeli: brak");
+    } else {
+      lines.push("- przypisane źródła z portfeli:");
+      for (const source of sources) {
+        const walletValue = analysableWalletValue(source.walletId, assets);
+        const dynamicLabel = source.dynamicPortfolio ? " [DYNAMICZNIE PRZYPISANY CAŁY PORTFEL]" : "";
+        lines.push(amountMode
+          ? `  • ${source.walletName}${dynamicLabel}: ${formatPromptMoney(source.amount)} (${formatPromptPercent(source.amount, goal.targetAmount)} budżetu celu; ${formatPromptPercent(source.amount, walletValue)} portfela)`
+          : `  • ${source.walletName}${dynamicLabel}: ${formatPromptPercent(source.amount, goal.targetAmount)} budżetu celu; ${formatPromptPercent(source.amount, walletValue)} portfela; ${formatPromptPercent(source.amount, reserved || goal.targetAmount)} obecnej rezerwy celu`);
+        for (const detail of source.assets) {
+          lines.push(amountMode
+            ? `    - ${detail.name}: ${formatPromptMoney(detail.amount)}`
+            : `    - ${detail.name}: ${formatPromptPercent(detail.amount, goal.targetAmount)} budżetu celu`);
+        }
+      }
+    }
+
+    if (amountMode && totalValue > 0) lines.push(`- budżet celu odpowiada ${formatPromptPercent(goal.targetAmount, totalValue)} analizowanego majątku`);
+  }
+}
+
+type LiabilityPromptContext = {
+  liabilities: Liability[];
+  liabilityOverview: LiabilityAllocationOverview | null;
+  assets: Asset[];
+  wallets: PortfolioWallet[];
+  totalValue: number;
+  amountMode: boolean;
+};
+
+function appendLiabilitiesToPrompt(lines: string[], context: LiabilityPromptContext) {
+  const { liabilities, liabilityOverview, assets, wallets, totalValue, amountMode } = context;
+  lines.push("", "ZOBOWIĄZANIA I KAPITAŁ PRZEZNACZONY NA ICH SPŁATĘ");
+  if (!liabilities.length) {
+    lines.push("- brak zdefiniowanych zobowiązań");
+    return;
+  }
+
+  const sorted = liabilities.slice().sort((a, b) => b.interestRate - a.interestRate || b.remainingAmount - a.remainingAmount);
+  for (const liability of sorted) {
+    const allocations = (liabilityOverview?.allocations ?? []).filter(row => row.liabilityId === liability.id);
+    const reserved = allocations.reduce((sum, row) => sum + row.amount, 0);
+    const uncovered = Math.max(liability.remainingAmount - reserved, 0);
+    const sources = groupLiabilityAllocationsByWallet(allocations, assets, wallets);
+
+    lines.push("");
+    lines.push(`ZOBOWIĄZANIE: ${liability.name}${liability.type ? ` [${liability.type}]` : ""}`);
+    lines.push(`- oprocentowanie: ${liability.interestRate.toLocaleString("pl-PL", { maximumFractionDigits: 2 })}%`);
+    if (amountMode) {
+      lines.push(`- kwota początkowa: ${formatPromptMoney(liability.originalAmount)}`);
+      lines.push(`- pozostało wg banku/systemu: ${formatPromptMoney(liability.remainingAmount)} (${formatPromptPercent(liability.remainingAmount, liability.originalAmount)} kwoty początkowej)`);
+      lines.push(`- rata miesięczna: ${formatPromptMoney(liability.monthlyPayment)}; kapitał: ${formatPromptMoney(liability.principalPayment)}; odsetki: ${formatPromptMoney(liability.interestPayment)}`);
+      lines.push(`- kapitał zarezerwowany na spłatę: ${formatPromptMoney(reserved)} (${formatPromptPercent(reserved, liability.remainingAmount)} obecnego salda)`);
+      lines.push(`- efektywnie niepokryte po uwzględnieniu rezerwy: ${formatPromptMoney(uncovered)}`);
+      if (totalValue > 0) lines.push(`- obecne saldo to ${formatPromptPercent(liability.remainingAmount, totalValue)} analizowanego majątku`);
+    } else {
+      lines.push(`- pozostałe saldo: ${formatPromptPercent(liability.remainingAmount, liability.originalAmount)} kwoty początkowej`);
+      lines.push(`- rata miesięczna: ${formatPromptPercent(liability.monthlyPayment, liability.remainingAmount)} obecnego salda / mies.`);
+      lines.push(`- struktura raty: kapitał ${formatPromptPercent(liability.principalPayment, liability.monthlyPayment)}, odsetki ${formatPromptPercent(liability.interestPayment, liability.monthlyPayment)}`);
+      lines.push(`- kapitał zarezerwowany na spłatę: ${formatPromptPercent(reserved, liability.remainingAmount)} obecnego salda`);
+      lines.push(`- efektywnie niepokryte po uwzględnieniu rezerwy: ${formatPromptPercent(uncovered, liability.remainingAmount)} obecnego salda`);
+      if (totalValue > 0) lines.push(`- obecne saldo zobowiązania względem analizowanego majątku: ${formatPromptPercent(liability.remainingAmount, totalValue)}`);
+    }
+
+    if (!sources.length) {
+      lines.push("- portfele/aktywa zarezerwowane na spłatę: brak");
+    } else {
+      lines.push("- portfele/aktywa zarezerwowane na spłatę:");
+      for (const source of sources) {
+        const walletValue = analysableWalletValue(source.walletId, assets);
+        lines.push(amountMode
+          ? `  • ${source.walletName}: ${formatPromptMoney(source.amount)} (${formatPromptPercent(source.amount, liability.remainingAmount)} obecnego salda; ${formatPromptPercent(source.amount, walletValue)} portfela)`
+          : `  • ${source.walletName}: ${formatPromptPercent(source.amount, liability.remainingAmount)} obecnego salda; ${formatPromptPercent(source.amount, walletValue)} portfela`);
+        for (const detail of source.assets) {
+          lines.push(amountMode
+            ? `    - ${detail.name}: ${formatPromptMoney(detail.amount)}`
+            : `    - ${detail.name}: ${formatPromptPercent(detail.amount, liability.remainingAmount)} obecnego salda`);
+        }
+      }
+    }
+  }
+}
+
+type PortfolioCommitmentContext = {
+  goalOverview: MoneyFlowOverview | null;
+  liabilityOverview: LiabilityAllocationOverview | null;
+  assets: Asset[];
+  wallets: PortfolioWallet[];
+  amountMode: boolean;
+};
+
+function appendPortfolioCommitmentsToPrompt(lines: string[], context: PortfolioCommitmentContext) {
+  const { goalOverview, liabilityOverview, assets, wallets, amountMode } = context;
+  lines.push("", "MAPA PORTFEL → CELE I ZOBOWIĄZANIA");
+
+  let any = false;
+  for (const wallet of wallets) {
+    const walletValue = analysableWalletValue(wallet.id, assets);
+    const assetIds = new Set(assets.filter(asset => asset.portfolioId === wallet.id).map(asset => asset.id));
+    const goalRows = (goalOverview?.allocations ?? []).filter(row =>
+      row.portfolioId === wallet.id || (row.assetId != null && assetIds.has(row.assetId))
+    );
+    const liabilityRows = (liabilityOverview?.allocations ?? []).filter(row =>
+      row.portfolioId === wallet.id || (row.assetId != null && assetIds.has(row.assetId))
+    );
+    const goalTotal = goalRows.reduce((sum, row) => sum + row.amount, 0);
+    const liabilityTotal = liabilityRows.reduce((sum, row) => sum + row.amount, 0);
+    const reservedTotal = goalTotal + liabilityTotal;
+    if (reservedTotal <= 0) continue;
+    any = true;
+
+    lines.push("");
+    lines.push(amountMode
+      ? `PORTFEL ${wallet.name}: łącznie przypisane ${formatPromptMoney(reservedTotal)} (${formatPromptPercent(reservedTotal, walletValue)} wartości portfela)`
+      : `PORTFEL ${wallet.name}: łącznie przypisane ${formatPromptPercent(reservedTotal, walletValue)} wartości portfela`);
+
+    const goalsByName = new Map<string, number>();
+    for (const row of goalRows) goalsByName.set(row.goalName, (goalsByName.get(row.goalName) ?? 0) + row.amount);
+    for (const [name, amount] of [...goalsByName.entries()].sort((a, b) => b[1] - a[1])) {
+      lines.push(amountMode
+        ? `- cel „${name}”: ${formatPromptMoney(amount)} (${formatPromptPercent(amount, walletValue)} portfela)`
+        : `- cel „${name}”: ${formatPromptPercent(amount, walletValue)} portfela`);
+    }
+
+    const liabilitiesByName = new Map<string, number>();
+    for (const row of liabilityRows) liabilitiesByName.set(row.liabilityName, (liabilitiesByName.get(row.liabilityName) ?? 0) + row.amount);
+    for (const [name, amount] of [...liabilitiesByName.entries()].sort((a, b) => b[1] - a[1])) {
+      lines.push(amountMode
+        ? `- zobowiązanie „${name}”: ${formatPromptMoney(amount)} (${formatPromptPercent(amount, walletValue)} portfela)`
+        : `- zobowiązanie „${name}”: ${formatPromptPercent(amount, walletValue)} portfela`);
+    }
+  }
+
+  if (!any) lines.push("- brak kapitału z portfeli przypisanego do celów lub zobowiązań");
+}
+
+type PromptAllocationSource = {
+  walletId: number | null;
+  walletName: string;
+  amount: number;
+  assets: { name: string; amount: number }[];
+  dynamicPortfolio?: boolean;
+};
+
+function groupGoalAllocationsByWallet(
+  allocations: MoneyFlowOverview["allocations"],
+  assets: Asset[],
+  wallets: PortfolioWallet[]
+): PromptAllocationSource[] {
+  const result = new Map<string, PromptAllocationSource>();
+  for (const row of allocations) {
+    const asset = assets.find(item => item.id === row.assetId);
+    const wallet = wallets.find(item => item.id === (row.portfolioId ?? asset?.portfolioId));
+    const walletId = wallet?.id ?? row.portfolioId ?? null;
+    const walletName = wallet?.name ?? row.portfolioName ?? "Nieprzypisane źródło";
+    const key = walletId != null ? `wallet-${walletId}` : `name-${walletName}`;
+    const current = result.get(key) ?? { walletId, walletName, amount: 0, assets: [], dynamicPortfolio: false };
+    current.amount += row.amount;
+    current.dynamicPortfolio = current.dynamicPortfolio || row.sourceType === "PORTFOLIO";
+    current.assets.push({ name: row.assetName, amount: row.amount });
+    result.set(key, current);
+  }
+  return [...result.values()].sort((a, b) => b.amount - a.amount);
+}
+
+function groupLiabilityAllocationsByWallet(
+  allocations: LiabilityPortfolioAllocation[],
+  assets: Asset[],
+  wallets: PortfolioWallet[]
+): PromptAllocationSource[] {
+  const result = new Map<string, PromptAllocationSource>();
+  for (const row of allocations) {
+    const asset = assets.find(item => item.id === row.assetId);
+    const wallet = wallets.find(item => item.id === (row.portfolioId ?? asset?.portfolioId));
+    const walletId = wallet?.id ?? row.portfolioId ?? null;
+    const walletName = wallet?.name ?? row.portfolioName ?? "Nieprzypisane źródło";
+    const key = walletId != null ? `wallet-${walletId}` : `name-${walletName}`;
+    const current = result.get(key) ?? { walletId, walletName, amount: 0, assets: [] };
+    current.amount += row.amount;
+    current.assets.push({ name: row.assetName, amount: row.amount });
+    result.set(key, current);
+  }
+  return [...result.values()].sort((a, b) => b.amount - a.amount);
+}
+
+function analysableWalletValue(walletId: number | null, assets: Asset[]): number {
+  if (walletId == null) return 0;
+  return assets.filter(asset => !asset.systemCash && asset.portfolioId === walletId).reduce((sum, asset) => sum + asset.value, 0);
+}
+
+function goalRemaining(goal: Goal): number {
+  if (goal.status === "COMPLETED") return 0;
+  return Math.max(goal.targetAmount - goal.currentAmount, 0);
+}
+
+function monthsUntil(dateValue: string): number {
+  const target = new Date(`${dateValue}T12:00:00`);
+  const now = new Date();
+  if (Number.isNaN(target.getTime())) return 1;
+  return Math.max(1, (target.getFullYear() - now.getFullYear()) * 12 + target.getMonth() - now.getMonth());
+}
+
+function goalPriorityRank(priority?: Goal["priority"]): number {
+  if (priority === "HIGH") return 0;
+  if (priority === "MEDIUM") return 1;
+  if (priority === "LOW") return 2;
+  return 3;
+}
+
+function formatPromptMoney(value: number): string {
+  if (!Number.isFinite(value)) return "0 PLN";
+  return `${value.toLocaleString("pl-PL", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} PLN`;
+}
+
+function formatPromptPercent(value: number, total: number): string {
+  if (!Number.isFinite(value) || !Number.isFinite(total) || total === 0) return "0%";
+  return `${(value / total * 100).toLocaleString("pl-PL", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  if (!copied) throw new Error("Nie udało się skopiować promptu.");
 }
 
 function latestClosedSnapshot(snapshots: MonthlySnapshot[]): MonthlySnapshot | null {

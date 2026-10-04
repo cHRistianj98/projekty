@@ -3,6 +3,7 @@ package com.freedom.freedom_backend.portfolio;
 import com.freedom.freedom_backend.user.User;
 import com.freedom.freedom_backend.ledger.MoneyLedgerService;
 import com.freedom.freedom_backend.liabilityallocation.LiabilityPortfolioReservationService;
+import com.freedom.freedom_backend.goalallocation.GoalPortfolioReservationService;
 import com.freedom.freedom_backend.retailbond.RetailBondService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -20,17 +21,20 @@ public class PortfolioService {
     private final JdbcTemplate jdbc;
     private final MoneyLedgerService ledger;
     private final LiabilityPortfolioReservationService portfolioReservations;
+    private final GoalPortfolioReservationService goalPortfolioReservations;
     private final RetailBondService retailBondService;
 
     public PortfolioService(
             JdbcTemplate jdbc,
             MoneyLedgerService ledger,
             LiabilityPortfolioReservationService portfolioReservations,
+            GoalPortfolioReservationService goalPortfolioReservations,
             RetailBondService retailBondService
     ) {
         this.jdbc = jdbc;
         this.ledger = ledger;
         this.portfolioReservations = portfolioReservations;
+        this.goalPortfolioReservations = goalPortfolioReservations;
         this.retailBondService = retailBondService;
     }
 
@@ -70,7 +74,9 @@ public class PortfolioService {
 
         return base.stream().map(portfolio -> {
             if (portfolio.type() == PortfolioType.GOALS) return portfolio;
-            BigDecimal dynamic = portfolioReservations.reservedForPortfolio(portfolio.id(), user.getId());
+            BigDecimal dynamicLiability = portfolioReservations.reservedForPortfolio(portfolio.id(), user.getId());
+            BigDecimal dynamicGoal = goalPortfolioReservations.reservedForPortfolio(portfolio.id(), user.getId());
+            BigDecimal dynamic = dynamicLiability.add(dynamicGoal);
             if (dynamic.signum() <= 0) return portfolio;
             return new PortfolioResponse(
                     portfolio.id(),

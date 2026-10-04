@@ -2,12 +2,17 @@ export type GoalAllocationMode =
   | "ALLOCATE_EXISTING"
   | "TRANSFER_AND_ALLOCATE";
 
+export type GoalAllocationSourceType = "ASSET" | "PORTFOLIO";
+
 export type GoalAllocation = {
   id: number;
   goalId: number;
   assetId: number | null;
   assetName: string;
   amount: number;
+  sourceType?: GoalAllocationSourceType;
+  portfolioId?: number | null;
+  portfolioName?: string | null;
 };
 
 export type GoalContribution = {
@@ -34,5 +39,14 @@ export type AllocateGoalMoneyRequest = {
   targetAssetId: number;
 };
 
-export type PortfolioAllocation={goalId:number;goalName:string;assetId:number|null;assetName:string;amount:number};
+export type PortfolioAllocation={
+  goalId:number;
+  goalName:string;
+  assetId:number|null;
+  assetName:string;
+  amount:number;
+  sourceType?:GoalAllocationSourceType;
+  portfolioId?:number|null;
+  portfolioName?:string|null;
+};
 export type MoneyFlowOverview={totalAllocated:number;allocations:PortfolioAllocation[];executedGoalIds:number[]};

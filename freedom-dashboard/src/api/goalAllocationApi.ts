@@ -83,6 +83,26 @@ export const goalAllocationApi = {
     );
   },
 
+  async assignPortfolio(goalId: number, portfolioId: number): Promise<GoalAllocationSummary> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/goals/${goalId}/portfolio-allocation`,
+      {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ portfolioId }),
+      }
+    );
+    return readJson<GoalAllocationSummary>(response);
+  },
+
+  async releasePortfolio(goalId: number, portfolioId: number): Promise<GoalAllocationSummary> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/goals/${goalId}/portfolio-allocation/${portfolioId}`,
+      { method: "DELETE", headers: authHeaders() }
+    );
+    return readJson<GoalAllocationSummary>(response);
+  },
+
   async release(goalId: number, assetId: number, amount: number): Promise<GoalAllocationSummary> {
     const response = await fetch(`${API_BASE_URL}/api/goals/${goalId}/allocations/${assetId}?amount=${encodeURIComponent(amount)}`, { method: "DELETE", headers: authHeaders() });
     return readJson<GoalAllocationSummary>(response);

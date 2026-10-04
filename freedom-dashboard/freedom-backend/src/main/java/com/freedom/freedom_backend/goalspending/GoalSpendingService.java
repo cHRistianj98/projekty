@@ -1,6 +1,7 @@
 package com.freedom.freedom_backend.goalspending;
 
 import com.freedom.freedom_backend.goal.GoalStatus;
+import com.freedom.freedom_backend.goalallocation.GoalPortfolioReservationService;
 import com.freedom.freedom_backend.user.User;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.SqlParameterValue;
@@ -10,7 +11,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.sql.Types;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @Transactional
@@ -19,9 +24,11 @@ public class GoalSpendingService {
     private static final BigDecimal ZERO = BigDecimal.ZERO;
 
     private final JdbcTemplate jdbc;
+    private final GoalPortfolioReservationService portfolioReservations;
 
-    public GoalSpendingService(JdbcTemplate jdbc) {
+    public GoalSpendingService(JdbcTemplate jdbc, GoalPortfolioReservationService portfolioReservations) {
         this.jdbc = jdbc;
+        this.portfolioReservations = portfolioReservations;
     }
 
     @Transactional(readOnly = true)
@@ -30,69 +37,114 @@ public class GoalSpendingService {
             Long transactionId,
             User user
     ) {
-        requireAsset(assetId, user.getId());
+        Long uid = user.getId();
+        requireAsset(assetId, uid);
 
-        return jdbc.query(
+        // While editing an existing expense, its already-consumed reservation must
+        // temporarily count as available again. TransactionService reverses the old
+        // spending before applying the edited transaction, so this mirrors the
+        // amount that will actually be available at save time.
+        List<EditedSpendingRow> editedRows = transactionId == null
+                ? List.of()
+                : jdbc.query(
+                        """
+                        SELECT goal_id,asset_id,amount
+                        FROM goal_spendings
+                        WHERE user_id=? AND transaction_id=?
+                        """,
+                        (rs, rowNum) -> new EditedSpendingRow(
+                                rs.getLong("goal_id"),
+                                (Long) rs.getObject("asset_id"),
+                                rs.getBigDecimal("amount")
+                        ),
+                        uid, transactionId
+                );
+
+        Set<Long> goalIds = new LinkedHashSet<>(jdbc.query(
                 """
-                WITH edited_spending AS (
-                    SELECT goal_id, asset_id, amount
-                    FROM goal_spendings
-                    WHERE user_id = ?
-                      AND transaction_id = ?
-                )
-                SELECT g.id,
-                       g.name,
-                       g.status,
-                       g.color,
-                       g.image_url,
-                       g.target_amount,
-                       g.current_amount,
-                       COALESCE(ga.amount, 0) + COALESCE(es.amount, 0) AS reserved_on_asset,
-                       COALESCE((
-                           SELECT SUM(ga2.amount)
-                           FROM goal_allocations ga2
-                           WHERE ga2.user_id = g.user_id
-                             AND ga2.goal_id = g.id
-                       ), 0) + COALESCE(es.amount, 0) AS total_reserved,
-                       COALESCE((
-                           SELECT SUM(gs.amount)
-                           FROM goal_spendings gs
-                           WHERE gs.user_id = g.user_id
-                             AND gs.goal_id = g.id
-                       ), 0) AS spent_amount
-                FROM goals g
-                LEFT JOIN goal_allocations ga
-                  ON ga.goal_id = g.id
-                 AND ga.user_id = g.user_id
-                 AND ga.asset_id = ?
-                 AND ga.amount > 0
-                LEFT JOIN edited_spending es
-                  ON es.goal_id = g.id
-                 AND es.asset_id = ?
-                WHERE g.user_id = ?
-                  AND g.status IN ('ACTIVE', 'FUNDED')
-                  AND (COALESCE(ga.amount, 0) + COALESCE(es.amount, 0)) > 0
-                ORDER BY CASE g.status WHEN 'FUNDED' THEN 0 ELSE 1 END,
-                         g.name
+                SELECT DISTINCT goal_id
+                FROM goal_allocations
+                WHERE user_id=? AND asset_id=? AND amount>0
                 """,
-                (rs, rowNum) -> new SpendableGoalResponse(
-                        rs.getLong("id"),
-                        rs.getString("name"),
-                        GoalStatus.valueOf(rs.getString("status")),
-                        rs.getString("color"),
-                        rs.getString("image_url"),
-                        rs.getBigDecimal("target_amount"),
-                        rs.getBigDecimal("current_amount"),
-                        rs.getBigDecimal("total_reserved"),
-                        rs.getBigDecimal("reserved_on_asset"),
-                        rs.getBigDecimal("spent_amount")
-                ),
-                user.getId(),
-                transactionId,
-                assetId,
-                assetId,
-                user.getId()
-        );
+                (rs, rowNum) -> rs.getLong("goal_id"),
+                uid, assetId
+        ));
+        portfolioReservations.reservationsForAsset(assetId, uid)
+                .forEach(row -> goalIds.add(row.goalId()));
+        editedRows.stream()
+                .filter(row -> row.assetId() != null && row.assetId().equals(assetId))
+                .forEach(row -> goalIds.add(row.goalId()));
+
+        List<SpendableGoalResponse> result = new ArrayList<>();
+        for (Long goalId : goalIds) {
+            List<GoalSpendableRow> goals = jdbc.query(
+                    """
+                    SELECT id,name,status,color,image_url,target_amount
+                    FROM goals
+                    WHERE id=? AND user_id=? AND status IN ('ACTIVE','FUNDED')
+                    """,
+                    (rs, rowNum) -> new GoalSpendableRow(
+                            rs.getLong("id"),
+                            rs.getString("name"),
+                            GoalStatus.valueOf(rs.getString("status")),
+                            rs.getString("color"),
+                            rs.getString("image_url"),
+                            rs.getBigDecimal("target_amount")
+                    ),
+                    goalId, uid
+            );
+            if (goals.isEmpty()) continue;
+            GoalSpendableRow goal = goals.getFirst();
+
+            BigDecimal explicitTotal = value(
+                    "SELECT COALESCE(SUM(amount),0) FROM goal_allocations WHERE user_id=? AND goal_id=?",
+                    uid, goalId);
+            BigDecimal explicitOnAsset = jdbc.queryForObject(
+                    "SELECT COALESCE(SUM(amount),0) FROM goal_allocations WHERE user_id=? AND goal_id=? AND asset_id=?",
+                    BigDecimal.class, uid, goalId, assetId);
+            explicitOnAsset = explicitOnAsset == null ? ZERO : explicitOnAsset;
+
+            BigDecimal dynamicTotal = portfolioReservations.reservedForGoal(goalId, uid);
+            BigDecimal dynamicOnAsset = portfolioReservations.reservationsForAsset(assetId, uid).stream()
+                    .filter(row -> row.goalId().equals(goalId))
+                    .map(GoalPortfolioReservationService.DynamicAssetReservation::amount)
+                    .reduce(ZERO, BigDecimal::add);
+
+            BigDecimal editedOnAsset = editedRows.stream()
+                    .filter(row -> row.goalId().equals(goalId))
+                    .filter(row -> row.assetId() != null && row.assetId().equals(assetId))
+                    .map(EditedSpendingRow::amount)
+                    .reduce(ZERO, BigDecimal::add);
+
+            BigDecimal actualReserved = explicitTotal.add(dynamicTotal);
+            BigDecimal totalReservedForEdit = actualReserved.add(editedOnAsset);
+            BigDecimal reservedOnAsset = explicitOnAsset.add(dynamicOnAsset).add(editedOnAsset);
+            if (reservedOnAsset.signum() <= 0) continue;
+
+            BigDecimal spent = spentAmount(goalId, uid);
+            BigDecimal covered = actualReserved.add(spent);
+            GoalStatus status = covered.compareTo(goal.targetAmount()) >= 0
+                    ? GoalStatus.FUNDED
+                    : GoalStatus.ACTIVE;
+
+            result.add(new SpendableGoalResponse(
+                    goal.id(),
+                    goal.name(),
+                    status,
+                    goal.color(),
+                    goal.imageUrl(),
+                    goal.targetAmount(),
+                    covered,
+                    totalReservedForEdit,
+                    reservedOnAsset,
+                    spent
+            ));
+        }
+
+        result.sort(Comparator
+                .comparing((SpendableGoalResponse row) -> row.status() == GoalStatus.FUNDED ? 0 : 1)
+                .thenComparing(SpendableGoalResponse::name));
+        return result;
     }
 
     @Transactional(readOnly = true)
@@ -122,22 +174,46 @@ public class GoalSpendingService {
             throw new IllegalArgumentException("Nie można księgować wydatku do zakończonego celu.");
         }
 
-        AllocationRow allocation = requireAllocation(goalId, assetId, uid);
-        if (amount.compareTo(allocation.amount()) > 0) {
+        List<AllocationRow> explicitRows = jdbc.query(
+                """
+                SELECT id,asset_id,asset_name_snapshot,amount
+                FROM goal_allocations
+                WHERE user_id=? AND goal_id=? AND asset_id=? AND amount>0
+                """,
+                (rs, n) -> new AllocationRow(
+                        rs.getLong("id"),
+                        (Long) rs.getObject("asset_id"),
+                        rs.getString("asset_name_snapshot"),
+                        rs.getBigDecimal("amount")
+                ),
+                uid, goalId, assetId
+        );
+        AllocationRow allocation = explicitRows.isEmpty() ? null : explicitRows.getFirst();
+        BigDecimal explicitAvailable = allocation == null ? ZERO : allocation.amount();
+        BigDecimal dynamicAvailable = portfolioReservations.reservationsForGoal(goalId, uid).stream()
+                .filter(row -> row.assetId().equals(assetId))
+                .map(GoalPortfolioReservationService.DynamicAssetReservation::amount)
+                .reduce(ZERO, BigDecimal::add);
+        BigDecimal available = explicitAvailable.add(dynamicAvailable);
+        if (amount.compareTo(available) > 0) {
             throw new IllegalArgumentException(
                     "Na tym aktywie cel ma zarezerwowane tylko "
-                            + allocation.amount().stripTrailingZeros().toPlainString()
+                            + available.stripTrailingZeros().toPlainString()
                             + " zł."
             );
         }
 
-        jdbc.update(
-                "UPDATE goal_allocations SET amount=amount-?,updated_at=NOW() WHERE id=?",
-                amount,
-                allocation.id()
-        );
-        jdbc.update("DELETE FROM goal_allocations WHERE id=? AND amount=0", allocation.id());
+        BigDecimal explicitUsed = amount.min(explicitAvailable);
+        if (allocation != null && explicitUsed.signum() > 0) {
+            jdbc.update(
+                    "UPDATE goal_allocations SET amount=amount-?,updated_at=NOW() WHERE id=?",
+                    explicitUsed,
+                    allocation.id()
+            );
+            jdbc.update("DELETE FROM goal_allocations WHERE id=? AND amount=0", allocation.id());
+        }
 
+        String snapshotName = allocation != null ? allocation.assetName() : assetName(assetId, uid, "Aktywo");
         jdbc.update(
                 """
                 INSERT INTO goal_spendings(
@@ -153,7 +229,7 @@ public class GoalSpendingService {
                 goalId,
                 transactionId,
                 assetId,
-                allocation.assetName(),
+                snapshotName,
                 amount
         );
 
@@ -202,13 +278,15 @@ public class GoalSpendingService {
             assetId = systemCashId(uid);
         }
 
-        upsertAllocation(
-                spending.goalId(),
-                assetId,
-                assetName(assetId, uid, spending.assetName()),
-                spending.amount(),
-                uid
-        );
+        if (!portfolioReservations.isAssetInsideGoalPortfolio(spending.goalId(), assetId, uid)) {
+            upsertAllocation(
+                    spending.goalId(),
+                    assetId,
+                    assetName(assetId, uid, spending.assetName()),
+                    spending.amount(),
+                    uid
+            );
+        }
 
         jdbc.update("DELETE FROM goal_spendings WHERE id=?", spending.id());
         recomputeGoal(spending.goalId(), uid);
@@ -233,6 +311,12 @@ public class GoalSpendingService {
         BigDecimal reserved = allocations.stream()
                 .map(AllocationRow::amount)
                 .reduce(ZERO, BigDecimal::add);
+        BigDecimal dynamicReserved = portfolioReservations.reservedForGoal(goalId, uid);
+        if (request.mode() == GoalCompletionMode.TRANSFER_TO_GOAL && dynamicReserved.signum() > 0) {
+            throw new IllegalArgumentException(
+                    "Cel ma dynamicznie przypisany cały portfel. Zakończ go z uwolnieniem rezerwy albo najpierw odłącz portfel."
+            );
+        }
         BigDecimal spent = spentAmount(goalId, uid);
 
         BigDecimal released = ZERO;
@@ -240,6 +324,19 @@ public class GoalSpendingService {
         Long targetGoalId = null;
 
         jdbc.update("DELETE FROM goal_completion_allocation_snapshots WHERE user_id=? AND goal_id=?", uid, goalId);
+        jdbc.update("DELETE FROM goal_completion_portfolio_snapshots WHERE user_id=? AND goal_id=?", uid, goalId);
+        var dynamicLink = portfolioReservations.linkForGoal(goalId, uid);
+        if (dynamicLink.isPresent()) {
+            var link = dynamicLink.get();
+            jdbc.update(
+                    """
+                    INSERT INTO goal_completion_portfolio_snapshots(
+                        user_id,goal_id,portfolio_id,portfolio_name_snapshot
+                    ) VALUES(?,?,?,?)
+                    """,
+                    uid, goalId, link.portfolioId(), link.portfolioName()
+            );
+        }
         for (AllocationRow allocation : allocations) {
             jdbc.update(
                     """
@@ -306,6 +403,8 @@ public class GoalSpendingService {
             released = reserved;
         }
 
+        jdbc.update("DELETE FROM goal_portfolio_allocations WHERE user_id=? AND goal_id=?", uid, goalId);
+
         Instant completedAt = Instant.now();
         SqlParameterValue completedAtParameter = new SqlParameterValue(
                 Types.TIMESTAMP_WITH_TIMEZONE,
@@ -313,7 +412,8 @@ public class GoalSpendingService {
         );
 
         jdbc.update(
-                "UPDATE goals SET status='COMPLETED',completed_at=? WHERE id=? AND user_id=?",
+                "UPDATE goals SET current_amount=?,status='COMPLETED',completed_at=? WHERE id=? AND user_id=?",
+                goal.currentAmount(),
                 completedAtParameter,
                 goalId,
                 uid
@@ -380,6 +480,39 @@ public class GoalSpendingService {
         }
 
         CompletionEventRow event = events.getFirst();
+        List<CompletionPortfolioRow> portfolioSnapshots = jdbc.query(
+                """
+                SELECT portfolio_id,portfolio_name_snapshot
+                FROM goal_completion_portfolio_snapshots
+                WHERE user_id=? AND goal_id=?
+                """,
+                (rs, n) -> new CompletionPortfolioRow(
+                        (Long) rs.getObject("portfolio_id"),
+                        rs.getString("portfolio_name_snapshot")
+                ),
+                uid, goalId
+        );
+        CompletionPortfolioRow portfolioSnapshot = portfolioSnapshots.isEmpty() ? null : portfolioSnapshots.getFirst();
+        if (portfolioSnapshot != null) {
+            if (portfolioSnapshot.portfolioId() == null) {
+                throw new IllegalArgumentException(
+                        "Nie można cofnąć zakończenia, ponieważ wcześniej przypisany portfel „"
+                                + portfolioSnapshot.portfolioName() + "” został usunięty."
+                );
+            }
+            Integer goalConflict = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM goal_portfolio_allocations WHERE user_id=? AND portfolio_id=?",
+                    Integer.class, uid, portfolioSnapshot.portfolioId());
+            Integer liabilityConflict = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM liability_portfolio_allocations WHERE user_id=? AND portfolio_id=?",
+                    Integer.class, uid, portfolioSnapshot.portfolioId());
+            if ((goalConflict != null && goalConflict > 0) || (liabilityConflict != null && liabilityConflict > 0)) {
+                throw new IllegalArgumentException(
+                        "Nie można cofnąć zakończenia, bo wcześniej przypisany portfel jest już używany przez inny cel lub zobowiązanie."
+                );
+            }
+        }
+
         List<CompletionAllocationRow> snapshots = jdbc.query(
                 """
                 SELECT asset_id,asset_name_snapshot,amount
@@ -463,10 +596,17 @@ public class GoalSpendingService {
                 goalId,
                 uid
         );
+        if (portfolioSnapshot != null && portfolioSnapshot.portfolioId() != null) {
+            jdbc.update(
+                    "INSERT INTO goal_portfolio_allocations(user_id,goal_id,portfolio_id) VALUES(?,?,?)",
+                    uid, goalId, portfolioSnapshot.portfolioId()
+            );
+        }
         recomputeGoal(goalId, uid);
 
         jdbc.update("DELETE FROM goal_completion_events WHERE user_id=? AND goal_id=?", uid, goalId);
         jdbc.update("DELETE FROM goal_completion_allocation_snapshots WHERE user_id=? AND goal_id=?", uid, goalId);
+        jdbc.update("DELETE FROM goal_completion_portfolio_snapshots WHERE user_id=? AND goal_id=?", uid, goalId);
     }
 
     public void recomputeGoal(Long goalId, Long uid) {
@@ -609,7 +749,11 @@ public class GoalSpendingService {
         if (rows.isEmpty()) {
             throw new IllegalArgumentException("Cel nie istnieje lub nie należy do użytkownika.");
         }
-        return rows.getFirst();
+        GoalRow row = rows.getFirst();
+        if (row.status() == GoalStatus.COMPLETED) return row;
+        BigDecimal current = reservedAmount(row.id(), uid).add(spentAmount(row.id(), uid));
+        GoalStatus status = current.compareTo(row.targetAmount()) >= 0 ? GoalStatus.FUNDED : GoalStatus.ACTIVE;
+        return new GoalRow(row.id(), row.targetAmount(), current, status);
     }
 
     private BigDecimal reservedAmount(Long goalId, Long uid) {
@@ -619,7 +763,8 @@ public class GoalSpendingService {
                 uid,
                 goalId
         );
-        return result == null ? ZERO : result;
+        return (result == null ? ZERO : result)
+                .add(portfolioReservations.reservedForGoal(goalId, uid));
     }
 
     private BigDecimal spentAmount(Long goalId, Long uid) {
@@ -666,11 +811,31 @@ public class GoalSpendingService {
         return names.isEmpty() ? fallback : names.getFirst();
     }
 
+    private BigDecimal value(String sql, Long userId, Long goalId) {
+        BigDecimal value = jdbc.queryForObject(sql, BigDecimal.class, userId, goalId);
+        return value == null ? ZERO : value;
+    }
+
     private static void ensurePositive(BigDecimal amount) {
         if (amount == null || amount.signum() <= 0) {
             throw new IllegalArgumentException("Kwota musi być większa od zera.");
         }
     }
+
+    private record GoalSpendableRow(
+            Long id,
+            String name,
+            GoalStatus status,
+            String color,
+            String imageUrl,
+            BigDecimal targetAmount
+    ) {}
+
+    private record EditedSpendingRow(
+            Long goalId,
+            Long assetId,
+            BigDecimal amount
+    ) {}
 
     private record GoalRow(
             Long id,
@@ -702,6 +867,11 @@ public class GoalSpendingService {
             BigDecimal amount
     ) {
     }
+
+    private record CompletionPortfolioRow(
+            Long portfolioId,
+            String portfolioName
+    ) {}
 
     private record SpendingRow(
             Long id,

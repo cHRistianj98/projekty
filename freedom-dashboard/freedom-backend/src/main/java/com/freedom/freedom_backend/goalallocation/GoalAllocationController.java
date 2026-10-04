@@ -19,6 +19,17 @@ public class GoalAllocationController {
                                                @AuthenticationPrincipal User u){
   return service.allocate(goalId,r,u);
  }
+ @PostMapping("/api/goals/{goalId}/portfolio-allocation")
+ public GoalAllocationSummaryResponse assignPortfolio(@PathVariable Long goalId,
+                                                       @Valid @RequestBody GoalPortfolioAllocationRequest r,
+                                                       @AuthenticationPrincipal User u){
+  return service.assignPortfolio(goalId,r,u);
+ }
+ @DeleteMapping("/api/goals/{goalId}/portfolio-allocation/{portfolioId}")
+ public GoalAllocationSummaryResponse releasePortfolio(@PathVariable Long goalId,@PathVariable Long portfolioId,
+                                                        @AuthenticationPrincipal User u){
+  return service.releasePortfolio(goalId,portfolioId,u);
+ }
  @DeleteMapping("/api/goals/{goalId}/allocations/{assetId}")
  public GoalAllocationSummaryResponse release(@PathVariable Long goalId,@PathVariable Long assetId,@RequestParam BigDecimal amount,@AuthenticationPrincipal User u){return service.release(goalId,assetId,amount,u);}
  @GetMapping("/api/goal-allocations/overview")
