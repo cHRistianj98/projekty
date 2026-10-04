@@ -288,6 +288,22 @@
 .transfer-amount-input > span { color: #7796b9; font-size: 12px; font-weight: 700; }
 .transfer-amount-input > button { color: #88c4ff; background: #153055; border: 1px solid #2c527d; border-radius: 7px; padding: 6px 10px; font-size: 10px; font-weight: 700; }
 .transfer-amount-error { color: #ffbd9b; font-size: 11px; margin: 9px 0 0; line-height: 1.6; }
+.transfer-fee-block { display: grid; grid-template-columns: minmax(0, 1fr) 170px; align-items: center; gap: 12px 16px; padding: 14px 16px; border: 1px solid #5d4a1e; border-radius: 12px; background: linear-gradient(120deg, #2d241044, #0b1627 75%); }
+.transfer-fee-heading { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.transfer-fee-heading > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.transfer-fee-heading strong { color: #f4d47a; font-size: 11px; font-weight: 800; }
+.transfer-fee-heading small { color: #8f9db0; font-size: 9px; }
+.transfer-fee-icon { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border: 1px solid #75612d; border-radius: 10px; color: #f6c94f; background: #3a2f153d; }
+.transfer-fee-input { display: flex; align-items: center; overflow: hidden; border: 1px solid #3a4e69; border-radius: 10px; background: #071221; }
+.transfer-fee-input:focus-within { border-color: #d0a638; box-shadow: 0 0 0 3px #f4c84a10; }
+.transfer-fee-input input { min-width: 0; flex: 1; border: 0; background: transparent; padding: 10px 11px; color: #fff; font-size: 13px; font-weight: 800; outline: none; appearance: textfield; -moz-appearance: textfield; }
+.transfer-fee-input input::-webkit-inner-spin-button, .transfer-fee-input input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.transfer-fee-input span { padding: 0 10px; color: #8fa1b7; font-size: 10px; font-weight: 800; }
+.transfer-fee-block > p { grid-column: 1 / -1; margin: -2px 0 0; color: #8296ae; font-size: 10px; line-height: 1.6; }
+.transfer-fee-block > p strong { color: #e7c968; }
+.transfer-info.with-fee { border-color: #5d4a1e99; background: #33271433; }
+.transfer-info.with-fee > svg { color: #eac552; }
+.transfer-info.with-fee strong { color: #eedb9a; }
 .transfer-preview { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 13px 16px; border: 1px dashed #28445f; border-radius: 11px; background: #11233a44; }
 .transfer-preview > div { display: flex; flex-direction: column; gap: 5px; }
 .transfer-preview > div:last-child { text-align: right; }
@@ -319,6 +335,8 @@
   .transfer-preview { gap: 8px; padding: 11px; }
   .transfer-preview strong { font-size: 13px; }
   .transfer-preview small { display: block; }
+  .transfer-fee-block { grid-template-columns: 1fr; }
+  .transfer-fee-block > p { grid-column: 1; }
 }
 
 /* Liability reserves */

@@ -1180,6 +1180,9 @@ function App() {
                     handleDeleteAsset
                   }
                   onPortfolioChanged={refreshPortfolio}
+                  onTransactionsChanged={async () => {
+                    setMonthlyBudget(await transactionApi.getAll());
+                  }}
                   goals={goals}
                   monthlySnapshots={monthlySnapshots}
                   onReleaseMoney={handleReleaseGoalMoney}
@@ -1209,9 +1212,6 @@ function App() {
                     handleAllocateGoalMoney
                   }
                   onReleaseMoney={handleReleaseGoalMoney}
-                  onGoalsChanged={async () => {
-                    await refreshGoals();
-                  }}
                 />
               }
             />

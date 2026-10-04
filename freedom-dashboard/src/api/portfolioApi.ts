@@ -61,9 +61,9 @@ export const portfolioApi = {
     method: "DELETE", headers: headers(),
   }).then(read<void>),
 
-  transfer: (sourceAssetId: number, targetAssetId: number, amount: number) =>
+  transfer: (sourceAssetId: number, targetAssetId: number, amount: number, fee = 0) =>
     fetch(`${API}/api/portfolios/transfer`, {
-      method: "POST", headers: headers(), body: JSON.stringify({ sourceAssetId, targetAssetId, amount }),
+      method: "POST", headers: headers(), body: JSON.stringify({ sourceAssetId, targetAssetId, amount, fee }),
     }).then(read<void>),
 
   moveAsset: (assetId: number, targetPortfolioId: number) =>

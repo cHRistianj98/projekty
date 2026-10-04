@@ -20,7 +20,6 @@ import { CashReconciliationDialog } from "../components/investments/CashReconcil
 import { RetailBondDetailsDialog, RetailBondImportDialog, RetailBondManualDialog } from "../components/investments/RetailBondDetailsDialog";
 import { Donut, HistoryChart, WealthChart } from "../components/investments/PortfolioCharts";
 import { GoalCapitalDialog, PortfolioDialog, PortfolioForm, TransferForm, WalletIcon, errorMessage } from "../components/investments/PortfolioDialogs";
-import { getGoalTypeImage } from "../components/goals/goalCatalog";
 import { fundedGoals, money, percent, reservationsByAsset, type FundedGoal } from "../components/investments/portfolioView";
 import "./Investments.css";
 
@@ -32,15 +31,22 @@ type InvestmentsProps = {
   onUpdateAsset: (asset: Asset) => Promise<void>;
   onDeleteAsset: (id: number) => Promise<void>;
   onPortfolioChanged: () => Promise<void>;
+  onTransactionsChanged: () => Promise<void>;
   onReleaseMoney: (goalId: number, assetId: number, amount: number) => Promise<void>;
 };
 
 function resolveGoalMiniImage(goal: FundedGoal) {
   if (goal.imageUrl) return { src: goal.imageUrl, position: goal.imagePosition ?? "center" };
-  return { src: getGoalTypeImage(goal.type), position: "center" as const };
+  const normalized = goal.name.toLocaleLowerCase("pl-PL");
+  if (goal.type === "CAR" || /(bmw|auto|samoch|car)/.test(normalized)) return { src: "/liabilities/car.webp", position: "center" as const };
+  if (goal.type === "HOME" || /(dom|mieszkani|działk|dzialk|home)/.test(normalized)) return { src: "/liabilities/house.webp", position: "center" as const };
+  if (goal.type === "EMERGENCY_FUND" || /(poduszk|awaryjn|rezerwa)/.test(normalized)) return { src: "/portfolios/emergency-fund.webp", position: "center" as const };
+  if (goal.type === "TRAVEL" || /(podróż|podroz|wakac|urlop|travel)/.test(normalized)) return { src: "/portfolios/short-term.webp", position: "center" as const };
+  if (/(zęb|zeb|dent|lecz)/.test(normalized)) return { src: "/portfolios/main.webp", position: "center" as const };
+  return null;
 }
 
-export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, onUpdateAsset, onDeleteAsset, onPortfolioChanged, onReleaseMoney }: InvestmentsProps) {
+export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, onUpdateAsset, onDeleteAsset, onPortfolioChanged, onTransactionsChanged, onReleaseMoney }: InvestmentsProps) {
   const [wallets, setWallets] = useState<PortfolioWallet[]>([]);
   const [overview, setOverview] = useState<MoneyFlowOverview | null>(null);
   const [liabilityOverview, setLiabilityOverview] = useState<LiabilityAllocationOverview | null>(null);
@@ -429,7 +435,7 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
     </PortfolioDialog>}
 
     {form && <PortfolioForm wallet={form === "new" ? undefined : form} onClose={() => setForm(null)} onSave={async input => { if (form === "new") await portfolioApi.create(input); else await portfolioApi.update(form.id, input); await refresh(); }}/>}
-    {transfer && <TransferForm assets={portfolio} wallets={realWallets} allocated={allocated} sourceId={transfer.sourceId} onClose={() => setTransfer(null)} onAddAsset={walletId => { setTransfer(null); setAddTo(walletId); }} onTransfer={async (source, target, amount) => { await portfolioApi.transfer(source, target, amount); await onPortfolioChanged(); await refresh(); }}/>}
+    {transfer && <TransferForm assets={portfolio} wallets={realWallets} allocated={allocated} sourceId={transfer.sourceId} onClose={() => setTransfer(null)} onAddAsset={walletId => { setTransfer(null); setAddTo(walletId); }} onTransfer={async (source, target, amount, fee) => { await portfolioApi.transfer(source, target, amount, fee); await Promise.all([onPortfolioChanged(), onTransactionsChanged()]); await refresh(); }}/>}
     {goalDialog && <GoalCapitalDialog goal={goalDialog.goal} release={goalDialog.release} onClose={() => setGoalDialog(null)} onRelease={async (assetId, amount) => { await onReleaseMoney(goalDialog.goal.id, assetId, amount); await refresh(); }}/>}
     {selected && <PortfolioDialog wide title={selected.name} subtitle={`${money(selected.grossValue)} w aktywach · ${money(selected.value)} dostępne`} busy={busy} onClose={() => setSelectedId(null)}>
       <div className="investment-manager">

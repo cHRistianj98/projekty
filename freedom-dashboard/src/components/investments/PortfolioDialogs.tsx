@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode, type FormEvent } from "react";
-import { X, Wallet, Shield, Sprout, Clock3, House, Gem, Target, ArrowRight, ArrowRightLeft, ArrowUpRight, ArrowDownLeft, ChevronDown, Coins, LockKeyhole, Plus, CircleCheck, LoaderCircle, Image as ImageIcon } from "lucide-react";
+import { X, Wallet, Shield, Sprout, Clock3, House, Gem, Target, ArrowRight, ArrowRightLeft, ArrowUpRight, ArrowDownLeft, ChevronDown, Coins, LockKeyhole, Plus, CircleCheck, LoaderCircle, Image as ImageIcon, ReceiptText } from "lucide-react";
 import type { Asset } from "../../types/Asset";
-import { getAssetIconKey } from "../../types/Asset";
+import { getAssetCategory, getAssetIconKey } from "../../types/Asset";
 import { AssetIcon } from "./assetIcons";
 import type { PortfolioImagePosition, PortfolioInput, PortfolioWallet } from "../../types/Portfolio";
 import type { FundedGoal } from "./portfolioView";
@@ -161,7 +161,7 @@ export function PortfolioForm({ wallet, onClose, onSave }: {
 }
 export function TransferForm({ assets, wallets, allocated, sourceId, onClose, onTransfer, onAddAsset }: {
   assets: Asset[]; wallets: PortfolioWallet[]; allocated: Map<number, number>; sourceId?: number;
-  onClose: () => void; onTransfer: (source: number, target: number, amount: number) => Promise<void>;
+  onClose: () => void; onTransfer: (source: number, target: number, amount: number, fee: number) => Promise<void>;
   onAddAsset: (portfolioId: number) => void;
 }) {
   const realWallets = wallets.filter(wallet => wallet.type !== "GOALS");
@@ -179,6 +179,7 @@ export function TransferForm({ assets, wallets, allocated, sourceId, onClose, on
   const [sourceAssetId, setSourceAssetId] = useState(initialSource?.id ?? 0);
   const [targetAssetId, setTargetAssetId] = useState(0);
   const [amount, setAmount] = useState("");
+  const [fee, setFee] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const sourceWallet = realWallets.find(wallet => wallet.id === sourceWalletId);
@@ -190,21 +191,29 @@ export function TransferForm({ assets, wallets, allocated, sourceId, onClose, on
   const available = source ? availableFor(source) : 0;
   const reserved = source ? allocated.get(source.id) ?? 0 : 0;
   const numericAmount = Number(amount);
+  const numericFee = fee.trim() === "" ? 0 : Number(fee);
+  const feeSourceAllowed = !!source && (source.systemCash || getAssetCategory(source) === "cash");
+  const totalDebit = numericAmount + numericFee;
   const valid = !!source && !!target && !!sourceWallet && !!targetWallet
-    && Number.isFinite(numericAmount) && numericAmount > 0 && numericAmount <= available
-    && Math.abs(numericAmount * 100 - Math.round(numericAmount * 100)) < .000001;
+    && Number.isFinite(numericAmount) && numericAmount > 0
+    && Number.isFinite(numericFee) && numericFee >= 0
+    && (numericFee === 0 || feeSourceAllowed)
+    && totalDebit <= available
+    && Math.abs(numericAmount * 100 - Math.round(numericAmount * 100)) < .000001
+    && Math.abs(numericFee * 100 - Math.round(numericFee * 100)) < .000001;
 
   function chooseSourceWallet(id: number) {
     setSourceWalletId(id);
     const candidates = assets.filter(asset => asset.portfolioId === id);
     setSourceAssetId((candidates.find(asset => availableFor(asset) > 0) ?? candidates[0])?.id ?? 0);
+    setFee("");
     setError("");
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault(); if (!valid || saving || !source || !target) return;
     setSaving(true); setError("");
-    try { await onTransfer(source.id, target.id, numericAmount); onClose(); }
+    try { await onTransfer(source.id, target.id, numericAmount, numericFee); onClose(); }
     catch (cause) { setError(errorMessage(cause)); } finally { setSaving(false); }
   }
   return <PortfolioDialog title="Transfer kapitału" subtitle="Twoje pieniądze. Nowy kierunek." icon={<ArrowRightLeft size={24}/>} className="transfer-dialog" onClose={onClose} busy={saving}>
@@ -223,7 +232,7 @@ export function TransferForm({ assets, wallets, allocated, sourceId, onClose, on
           <label>Aktywo źródłowe
             <span className="transfer-select">
               <span className="transfer-select-icon" style={{ color: source?.color }}>{source ? <AssetIcon iconKey={getAssetIconKey(source)} size={19}/> : <Coins size={19}/>}</span>
-              <select value={source?.id ?? ""} disabled={saving || !sourceAssets.length} onChange={event => { setSourceAssetId(Number(event.target.value)); setError(""); }}>
+              <select value={source?.id ?? ""} disabled={saving || !sourceAssets.length} onChange={event => { setSourceAssetId(Number(event.target.value)); setFee(""); setError(""); }}>
                 {!sourceAssets.length && <option value="">Brak aktywów w portfelu</option>}
                 {sourceAssets.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
               </select><ChevronDown size={15} className="transfer-select-chevron"/>
@@ -256,12 +265,38 @@ export function TransferForm({ assets, wallets, allocated, sourceId, onClose, on
         </section>
       </div>
       <div className="transfer-amount-block">
-        <label htmlFor="transfer-amount"><Coins size={16}/>Kwota transferu</label>
-        <div className="transfer-amount-input"><input id="transfer-amount" required type="number" min=".01" max={available} step=".01" placeholder="0,00" value={amount} disabled={saving} onChange={event => setAmount(event.target.value)} autoFocus/><span>PLN</span><button type="button" disabled={saving || available <= 0} onClick={() => setAmount(available.toFixed(2))}>Całość</button></div>
-        {numericAmount > available && <p className="transfer-amount-error" role="status">Dostępne środki: {money(available)}. Rezerwacje na cele pozostają nienaruszone.</p>}
+        <label htmlFor="transfer-amount"><Coins size={16}/>Kwota transferu / zakupu</label>
+        <div className="transfer-amount-input"><input id="transfer-amount" required type="number" min=".01" max={Math.max(0, available - numericFee)} step=".01" placeholder="0,00" value={amount} disabled={saving} onChange={event => setAmount(event.target.value)} autoFocus/><span>PLN</span><button type="button" disabled={saving || available <= numericFee} onClick={() => setAmount(Math.max(0, available - numericFee).toFixed(2))}>Całość</button></div>
+        {totalDebit > available && <p className="transfer-amount-error" role="status">Transfer + prowizja wymagają {money(totalDebit)}. Dostępne: {money(available)}.</p>}
       </div>
-      {valid && <div className="transfer-preview" aria-live="polite"><div><span>W źródle po transferze</span><strong>{money(available - numericAmount)} <small>dostępne</small></strong></div><ArrowRight size={17}/><div><span>W aktywie docelowym</span><strong>{money(target!.value + numericAmount)}</strong></div></div>}
-      <div className="transfer-info"><CircleCheck size={18}/><p><strong>Majątek pozostaje bez zmian</strong><span>Przenosisz kapitał między aktywami. Transfer nie jest przychodem ani wydatkiem.</span></p></div>
+
+      {feeSourceAllowed && (
+        <div className="transfer-fee-block">
+          <div className="transfer-fee-heading">
+            <span className="transfer-fee-icon"><ReceiptText size={17}/></span>
+            <div><strong>Prowizja / fee</strong><small>Opcjonalny realny koszt operacji</small></div>
+          </div>
+          <div className="transfer-fee-input">
+            <input
+              type="number"
+              min="0"
+              step=".01"
+              placeholder="0,00"
+              value={fee}
+              disabled={saving}
+              onChange={event => setFee(event.target.value)}
+            />
+            <span>PLN</span>
+          </div>
+          <p>
+            Jeśli wpiszesz prowizję, Freedom automatycznie doda wydatek <strong>Inwestycje → Prowizje i opłaty</strong>
+            {target ? <> z opisem „Prowizja inwestycyjna · {target.name}”.</> : "."}
+          </p>
+        </div>
+      )}
+
+      {valid && <div className="transfer-preview" aria-live="polite"><div><span>W źródle po operacji</span><strong>{money(available - totalDebit)} <small>dostępne</small></strong></div><ArrowRight size={17}/><div><span>W aktywie docelowym</span><strong>{money(target!.value + numericAmount)}</strong></div></div>}
+      <div className={`transfer-info ${numericFee > 0 ? "with-fee" : ""}`}><CircleCheck size={18}/><p><strong>{numericFee > 0 ? `Majątek spadnie tylko o ${money(numericFee)} prowizji` : "Majątek pozostaje bez zmian"}</strong><span>{numericFee > 0 ? "Kwota zakupu jest transferem kapitału, a tylko prowizja trafia do wydatków." : "Przenosisz kapitał między aktywami. Transfer nie jest przychodem ani wydatkiem."}</span></p></div>
       {error && <p role="alert" className="investment-error">{error}</p>}
       <footer><button type="button" className="investment-button secondary" onClick={onClose} disabled={saving}>Anuluj</button><button className="investment-button" disabled={!valid || saving}>{saving ? <LoaderCircle size={16} className="animate-spin"/> : <ArrowRightLeft size={16}/>} {saving ? "Przenoszenie…" : "Przenieś środki"}</button></footer>
     </form>

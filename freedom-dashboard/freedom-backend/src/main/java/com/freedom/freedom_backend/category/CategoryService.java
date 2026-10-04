@@ -89,11 +89,31 @@ public class CategoryService {
         return repository.save(imported);
     }
 
+    public Category investmentFeeCategory(User user) {
+        ensureDefaults(user);
+        return repository.findByUserIdAndTypeAndSlug(user.getId(), CategoryType.EXPENSE, "investment-fees")
+                .orElseThrow(() -> new IllegalStateException("Brak kategorii prowizji inwestycyjnych."));
+    }
+
     private void ensureDefaults(User user) {
-        if (repository.existsByUserId(user.getId())) return;
         int order = 0;
         for (Seed seed : DEFAULTS) {
-            repository.save(new Category(user, seed.type, seed.group, seed.slug, seed.name, seed.icon, seed.color, true, true, order++));
+            final int sortOrder = order++;
+            if (repository.findByUserIdAndTypeAndSlug(user.getId(), seed.type, seed.slug).isPresent()) {
+                continue;
+            }
+            repository.save(new Category(
+                    user,
+                    seed.type,
+                    seed.group,
+                    seed.slug,
+                    seed.name,
+                    seed.icon,
+                    seed.color,
+                    true,
+                    true,
+                    sortOrder
+            ));
         }
     }
 
@@ -141,6 +161,7 @@ public class CategoryService {
         new Seed(CategoryType.EXPENSE, CategoryGroup.HEALTH, "gym", "Siłownia", "Dumbbell", "#FF9800"),
         new Seed(CategoryType.EXPENSE, CategoryGroup.LIFESTYLE, "dance", "Tańce", "Music", "#FF9800"),
         new Seed(CategoryType.EXPENSE, CategoryGroup.WEALTH, "investments", "Inwestycje", "ChartNoAxesCombined", "#F7D14A"),
+        new Seed(CategoryType.EXPENSE, CategoryGroup.WEALTH, "investment-fees", "Prowizje i opłaty", "ReceiptText", "#F7D14A"),
         new Seed(CategoryType.EXPENSE, CategoryGroup.LIFESTYLE, "gaming", "Gaming", "Gamepad2", "#C14C00"),
         new Seed(CategoryType.EXPENSE, CategoryGroup.LIFESTYLE, "chess", "Szachy", "Trophy", "#C14C00"),
         new Seed(CategoryType.EXPENSE, CategoryGroup.HEALTH, "hair-transplant", "Przeszczep włosów", "HeartPulse", "#2BEA3A"),

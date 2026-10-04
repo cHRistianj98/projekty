@@ -1,6 +1,12 @@
 package com.freedom.freedom_backend.portfolio;
 
 import com.freedom.freedom_backend.user.User;
+import com.freedom.freedom_backend.category.Category;
+import com.freedom.freedom_backend.category.CategoryService;
+import com.freedom.freedom_backend.transaction.ExpenseCategory;
+import com.freedom.freedom_backend.transaction.TransactionRequest;
+import com.freedom.freedom_backend.transaction.TransactionService;
+import com.freedom.freedom_backend.transaction.TransactionType;
 import com.freedom.freedom_backend.ledger.MoneyLedgerService;
 import com.freedom.freedom_backend.liabilityallocation.LiabilityPortfolioReservationService;
 import com.freedom.freedom_backend.goalallocation.GoalPortfolioReservationService;
@@ -10,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 @Service
@@ -23,19 +30,25 @@ public class PortfolioService {
     private final LiabilityPortfolioReservationService portfolioReservations;
     private final GoalPortfolioReservationService goalPortfolioReservations;
     private final RetailBondService retailBondService;
+    private final CategoryService categoryService;
+    private final TransactionService transactionService;
 
     public PortfolioService(
             JdbcTemplate jdbc,
             MoneyLedgerService ledger,
             LiabilityPortfolioReservationService portfolioReservations,
             GoalPortfolioReservationService goalPortfolioReservations,
-            RetailBondService retailBondService
+            RetailBondService retailBondService,
+            CategoryService categoryService,
+            TransactionService transactionService
     ) {
         this.jdbc = jdbc;
         this.ledger = ledger;
         this.portfolioReservations = portfolioReservations;
         this.goalPortfolioReservations = goalPortfolioReservations;
         this.retailBondService = retailBondService;
+        this.categoryService = categoryService;
+        this.transactionService = transactionService;
     }
 
     @Transactional(readOnly = true)
@@ -161,14 +174,52 @@ public class PortfolioService {
     }
 
     public void transfer(PortfolioTransferRequest r, User user) {
-        if (r.sourceAssetId().equals(r.targetAssetId())) throw new IllegalArgumentException("Źródło i cel muszą być różne.");
+        if (r.sourceAssetId().equals(r.targetAssetId())) {
+            throw new IllegalArgumentException("Źródło i cel muszą być różne.");
+        }
+
         AssetRow s = asset(r.sourceAssetId(), user.getId());
         AssetRow t = asset(r.targetAssetId(), user.getId());
+        BigDecimal fee = r.normalizedFee();
+
+        if (fee.signum() > 0) {
+            // Prowizja jest prawdziwym kosztem i musi zejść z konta/gotówki,
+            // z którego finansowany jest zakup. Sam transfer pozostaje neutralny
+            // dla cashflow i wartości majątku.
+            ledger.resolveTransactionAsset(s.id(), user);
+            BigDecimal totalDebit = r.amount().add(fee);
+            if (totalDebit.compareTo(ledger.available(s.id(), user)) > 0) {
+                throw new IllegalArgumentException(
+                        "Za mało wolnych środków na transfer i prowizję. Potrzeba łącznie "
+                                + totalDebit.stripTrailingZeros().toPlainString() + " zł."
+                );
+            }
+        }
+
         ledger.transfer(s.id(), t.id(), r.amount(), user);
         jdbc.update(
                 "INSERT INTO portfolio_transfers(user_id,source_asset_id,target_asset_id,source_name_snapshot,target_name_snapshot,amount) VALUES(?,?,?,?,?,?)",
                 user.getId(), s.id(), t.id(), s.name(), t.name(), r.amount()
         );
+
+        if (fee.signum() > 0) {
+            Category feeCategory = categoryService.investmentFeeCategory(user);
+            transactionService.create(
+                    new TransactionRequest(
+                            TransactionType.EXPENSE,
+                            "Prowizja inwestycyjna · " + t.name(),
+                            fee,
+                            ExpenseCategory.INVESTMENT,
+                            feeCategory.getId(),
+                            false,
+                            LocalDate.now(),
+                            null,
+                            s.id(),
+                            null
+                    ),
+                    user
+            );
+        }
     }
 
     public void moveAsset(PortfolioMoveAssetRequest r, User user) {
