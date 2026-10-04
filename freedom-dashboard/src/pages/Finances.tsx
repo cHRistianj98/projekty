@@ -29,7 +29,7 @@ import { EditIncomeModal } from "../components/finances/EditIncomeModal";
 import { AddExpenseModal } from "../components/dashboard/AddExpenseModal";
 import { EditExpenseModal } from "../components/finances/EditExpenseModal";
 
-import { CategoryIcon } from "../components/categories/CategoryIcon";
+import { CategoryMiniImage } from "../components/categories/CategoryMiniImage";
 
 import { RecurringTransactionsSection } from "../components/finances/RecurringTransactionsSection";
 import { AddRecurringTransactionModal } from "../components/finances/AddRecurringTransactionModal";
@@ -1010,20 +1010,12 @@ function TransactionVisualRow({
 
   return (
     <div className="group flex items-center gap-4 border-b border-slate-800/80 px-5 py-4 last:border-b-0 transition hover:bg-white/[0.025]">
-      <div
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ring-1 ring-white/10 shadow-lg"
-        style={{
-          backgroundColor: `${categoryColor}22`,
-          color: categoryColor,
-          boxShadow: `0 8px 24px ${categoryColor}18`,
-        }}
-        title={categoryName}
-      >
-        <CategoryIcon
-          iconKey={categoryIconKey}
-          className="h-5 w-5"
-        />
-      </div>
+      <CategoryMiniImage
+        name={categoryName}
+        iconKey={categoryIconKey}
+        color={categoryColor}
+        size="md"
+      />
 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">

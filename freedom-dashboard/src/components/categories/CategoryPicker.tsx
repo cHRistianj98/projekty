@@ -1,5 +1,5 @@
 import type { Category, CategoryType } from "../../types/Category";
-import { CategoryIcon } from "./CategoryIcon";
+import { CategoryMiniImage } from "./CategoryMiniImage";
 
 const groupLabels: Record<string, string> = {
   FIXED: "Stałe",
@@ -55,12 +55,13 @@ export function CategoryPicker({
                         : "border-slate-800 bg-slate-950/50 hover:border-slate-600 hover:bg-slate-900"
                     }`}
                   >
-                    <div
-                      className="mx-auto flex h-12 w-12 items-center justify-center rounded-full text-white shadow-lg"
-                      style={{ backgroundColor: category.color }}
-                    >
-                      <CategoryIcon iconKey={category.iconKey} className="h-6 w-6" />
-                    </div>
+                    <CategoryMiniImage
+                      name={category.name}
+                      iconKey={category.iconKey}
+                      color={category.color}
+                      size="lg"
+                      className="mx-auto"
+                    />
 
                     <div
                       className="mt-2 truncate text-xs font-bold text-slate-200"
