@@ -35,6 +35,7 @@ import { RecurringTransactionsSection } from "../components/finances/RecurringTr
 import { AddRecurringTransactionModal } from "../components/finances/AddRecurringTransactionModal";
 import { EditRecurringTransactionModal } from "../components/finances/EditRecurringTransactionModal";
 import { MyFinanceImportModal } from "../components/finances/MyFinanceImportModal";
+import { CashflowAiPromptModal } from "../components/finances/CashflowAiPromptModal";
 import { CashSourcePicker } from "../components/finances/CashSourcePicker";
 
 import type {
@@ -219,6 +220,11 @@ export function Finances({
   const [
     isImportOpen,
     setIsImportOpen,
+  ] = useState(false);
+
+  const [
+    isAiPromptOpen,
+    setIsAiPromptOpen,
   ] = useState(false);
 
   const [
@@ -476,6 +482,17 @@ export function Finances({
               />
             </button>
           </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              setIsAiPromptOpen(true)
+            }
+            className="flex cursor-pointer items-center gap-2 rounded-xl border border-violet-400/20 bg-violet-500/[0.07] px-4 py-3 text-sm font-semibold text-violet-200 transition hover:border-violet-400/40 hover:bg-violet-500/12 hover:text-white"
+          >
+            <Sparkles size={18} />
+            Analiza AI
+          </button>
 
           <button
             type="button"
@@ -959,6 +976,14 @@ export function Finances({
         />
       )}
 
+
+      {isAiPromptOpen && (
+        <CashflowAiPromptModal
+          budget={budget}
+          anchorMonth={selectedMonth}
+          onClose={() => setIsAiPromptOpen(false)}
+        />
+      )}
 
       <MyFinanceImportModal
         open={isImportOpen}
