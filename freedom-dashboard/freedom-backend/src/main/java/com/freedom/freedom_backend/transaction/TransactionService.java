@@ -41,7 +41,7 @@ public class TransactionService {
     public TransactionResponse create(TransactionRequest request, User user) {
         Category detailed = resolveCategory(request, user);
         validate(request, detailed);
-        Long assetId = ledger.resolveAsset(request.assetId(), user);
+        Long assetId = ledger.resolveTransactionAsset(request.assetId(), user);
 
         Transaction transaction = new Transaction(
                 user,
@@ -69,7 +69,7 @@ public class TransactionService {
     ) {
         Category detailed = resolveCategory(request, user);
         validate(request, detailed);
-        Long assetId = ledger.resolveAsset(request.assetId(), user);
+        Long assetId = ledger.resolveTransactionAsset(request.assetId(), user);
 
         Transaction transaction = new Transaction(
                 user,
@@ -99,7 +99,7 @@ public class TransactionService {
         // a failure while applying the replacement restores the previous state.
         reverseFinancialEvent(transaction, user);
 
-        Long assetId = ledger.resolveAsset(request.assetId(), user);
+        Long assetId = ledger.resolveTransactionAsset(request.assetId(), user);
         transaction.update(
                 request.type(),
                 request.name(),

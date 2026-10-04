@@ -1,12 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, LoaderCircle, X } from "lucide-react";
 import type { Income } from "../../types/Cashflow";
 import type { Category } from "../../types/Category";
+import type { Asset } from "../../types/Asset";
+import { getAssetCategory } from "../../types/Asset";
+import type { PortfolioWallet } from "../../types/Portfolio";
 import { categoryApi } from "../../api/categoryApi";
 import { CategoryPicker } from "../categories/CategoryPicker";
+import { CashSourcePicker } from "./CashSourcePicker";
 
 type EditIncomeModalProps = {
   income: Income;
+  assets: Asset[];
+  wallets?: PortfolioWallet[];
   onClose: () => void;
   onSave: (income: Income) => void;
 };
@@ -14,9 +20,15 @@ type EditIncomeModalProps = {
 
 export function EditIncomeModal({
   income,
+  assets,
+  wallets = [],
   onClose,
   onSave,
 }: EditIncomeModalProps) {
+  const cashAssets = useMemo(
+    () => assets.filter((asset) => asset.systemCash || getAssetCategory(asset) === "cash"),
+    [assets]
+  );
   const [name, setName] = useState(income.name);
   const [amount, setAmount] = useState(String(income.amount));
   const [recurring, setRecurring] = useState(income.recurring);
@@ -25,6 +37,9 @@ export function EditIncomeModal({
   const [categoryId, setCategoryId] = useState<number | undefined>(income.categoryId);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [error, setError] = useState("");
+  const [assetId, setAssetId] = useState<number | undefined>(
+    income.assetId ?? cashAssets.find((asset) => asset.systemCash)?.id ?? cashAssets[0]?.id
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -55,6 +70,7 @@ export function EditIncomeModal({
     if (!Number.isFinite(numericAmount) || numericAmount <= 0) return setError("Kwota musi być większa od 0.");
     if (!date) return setError("Wybierz datę przychodu.");
     if (!categoryId) return setError("Wybierz kategorię.");
+    if (!assetId) return setError("Wybierz miejsce, do którego trafiają pieniądze.");
 
     const selectedCategory = categories.find((item) => item.id === categoryId);
 
@@ -70,6 +86,7 @@ export function EditIncomeModal({
       categoryGroup: selectedCategory?.group,
       recurring,
       date,
+      assetId,
     });
 
     
@@ -113,6 +130,21 @@ export function EditIncomeModal({
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-300">Data</label>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full cursor-pointer rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 outline-none focus:border-emerald-500" />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-300">Gdzie trafiają pieniądze</label>
+            <CashSourcePicker
+              assets={cashAssets}
+              wallets={wallets}
+              value={assetId}
+              onChange={setAssetId}
+              variant="field"
+              tone="emerald"
+            />
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              Przy zmianie Freedom cofnie stary przychód i zaksięguje go na nowym aktywie gotówkowym.
+            </p>
           </div>
 
           <div>

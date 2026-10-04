@@ -3,14 +3,18 @@ import { AlertCircle, LoaderCircle, Target, X } from "lucide-react";
 import type { Expense, ExpenseCategory } from "../../types/Cashflow";
 import type { Category } from "../../types/Category";
 import type { Asset } from "../../types/Asset";
+import { getAssetCategory } from "../../types/Asset";
+import type { PortfolioWallet } from "../../types/Portfolio";
 import type { SpendableGoal } from "../../types/GoalSpending";
 import { categoryApi } from "../../api/categoryApi";
 import { goalSpendingApi } from "../../api/goalSpendingApi";
 import { CategoryPicker } from "../categories/CategoryPicker";
+import { CashSourcePicker } from "./CashSourcePicker";
 
 type EditExpenseModalProps = {
   expense: Expense;
   assets: Asset[];
+  wallets?: PortfolioWallet[];
   onClose: () => void;
   onSave: (expense: Expense) => void;
 };
@@ -25,9 +29,14 @@ function groupToLegacyCategory(group?: string): ExpenseCategory {
 export function EditExpenseModal({
   expense,
   assets,
+  wallets = [],
   onClose,
   onSave,
 }: EditExpenseModalProps) {
+  const cashAssets = useMemo(
+    () => assets.filter((asset) => asset.systemCash || getAssetCategory(asset) === "cash"),
+    [assets]
+  );
   const [name, setName] = useState(expense.name);
   const [amount, setAmount] = useState(String(expense.amount));
   const [recurring, setRecurring] = useState(expense.recurring);
@@ -38,7 +47,7 @@ export function EditExpenseModal({
   const [error, setError] = useState("");
 
   const [assetId, setAssetId] = useState<number | undefined>(
-    expense.assetId ?? assets.find((asset) => asset.systemCash)?.id ?? assets[0]?.id
+    expense.assetId ?? cashAssets.find((asset) => asset.systemCash)?.id ?? cashAssets[0]?.id
   );
   const [spendableGoals, setSpendableGoals] = useState<SpendableGoal[]>([]);
   const [goalId, setGoalId] = useState<number | undefined>(expense.goalId);
@@ -195,17 +204,14 @@ export function EditExpenseModal({
 
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-300">Źródło środków</label>
-            <select
-              value={assetId ?? ""}
-              onChange={(event) => setAssetId(event.target.value ? Number(event.target.value) : undefined)}
-              className="w-full cursor-pointer rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 outline-none focus:border-blue-500"
-            >
-              {assets.map((asset) => (
-                <option key={asset.id} value={asset.id}>
-                  {asset.systemCash ? "Środki nierozdzielone" : asset.name} — {asset.value.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} zł
-                </option>
-              ))}
-            </select>
+            <CashSourcePicker
+              assets={cashAssets}
+              wallets={wallets}
+              value={assetId}
+              onChange={setAssetId}
+              variant="field"
+              tone="blue"
+            />
             <p className="mt-2 text-xs leading-5 text-slate-500">
               Przy zmianie źródła Freedom cofnie stare księgowanie i zaksięguje wydatek na wybranym aktywie.
             </p>

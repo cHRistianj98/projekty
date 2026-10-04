@@ -11,11 +11,15 @@ import type { Category } from "../../types/Category";
 import { categoryApi } from "../../api/categoryApi";
 import { goalSpendingApi } from "../../api/goalSpendingApi";
 import { CategoryPicker } from "../categories/CategoryPicker";
+import { CashSourcePicker } from "../finances/CashSourcePicker";
 import type { Asset } from "../../types/Asset";
+import { getAssetCategory } from "../../types/Asset";
+import type { PortfolioWallet } from "../../types/Portfolio";
 import type { SpendableGoal } from "../../types/GoalSpending";
 
 type AddExpenseModalProps = {
   assets: Asset[];
+  wallets?: PortfolioWallet[];
   onClose: () => void;
   onAdd: (expense: Expense) => void;
 };
@@ -29,9 +33,14 @@ function groupToLegacyCategory(group?: string): ExpenseCategory {
 
 export function AddExpenseModal({
   assets,
+  wallets = [],
   onClose,
   onAdd,
 }: AddExpenseModalProps) {
+  const cashAssets = useMemo(
+    () => assets.filter((asset) => asset.systemCash || getAssetCategory(asset) === "cash"),
+    [assets]
+  );
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [recurring, setRecurring] = useState(false);
@@ -41,7 +50,7 @@ export function AddExpenseModal({
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [error, setError] = useState("");
   const [assetId, setAssetId] = useState<number | undefined>(
-    assets.find((asset) => asset.systemCash)?.id ?? assets[0]?.id
+    cashAssets.find((asset) => asset.systemCash)?.id ?? cashAssets[0]?.id
   );
 
   const [spendableGoals, setSpendableGoals] = useState<SpendableGoal[]>([]);
@@ -205,17 +214,14 @@ export function AddExpenseModal({
 
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-300">Źródło środków</label>
-            <select
-              value={assetId ?? ""}
-              onChange={(event) => setAssetId(Number(event.target.value))}
-              className="w-full cursor-pointer rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 outline-none focus:border-blue-500"
-            >
-              {assets.map((asset) => (
-                <option key={asset.id} value={asset.id}>
-                  {asset.systemCash ? "Środki nierozdzielone" : asset.name} — {asset.value.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} zł
-                </option>
-              ))}
-            </select>
+            <CashSourcePicker
+              assets={cashAssets}
+              wallets={wallets}
+              value={assetId}
+              onChange={setAssetId}
+              variant="field"
+              tone="blue"
+            />
             <p className="mt-2 text-xs text-slate-500">
               Wydatek fizycznie zmniejszy to aktywo. Bez wskazania celu można użyć tylko wolnych środków.
             </p>

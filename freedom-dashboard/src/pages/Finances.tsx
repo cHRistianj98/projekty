@@ -35,6 +35,7 @@ import { RecurringTransactionsSection } from "../components/finances/RecurringTr
 import { AddRecurringTransactionModal } from "../components/finances/AddRecurringTransactionModal";
 import { EditRecurringTransactionModal } from "../components/finances/EditRecurringTransactionModal";
 import { MyFinanceImportModal } from "../components/finances/MyFinanceImportModal";
+import { CashSourcePicker } from "../components/finances/CashSourcePicker";
 
 import type {
   Expense,
@@ -47,6 +48,7 @@ import type {
   RecurringTransaction,
 } from "../types/RecurringTransaction";
 import type { Asset } from "../types/Asset";
+import { getAssetCategory } from "../types/Asset";
 import type { PortfolioWallet } from "../types/Portfolio";
 import { portfolioApi } from "../api/portfolioApi";
 
@@ -67,7 +69,7 @@ type FinancesProps = {
 
   onUpdateIncome: (
     income: Income
-  ) => void;
+  ) => Promise<void> | void;
 
   onAddExpense: (
     expense: Expense
@@ -79,7 +81,7 @@ type FinancesProps = {
 
   onUpdateExpense: (
     expense: Expense
-  ) => void;
+  ) => Promise<void> | void;
 
   onAddRecurringTransaction: (
     rule: RecurringTransaction
@@ -106,10 +108,19 @@ const categories = [
       "fixed" as ExpenseCategory,
 
     title: "Koszty stałe",
+    subtitle: "Rachunki, dom i wszystkie cykliczne obciążenia.",
 
     icon: House,
 
-    color: "text-red-400",
+    color: "text-rose-300",
+    iconRing: "ring-rose-400/20",
+    iconBg: "bg-rose-400/12",
+    border: "border-rose-500/15 hover:border-rose-400/30",
+    coverGradient: "from-[#261118] via-[#15101a] to-[#08111f]",
+    coverGlow: "bg-rose-400/18",
+    watermark: "text-rose-200/[0.08]",
+    chipTone: "border-rose-400/20 bg-rose-400/[0.10] text-rose-200",
+    coverImage: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1400&q=80",
   },
 
   {
@@ -117,10 +128,19 @@ const categories = [
       "living" as ExpenseCategory,
 
     title: "Życie",
+    subtitle: "Codzienność, jedzenie, transport i to co dzieje się tu i teraz.",
 
     icon: ShoppingBasket,
 
-    color: "text-amber-400",
+    color: "text-amber-300",
+    iconRing: "ring-amber-400/20",
+    iconBg: "bg-amber-400/12",
+    border: "border-amber-500/15 hover:border-amber-400/30",
+    coverGradient: "from-[#251d0f] via-[#171410] to-[#08111f]",
+    coverGlow: "bg-amber-400/18",
+    watermark: "text-amber-200/[0.08]",
+    chipTone: "border-amber-400/20 bg-amber-400/[0.10] text-amber-200",
+    coverImage: "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1400&q=80",
   },
 
   {
@@ -128,11 +148,20 @@ const categories = [
       "investment" as ExpenseCategory,
 
     title: "Inwestycje",
+    subtitle: "Zakupy aktywów, dopłaty i budowanie przyszłej wartości.",
 
     icon:
       ChartNoAxesCombined,
 
-    color: "text-blue-400",
+    color: "text-sky-300",
+    iconRing: "ring-sky-400/20",
+    iconBg: "bg-sky-400/12",
+    border: "border-sky-500/15 hover:border-sky-400/30",
+    coverGradient: "from-[#0d1a29] via-[#0b1220] to-[#08111f]",
+    coverGlow: "bg-sky-400/18",
+    watermark: "text-sky-200/[0.08]",
+    chipTone: "border-sky-400/20 bg-sky-400/[0.10] text-sky-200",
+    coverImage: "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=1400&q=80",
   },
 
   {
@@ -140,12 +169,21 @@ const categories = [
       "goal" as ExpenseCategory,
 
     title: "Cele",
+    subtitle: "Wydatki powiązane z planami, marzeniami i większymi projektami.",
 
     icon: Car,
 
-    color: "text-violet-400",
+    color: "text-violet-300",
+    iconRing: "ring-violet-400/20",
+    iconBg: "bg-violet-400/12",
+    border: "border-violet-500/15 hover:border-violet-400/30",
+    coverGradient: "from-[#171128] via-[#111121] to-[#08111f]",
+    coverGlow: "bg-violet-400/18",
+    watermark: "text-violet-200/[0.08]",
+    chipTone: "border-violet-400/20 bg-violet-400/[0.10] text-violet-200",
+    coverImage: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1400&q=80",
   },
-];
+] as const;
 
 export function Finances({
   budget,
@@ -224,27 +262,22 @@ export function Finances({
     return () => { cancelled = true; };
   }, [assets]);
 
-  const assetById = useMemo(
-    () => new Map(assets.map((asset) => [asset.id, asset])),
-    [assets]
-  );
-
   const walletById = useMemo(
     () => new Map(wallets.map((wallet) => [wallet.id, wallet])),
     [wallets]
   );
 
-  function transactionSource(assetId?: number) {
-    if (assetId == null) return undefined;
-    const asset = assetById.get(assetId);
-    if (!asset) return undefined;
-    const wallet = asset.portfolioId == null ? undefined : walletById.get(asset.portfolioId);
-    return {
-      portfolioName: wallet?.name ?? "Portfel",
-      assetName: asset.systemCash ? "Środki nierozdzielone" : asset.name,
-      systemCash: Boolean(asset.systemCash),
-    };
-  }
+  const cashAssets = useMemo(
+    () => assets
+      .filter((asset) => asset.systemCash || getAssetCategory(asset) === "cash")
+      .sort((a, b) => {
+        if (a.systemCash !== b.systemCash) return a.systemCash ? -1 : 1;
+        const walletA = walletById.get(a.portfolioId ?? -1)?.name ?? "";
+        const walletB = walletById.get(b.portfolioId ?? -1)?.name ?? "";
+        return walletA.localeCompare(walletB, "pl") || a.name.localeCompare(b.name, "pl");
+      }),
+    [assets, walletById]
+  );
 
   const monthlyIncomes =
     budget.incomes.filter(
@@ -554,8 +587,12 @@ export function Finances({
 
       {/* INCOMES */}
 
-      <section className="mt-8 overflow-hidden rounded-2xl border border-emerald-500/20 bg-slate-900/70 shadow-[0_12px_35px_rgba(0,0,0,0.14)] transition hover:border-emerald-500/30">
-        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
+      <section className="group relative mt-8 overflow-hidden rounded-2xl border border-emerald-500/20 bg-slate-900/75 shadow-[0_14px_40px_rgba(0,0,0,0.16)] transition hover:border-emerald-400/35">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-r from-[#0d2a21] via-[#0b1725] to-[#08111f]" />
+        <div className="pointer-events-none absolute -right-6 top-1 h-28 w-28 rounded-full bg-emerald-400/15 blur-2xl" />
+        <Banknote className="pointer-events-none absolute right-4 top-4 h-20 w-20 text-emerald-200/[0.08]" />
+
+        <div className="relative flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 px-5 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 ring-1 ring-emerald-500/20">
               <Banknote size={24} className="text-emerald-400" />
@@ -566,17 +603,23 @@ export function Finances({
                 Przychody
               </h2>
 
-              <span className="text-xs text-slate-500">
-                {
-                  monthlyIncomes.length
-                }{" "}
-                źródeł
-              </span>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Wpływy z pracy, działalności i innych źródeł w {monthLabel.toLowerCase()}.
+              </p>
+
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-200/90">
+                <span className="rounded-full border border-emerald-400/15 bg-emerald-400/[0.08] px-2.5 py-1">
+                  {monthlyIncomes.length} źródeł
+                </span>
+                <span className="rounded-full border border-slate-700 bg-slate-950/50 px-2.5 py-1 text-slate-300">
+                  Śledzenie wpływów
+                </span>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-5">
-            <span className="font-bold text-emerald-400">
+          <div className="flex items-center gap-3 sm:gap-5">
+            <span className="text-lg font-black text-emerald-300 sm:text-xl">
               +
               {income.toLocaleString(
                 "pl-PL"
@@ -591,7 +634,7 @@ export function Finances({
                   true
                 )
               }
-              className="flex cursor-pointer items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-400 transition hover:bg-emerald-500/20"
+              className="flex cursor-pointer items-center gap-2 rounded-xl bg-emerald-500/10 px-3.5 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
             >
               <Plus size={16} />
 
@@ -632,7 +675,13 @@ export function Finances({
                   categoryIconKey={incomeItem.categoryIconKey ?? "Wallet"}
                   categoryColor={incomeItem.categoryColor ?? "#10b981"}
                   tone="income"
-                  source={transactionSource(incomeItem.assetId)}
+                  currentAssetId={incomeItem.assetId}
+                  cashAssets={cashAssets}
+                  wallets={wallets}
+                  onSourceChange={async (assetId) => {
+                    if (assetId === incomeItem.assetId) return;
+                    await onUpdateIncome({ ...incomeItem, assetId });
+                  }}
                   onEdit={() => setEditingIncome(incomeItem)}
                   onDelete={() => onDeleteIncome(incomeItem.id)}
                 />
@@ -672,11 +721,24 @@ export function Finances({
                 key={
                   config.category
                 }
-                className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70 shadow-[0_12px_35px_rgba(0,0,0,0.12)] transition hover:border-slate-700"
+                className={`group relative overflow-hidden rounded-2xl border bg-slate-900/75 shadow-[0_12px_35px_rgba(0,0,0,0.12)] transition ${config.border}`}
               >
-                <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-28 overflow-hidden">
+                  <img
+                    src={config.coverImage}
+                    alt=""
+                    loading="lazy"
+                    className="h-full w-full object-cover opacity-35 saturate-[0.9]"
+                  />
+                  <div className={`absolute inset-0 bg-gradient-to-r ${config.coverGradient}`} />
+                </div>
+                <div className={`pointer-events-none absolute -right-7 top-1 h-28 w-28 rounded-full ${config.coverGlow} blur-2xl`} />
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/10 via-transparent to-slate-900/45" />
+                <Icon className={`pointer-events-none absolute right-4 top-3 h-20 w-20 ${config.watermark}`} />
+
+                <div className="relative flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 px-5 py-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950/70 ring-1 ring-slate-800">
+                    <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${config.iconBg} ring-1 ${config.iconRing}`}>
                       <Icon size={24} className={config.color} />
                     </div>
 
@@ -687,16 +749,22 @@ export function Finances({
                         }
                       </h2>
 
-                      <span className="text-xs text-slate-500">
-                        {
-                          categoryExpenses.length
-                        }{" "}
-                        pozycji
-                      </span>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {config.subtitle}
+                      </p>
+
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em]">
+                        <span className={`rounded-full border px-2.5 py-1 ${config.chipTone}`}>
+                          {categoryExpenses.length} pozycji
+                        </span>
+                        <span className="rounded-full border border-slate-700 bg-slate-950/50 px-2.5 py-1 text-slate-300">
+                          {monthLabel}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  <span className="font-bold">
+                  <span className="text-lg font-black text-slate-100 sm:text-xl">
                     {categoryTotal.toLocaleString(
                       "pl-PL"
                     )}{" "}
@@ -740,7 +808,13 @@ export function Finances({
                             categoryIconKey={expense.categoryIconKey ?? fallbackIconKey(config.category)}
                             categoryColor={expense.categoryColor ?? fallbackCategoryColor(config.category)}
                             tone="expense"
-                            source={transactionSource(expense.assetId)}
+                            currentAssetId={expense.assetId}
+                            cashAssets={cashAssets}
+                            wallets={wallets}
+                            onSourceChange={async (assetId) => {
+                              if (assetId === expense.assetId) return;
+                              await onUpdateExpense({ ...expense, assetId });
+                            }}
                             onEdit={() => setEditingExpense(expense)}
                             onDelete={() => onDeleteExpense(expense.id)}
                           />
@@ -758,7 +832,8 @@ export function Finances({
 
       {isAddExpenseOpen && (
         <AddExpenseModal
-          assets={assets}
+          assets={cashAssets}
+          wallets={wallets}
           onClose={() =>
             setIsAddExpenseOpen(
               false
@@ -777,7 +852,8 @@ export function Finances({
           expense={
             editingExpense
           }
-          assets={assets}
+          assets={cashAssets}
+          wallets={wallets}
           onClose={() =>
             setEditingExpense(
               null
@@ -801,6 +877,8 @@ export function Finances({
 
       {isAddIncomeOpen && (
         <AddIncomeModal
+          assets={cashAssets}
+          wallets={wallets}
           onClose={() =>
             setIsAddIncomeOpen(
               false
@@ -819,6 +897,8 @@ export function Finances({
           income={
             editingIncome
           }
+          assets={cashAssets}
+          wallets={wallets}
           onClose={() =>
             setEditingIncome(
               null
@@ -899,11 +979,10 @@ type TransactionVisualRowProps = {
   categoryIconKey: string;
   categoryColor: string;
   tone: "income" | "expense";
-  source?: {
-    portfolioName: string;
-    assetName: string;
-    systemCash: boolean;
-  };
+  currentAssetId?: number;
+  cashAssets: Asset[];
+  wallets: PortfolioWallet[];
+  onSourceChange: (assetId: number) => Promise<void> | void;
   onEdit: () => void;
   onDelete: () => void;
 };
@@ -917,7 +996,10 @@ function TransactionVisualRow({
   categoryIconKey,
   categoryColor,
   tone,
-  source,
+  currentAssetId,
+  cashAssets,
+  wallets,
+  onSourceChange,
   onEdit,
   onDelete,
 }: TransactionVisualRowProps) {
@@ -974,24 +1056,14 @@ function TransactionVisualRow({
             {recurring ? "Powtarzalny" : "Jednorazowy"}
           </span>
 
-          {source && (
-            <>
-              <span>•</span>
-              <span
-                className={`inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 font-bold ${
-                  source.systemCash
-                    ? "border-amber-400/20 bg-amber-400/[0.07] text-amber-300"
-                    : "border-blue-400/15 bg-blue-400/[0.06] text-blue-300"
-                }`}
-                title={`Źródło: ${source.portfolioName} → ${source.assetName}`}
-              >
-                <WalletCards size={12} className="shrink-0" />
-                <span className="max-w-32 truncate">{source.portfolioName}</span>
-                <ChevronRight size={11} className="shrink-0 opacity-60" />
-                <span className="max-w-44 truncate">{source.assetName}</span>
-              </span>
-            </>
-          )}
+          <span>•</span>
+          <CashSourcePicker
+            assets={cashAssets}
+            wallets={wallets}
+            value={currentAssetId}
+            onChange={onSourceChange}
+            variant="compact"
+          />
         </div>
       </div>
 

@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -42,6 +43,26 @@ public class MoneyLedgerService {
                 Long.class, user.getId());
         if (id == null) throw new IllegalArgumentException("Brak Środków nierozdzielonych.");
         return id;
+    }
+
+    /**
+     * Transactions can only be settled against cash-like assets. Shares, bonds,
+     * crypto, metals etc. must first be converted/transferred into cash.
+     */
+    public Long resolveTransactionAsset(Long requestedAssetId, User user) {
+        Long assetId = resolveAsset(requestedAssetId, user);
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM assets WHERE id=? AND user_id=? AND (system_cash=TRUE OR category='CASH')",
+                Integer.class,
+                assetId,
+                user.getId()
+        );
+        if (count == null || count == 0) {
+            throw new IllegalArgumentException(
+                    "Źródłem przychodu lub wydatku może być tylko aktywo typu gotówka / konto."
+            );
+        }
+        return assetId;
     }
 
     public BigDecimal available(Long assetId, User user) {
@@ -640,7 +661,52 @@ public class MoneyLedgerService {
     }
 
     private void changeAssetValue(Long assetId, Long uid, BigDecimal delta) {
-        int updated = jdbc.update("UPDATE assets SET value=value+? WHERE id=? AND user_id=? AND value+?>=0", delta, assetId, uid, delta);
+        AssetValueMode mode = jdbc.query(
+                "SELECT category,fx_priced,fx_rate_pln FROM assets WHERE id=? AND user_id=?",
+                rs -> {
+                    if (!rs.next()) return null;
+                    return new AssetValueMode(
+                            rs.getString("category"),
+                            rs.getBoolean("fx_priced"),
+                            rs.getBigDecimal("fx_rate_pln")
+                    );
+                },
+                assetId,
+                uid
+        );
+        if (mode == null) throw new IllegalArgumentException("Aktywo nie istnieje.");
+
+        // Foreign-currency cash is still a cash asset. A transaction amount is
+        // expressed in PLN, so keep both PLN valuation and physical currency
+        // quantity in sync. Otherwise the next FX refresh would undo the expense.
+        if ("CASH".equals(mode.category()) && mode.fxPriced()) {
+            if (mode.fxRatePln() == null || mode.fxRatePln().signum() <= 0) {
+                throw new IllegalArgumentException("Brak kursu PLN dla wybranej waluty.");
+            }
+            BigDecimal quantityDelta = delta.divide(mode.fxRatePln(), 12, RoundingMode.HALF_UP);
+            int updated = jdbc.update(
+                    """
+                    UPDATE assets
+                    SET value=value+?, cash_quantity=COALESCE(cash_quantity,0)+?
+                    WHERE id=? AND user_id=? AND value+?>=0
+                    """,
+                    delta,
+                    quantityDelta,
+                    assetId,
+                    uid,
+                    delta
+            );
+            if (updated == 0) throw new IllegalArgumentException("Operacja spowodowałaby ujemne saldo aktywa.");
+            return;
+        }
+
+        int updated = jdbc.update(
+                "UPDATE assets SET value=value+? WHERE id=? AND user_id=? AND value+?>=0",
+                delta,
+                assetId,
+                uid,
+                delta
+        );
         if (updated == 0) throw new IllegalArgumentException("Operacja spowodowałaby ujemne saldo aktywa.");
     }
 
@@ -719,6 +785,7 @@ public class MoneyLedgerService {
         if (amount == null || amount.signum() <= 0) throw new IllegalArgumentException("Kwota musi być większa od zera.");
     }
 
+    private record AssetValueMode(String category, boolean fxPriced, BigDecimal fxRatePln) {}
     private record Position(Long id, Long lotId, Long assetId, BigDecimal amount) {}
     private record Usage(Long lotId, Long assetId, BigDecimal amount) {}
     private record UsageRow(Long id, Long transactionId, BigDecimal amount) {}

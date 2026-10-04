@@ -15,7 +15,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.text.Normalizer;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -95,6 +97,7 @@ public class MyFinanceImportService {
             }
         }
         int categoriesCreated = categoryCount(user.getId()) - beforeCategoryCount;
+        List<CashAssetRef> cashAssets = cashAssets(user.getId());
 
         // Important for the ledger: all new income is booked first, then expenses.
         // This reconstructs the source account's final balance without depending on
@@ -121,6 +124,7 @@ public class MyFinanceImportService {
                     ? null
                     : categoryService.findOrCreateImported(user, toCategoryType(tx.type()), tx.categoryName());
 
+            Long importAssetId = resolveImportAssetId(tx, cashAssets);
             TransactionRequest request = new TransactionRequest(
                     tx.type() == MyFinanceSourceTransaction.SourceType.INCOME ? TransactionType.INCOME : TransactionType.EXPENSE,
                     displayName(tx),
@@ -130,11 +134,17 @@ public class MyFinanceImportService {
                     false,
                     tx.date(),
                     null,
-                    null,
+                    importAssetId,
                     null
             );
 
-            TransactionResponse created = transactionService.createImported(request, user, SOURCE);
+            // Jeśli reguły importu wskazały konkretne konto / gotówkę,
+            // księgujemy transakcję bezpośrednio na tym aktywie.
+            // Gdy konto nie istnieje, assetId pozostaje null i import bezpiecznie
+            // trafia do Środków nierozdzielonych.
+            TransactionResponse created = importAssetId != null
+                    ? transactionService.create(request, user)
+                    : transactionService.createImported(request, user, SOURCE);
             jdbc.update("""
                     INSERT INTO transaction_import_links(
                         user_id, source, external_id, transaction_id,
@@ -166,6 +176,77 @@ public class MyFinanceImportService {
                 incomeAmount.subtract(expenseAmount)
         );
     }
+
+    private Long resolveImportAssetId(MyFinanceSourceTransaction tx, List<CashAssetRef> cashAssets) {
+        String category = normalizeRuleText(tx.categoryName());
+        String context = normalizeRuleText(
+                String.join(" ",
+                        tx.categoryName() == null ? "" : tx.categoryName(),
+                        tx.comment() == null ? "" : tx.comment(),
+                        displayName(tx)
+                )
+        );
+        String compact = context.replace(" ", "");
+
+        String preferredAccount = null;
+
+        if (tx.type() == MyFinanceSourceTransaction.SourceType.EXPENSE) {
+            if (category.contains("podatki i zus")) {
+                preferredAccount = "Konto Firmowe";
+            } else if (compact.contains("chatgpt") || compact.contains("xbox")) {
+                preferredAccount = "Revolut";
+            } else {
+                preferredAccount = "Konto ROR";
+            }
+        } else if (compact.contains("odsetki") || category.contains("odsetki")) {
+            preferredAccount = "Konto ROR";
+        }
+
+        return preferredAccount == null ? null : findCashAsset(cashAssets, preferredAccount);
+    }
+
+    private Long findCashAsset(List<CashAssetRef> cashAssets, String preferredName) {
+        String expected = normalizeRuleText(preferredName).replace(" ", "");
+
+        for (CashAssetRef asset : cashAssets) {
+            String candidate = normalizeRuleText(asset.name()).replace(" ", "");
+            if (candidate.equals(expected)) return asset.id();
+        }
+        for (CashAssetRef asset : cashAssets) {
+            String candidate = normalizeRuleText(asset.name()).replace(" ", "");
+            if (candidate.contains(expected) || expected.contains(candidate)) return asset.id();
+        }
+        return null;
+    }
+
+    private List<CashAssetRef> cashAssets(Long userId) {
+        return new ArrayList<>(jdbc.query(
+                """
+                SELECT id,name,system_cash
+                FROM assets
+                WHERE user_id=? AND (system_cash=TRUE OR category='CASH')
+                ORDER BY system_cash ASC, value DESC, id ASC
+                """,
+                (rs, rowNum) -> new CashAssetRef(
+                        rs.getLong("id"),
+                        rs.getString("name"),
+                        rs.getBoolean("system_cash")
+                ),
+                userId
+        ));
+    }
+
+    private String normalizeRuleText(String value) {
+        if (value == null) return "";
+        String ascii = Normalizer.normalize(value, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "");
+        return ascii.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", " ")
+                .trim()
+                .replaceAll("\\s+", " ");
+    }
+
+    private record CashAssetRef(Long id, String name, boolean systemCash) {}
 
     private Set<String> importedExternalIds(Long userId) {
         return new HashSet<>(jdbc.query(
