@@ -353,7 +353,9 @@ public class PortfolioService {
                 """,
                 user.getId(), source.id(), target.id(), source.name(), target.name(), amount,
                 target.cashCurrency().name(), quote.ratePln(), fxSpread.effectiveRate(), fxSpread.loss(),
-                fxSpread.spreadPercent(), quote.quotedAt(), quote.source(), quote.provider()
+                fxSpread.spreadPercent(),
+                java.time.OffsetDateTime.ofInstant(quote.quotedAt(), java.time.ZoneOffset.UTC),
+                quote.source(), quote.provider()
         );
     }
 
