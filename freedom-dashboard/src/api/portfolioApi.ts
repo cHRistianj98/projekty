@@ -118,5 +118,8 @@ export const portfolioApi = {
       method: "POST", headers: headers(), body: JSON.stringify({ assetId, targetPortfolioId }),
     }).then(read<void>),
 
-  valuations: () => fetch(`${API}/api/portfolios/valuations`, { headers: headers() }).then(read<ValuationEvent[]>),
+  valuations: (limit = 100) => {
+    const params = new URLSearchParams({ limit: String(Math.max(1, Math.min(5000, Math.trunc(limit)))) });
+    return fetch(`${API}/api/portfolios/valuations?${params.toString()}`, { headers: headers() }).then(read<ValuationEvent[]>);
+  },
 };

@@ -93,8 +93,8 @@ public class StockPricingService {
                     .uri(builder -> builder
                             .path("/v8/finance/chart/")
                             .pathSegment(symbol)
-                            .queryParam("range", "5d")
-                            .queryParam("interval", "5m")
+                            .queryParam("range", "3mo")
+                            .queryParam("interval", "1d")
                             .queryParam("includePrePost", "false")
                             .queryParam("events", "div,splits")
                             .build())
@@ -153,13 +153,34 @@ public class StockPricingService {
                         .setScale(4, RoundingMode.HALF_UP);
             }
 
+            FxQuoteResponse fxQuote = currency == CashCurrency.PLN
+                    ? null
+                    : fxPricing.quote(currency);
             BigDecimal fx = currency == CashCurrency.PLN
                     ? BigDecimal.ONE
-                    : fxPricing.quote(currency).ratePln();
+                    : fxQuote.ratePln();
 
             BigDecimal pricePln = price
                     .multiply(fx)
                     .setScale(8, RoundingMode.HALF_UP);
+
+            MarketTimestamp marketTimestamp = marketTimestamp(meta);
+            LocalDate marketDate = marketTimestamp.date() == null
+                    ? LocalDate.now(ZoneOffset.UTC)
+                    : marketTimestamp.date();
+            BigDecimal monthBasePrice = historicalPriceOnOrBefore(chart, marketDate.minusDays(30));
+
+            BigDecimal previousFx = currency == CashCurrency.PLN
+                    ? BigDecimal.ONE
+                    : baseFromChange(fx, fxQuote.change24hPercent());
+            BigDecimal monthBaseFx = currency == CashCurrency.PLN
+                    ? BigDecimal.ONE
+                    : baseFromChange(fx, fxQuote.change1mPercent());
+
+            BigDecimal previousClosePln = multiplyOrNull(previous, previousFx);
+            BigDecimal monthBasePricePln = multiplyOrNull(monthBasePrice, monthBaseFx);
+            BigDecimal change24hPlnPercent = percentageChange(pricePln, previousClosePln);
+            BigDecimal change1mPlnPercent = percentageChange(pricePln, monthBasePricePln);
 
             String resolvedSymbol =
                     text(meta, "symbol");
@@ -179,9 +200,6 @@ public class StockPricingService {
                 name = resolvedSymbol;
             }
 
-            MarketTimestamp marketTimestamp =
-                    marketTimestamp(meta);
-
             return new StockQuoteResponse(
                     resolvedSymbol.toUpperCase(Locale.ROOT),
                     name,
@@ -191,6 +209,11 @@ public class StockPricingService {
                     pricePln,
                     previous,
                     changePercent,
+                    previousClosePln,
+                    monthBasePrice,
+                    monthBasePricePln,
+                    change24hPlnPercent,
+                    change1mPlnPercent,
                     marketTimestamp.date(),
                     marketTimestamp.time(),
                     Instant.now(),
@@ -398,6 +421,52 @@ public class StockPricingService {
         }
 
         return null;
+    }
+
+
+    private BigDecimal historicalPriceOnOrBefore(JsonNode chart, LocalDate targetDate) {
+        JsonNode quotes = chart.path("indicators").path("quote");
+        JsonNode timestamps = chart.path("timestamp");
+        if (!quotes.isArray() || quotes.size() == 0 || quotes.get(0) == null || !timestamps.isArray()) return null;
+
+        JsonNode closes = quotes.get(0).path("close");
+        if (!closes.isArray()) return null;
+
+        BigDecimal best = null;
+        LocalDate bestDate = null;
+        int size = Math.min(closes.size(), timestamps.size());
+        for (int i = 0; i < size; i++) {
+            BigDecimal value = decimal(closes.get(i));
+            JsonNode ts = timestamps.get(i);
+            if (value == null || value.signum() <= 0 || ts == null || !ts.isNumber()) continue;
+            LocalDate date = Instant.ofEpochSecond(ts.longValue()).atZone(ZoneOffset.UTC).toLocalDate();
+            if (date.isAfter(targetDate)) continue;
+            if (bestDate == null || date.isAfter(bestDate)) {
+                bestDate = date;
+                best = value;
+            }
+        }
+        return best;
+    }
+
+    private BigDecimal baseFromChange(BigDecimal current, BigDecimal changePercent) {
+        if (current == null || current.signum() <= 0 || changePercent == null) return null;
+        BigDecimal factor = BigDecimal.ONE.add(changePercent.divide(new BigDecimal("100"), 12, RoundingMode.HALF_UP));
+        if (factor.signum() <= 0) return null;
+        return current.divide(factor, 12, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal multiplyOrNull(BigDecimal left, BigDecimal right) {
+        if (left == null || right == null || left.signum() <= 0 || right.signum() <= 0) return null;
+        return left.multiply(right).setScale(8, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal percentageChange(BigDecimal current, BigDecimal base) {
+        if (current == null || base == null || base.signum() <= 0) return null;
+        return current.subtract(base)
+                .divide(base, 10, RoundingMode.HALF_UP)
+                .multiply(new BigDecimal("100"))
+                .setScale(4, RoundingMode.HALF_UP);
     }
 
     private MarketTimestamp marketTimestamp(JsonNode meta) {

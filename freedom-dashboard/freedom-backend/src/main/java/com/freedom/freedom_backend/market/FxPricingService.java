@@ -125,9 +125,9 @@ public class FxPricingService {
                 .uri(builder -> builder
                         .path("/v8/finance/chart/")
                         .pathSegment(symbol)
-                        .queryParam("range", "1d")
-                        .queryParam("interval", "1m")
-                        .queryParam("includePrePost", "true")
+                        .queryParam("range", "3mo")
+                        .queryParam("interval", "1d")
+                        .queryParam("includePrePost", "false")
                         .build())
                 .retrieve()
                 .body(JsonNode.class);
@@ -158,6 +158,25 @@ public class FxPricingService {
         }
 
         ZonedDateTime localQuote = quotedAt.atZone(DISPLAY_ZONE);
+        BigDecimal previousRate = firstDecimal(
+                meta,
+                "regularMarketPreviousClose",
+                "previousClose"
+        );
+        if (previousRate == null || previousRate.signum() <= 0) {
+            previousRate = historicalPriceOnOrBefore(
+                    chart,
+                    localQuote.toLocalDate().minusDays(1)
+            );
+        }
+
+        BigDecimal monthBaseRate = historicalPriceOnOrBefore(
+                chart,
+                localQuote.toLocalDate().minusDays(30)
+        );
+        BigDecimal change24hPercent = percentageChange(rate, previousRate);
+        BigDecimal change1mPercent = percentageChange(rate, monthBaseRate);
+
         String marketTime = localQuote.toLocalTime().withNano(0).format(DateTimeFormatter.ISO_LOCAL_TIME);
         String resolvedSymbol = text(meta, "symbol");
         if (resolvedSymbol == null || resolvedSymbol.isBlank()) resolvedSymbol = symbol;
@@ -166,6 +185,8 @@ public class FxPricingService {
                 currency,
                 currencyName(currency),
                 rate,
+                change24hPercent,
+                change1mPercent,
                 localQuote.toLocalDate(),
                 "Yahoo · " + marketTime,
                 Instant.now(),
@@ -181,7 +202,7 @@ public class FxPricingService {
     private FxQuoteResponse fetchNbpFallback(CashCurrency currency) {
         NbpRateResponse response = nbpClient.get()
                 .uri(uri -> uri
-                        .path("/exchangerates/rates/a/{currency}/")
+                        .path("/exchangerates/rates/a/{currency}/last/60/")
                         .queryParam("format", "json")
                         .build(currency.name().toLowerCase()))
                 .retrieve()
@@ -191,15 +212,41 @@ public class FxPricingService {
             throw new IllegalStateException("NBP zwrócił pustą odpowiedź dla " + currency + ".");
         }
 
-        NbpRate rate = response.rates().get(response.rates().size() - 1);
+        List<NbpRate> rates = response.rates();
+        NbpRate rate = rates.get(rates.size() - 1);
         if (rate.mid() == null || rate.mid().signum() <= 0) {
             throw new IllegalStateException("NBP zwrócił nieprawidłowy kurs dla " + currency + ".");
         }
+
+        NbpRate previous = rates.size() >= 2 ? rates.get(rates.size() - 2) : null;
+        LocalDate monthTarget = rate.effectiveDate().minusDays(30);
+        NbpRate monthBase = null;
+        for (NbpRate candidate : rates) {
+            if (candidate.effectiveDate() == null || candidate.mid() == null || candidate.mid().signum() <= 0) {
+                continue;
+            }
+            if (!candidate.effectiveDate().isAfter(monthTarget)) {
+                monthBase = candidate;
+            }
+        }
+        if (monthBase == null) {
+            monthBase = rates.get(0);
+        }
+
+        BigDecimal change24hPercent = previous == null
+                ? null
+                : percentageChange(rate.mid(), previous.mid());
+        BigDecimal change1mPercent = percentageChange(
+                rate.mid(),
+                monthBase == null ? null : monthBase.mid()
+        );
 
         return new FxQuoteResponse(
                 currency,
                 response.currency() == null ? currencyName(currency) : response.currency(),
                 rate.mid(),
+                change24hPercent,
+                change1mPercent,
                 rate.effectiveDate(),
                 rate.no(),
                 Instant.now(),
@@ -218,6 +265,8 @@ public class FxPricingService {
                 CashCurrency.PLN,
                 "złoty polski",
                 BigDecimal.ONE,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
                 LocalDate.now(DISPLAY_ZONE),
                 "PLN",
                 now,
@@ -266,6 +315,61 @@ public class FxPricingService {
             }
         }
         return new PricePoint(null, null);
+    }
+
+    private BigDecimal firstDecimal(JsonNode node, String... names) {
+        if (node == null) return null;
+        for (String name : names) {
+            BigDecimal value = decimal(node.get(name));
+            if (value != null && value.signum() > 0) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private BigDecimal historicalPriceOnOrBefore(JsonNode chart, LocalDate targetDate) {
+        JsonNode quotes = chart.path("indicators").path("quote");
+        JsonNode timestamps = chart.path("timestamp");
+        if (!quotes.isArray() || quotes.size() == 0 || quotes.get(0) == null) {
+            return null;
+        }
+
+        JsonNode closes = quotes.get(0).path("close");
+        if (!closes.isArray()) return null;
+
+        BigDecimal earliest = null;
+        BigDecimal best = null;
+        LocalDate bestDate = null;
+
+        for (int i = 0; i < closes.size(); i++) {
+            BigDecimal value = decimal(closes.get(i));
+            if (value == null || value.signum() <= 0) continue;
+            if (earliest == null) earliest = value;
+
+            Instant timestamp = timestamps.isArray() && i < timestamps.size()
+                    ? epochInstant(timestamps.get(i))
+                    : null;
+            if (timestamp == null) continue;
+
+            LocalDate date = timestamp.atZone(DISPLAY_ZONE).toLocalDate();
+            if (date.isAfter(targetDate)) continue;
+            if (bestDate == null || date.isAfter(bestDate)) {
+                bestDate = date;
+                best = value;
+            }
+        }
+
+        return best != null ? best : earliest;
+    }
+
+    private BigDecimal percentageChange(BigDecimal current, BigDecimal base) {
+        if (current == null || base == null || base.signum() <= 0) return null;
+        return current
+                .subtract(base)
+                .divide(base, 10, RoundingMode.HALF_UP)
+                .multiply(new BigDecimal("100"))
+                .setScale(4, RoundingMode.HALF_UP);
     }
 
     private BigDecimal decimal(JsonNode node) {

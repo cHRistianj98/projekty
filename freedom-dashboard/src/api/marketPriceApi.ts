@@ -19,6 +19,8 @@ export type FxQuote = {
   currency: CashCurrency;
   currencyName: string;
   ratePln: number;
+  change24hPercent?: number | null;
+  change1mPercent?: number | null;
   effectiveDate: string;
   tableNo: string;
   fetchedAt: string;
@@ -37,6 +39,7 @@ export type CryptoQuote = {
   pricePln: number;
   priceUsd?: number | null;
   change24h?: number | null;
+  change1m?: number | null;
   updatedAt: string;
   source: string;
 };
@@ -58,6 +61,11 @@ export type StockQuote = {
   pricePln: number;
   previousClose?: number | null;
   changePercent?: number | null;
+  previousClosePln?: number | null;
+  monthBasePrice?: number | null;
+  monthBasePricePln?: number | null;
+  change24hPlnPercent?: number | null;
+  change1mPlnPercent?: number | null;
   marketDate?: string | null;
   marketTime?: string | null;
   fetchedAt: string;
@@ -133,14 +141,24 @@ export const marketPriceApi = {
     const row = await handle<FxQuote>(
       await fetch(`${API_URL}/api/market/fx/quote?${params.toString()}`, { headers: headers() })
     );
-    return { ...row, ratePln: Number(row.ratePln) };
+    return {
+      ...row,
+      ratePln: Number(row.ratePln),
+      change24hPercent: row.change24hPercent == null ? null : Number(row.change24hPercent),
+      change1mPercent: row.change1mPercent == null ? null : Number(row.change1mPercent),
+    };
   },
 
   async getFxQuotes(): Promise<FxQuote[]> {
     const rows = await handle<FxQuote[]>(
       await fetch(`${API_URL}/api/market/fx/quotes`, { headers: headers() })
     );
-    return rows.map((row) => ({ ...row, ratePln: Number(row.ratePln) }));
+    return rows.map((row) => ({
+      ...row,
+      ratePln: Number(row.ratePln),
+      change24hPercent: row.change24hPercent == null ? null : Number(row.change24hPercent),
+      change1mPercent: row.change1mPercent == null ? null : Number(row.change1mPercent),
+    }));
   },
 
   async refreshFxAssets(): Promise<Asset[]> {
@@ -165,6 +183,11 @@ export const marketPriceApi = {
       pricePln: Number(row.pricePln),
       previousClose: row.previousClose == null ? null : Number(row.previousClose),
       changePercent: row.changePercent == null ? null : Number(row.changePercent),
+      previousClosePln: row.previousClosePln == null ? null : Number(row.previousClosePln),
+      monthBasePrice: row.monthBasePrice == null ? null : Number(row.monthBasePrice),
+      monthBasePricePln: row.monthBasePricePln == null ? null : Number(row.monthBasePricePln),
+      change24hPlnPercent: row.change24hPlnPercent == null ? null : Number(row.change24hPlnPercent),
+      change1mPlnPercent: row.change1mPlnPercent == null ? null : Number(row.change1mPlnPercent),
     };
   },
 
@@ -190,6 +213,7 @@ export const marketPriceApi = {
       pricePln: Number(row.pricePln),
       priceUsd: row.priceUsd == null ? null : Number(row.priceUsd),
       change24h: row.change24h == null ? null : Number(row.change24h),
+      change1m: row.change1m == null ? null : Number(row.change1m),
     };
   },
 

@@ -46,11 +46,14 @@ type BackendAsset = {
   cryptoPricePln?: number | null;
   cryptoPriceUsd?: number | null;
   cryptoChange24h?: number | null;
+  cryptoChange1m?: number | null;
   cryptoUpdatedAt?: string | null;
   fxPriced?: boolean;
   cashCurrency?: CashCurrency | null;
   cashQuantity?: number | null;
   fxRatePln?: number | null;
+  fxChange24hPercent?: number | null;
+  fxChange1mPercent?: number | null;
   fxEffectiveDate?: string | null;
   fxUpdatedAt?: string | null;
   stockPriced?: boolean;
@@ -67,6 +70,8 @@ type BackendAsset = {
   stockTaxRate?: number | null;
   stockTaxAmountPln?: number | null;
   stockChangePercent?: number | null;
+  stockChange24hPlnPercent?: number | null;
+  stockChange1mPlnPercent?: number | null;
   stockMarketDate?: string | null;
   stockMarketTime?: string | null;
   stockUpdatedAt?: string | null;
@@ -100,6 +105,8 @@ type BackendAsset = {
   bondTaxAmount?: number | null;
   bondChange1dAmount?: number | null;
   bondChange1dPercent?: number | null;
+  bondChange1mAmount?: number | null;
+  bondChange1mPercent?: number | null;
 };
 
 function authHeaders(): HeadersInit {
@@ -169,11 +176,14 @@ export function fromBackendAsset(row: BackendAsset): Asset {
     ...(row.cryptoPricePln != null ? { cryptoPricePln: Number(row.cryptoPricePln) } : {}),
     ...(row.cryptoPriceUsd != null ? { cryptoPriceUsd: Number(row.cryptoPriceUsd) } : {}),
     ...(row.cryptoChange24h != null ? { cryptoChange24h: Number(row.cryptoChange24h) } : {}),
+    ...(row.cryptoChange1m != null ? { cryptoChange1m: Number(row.cryptoChange1m) } : {}),
     ...(row.cryptoUpdatedAt ? { cryptoUpdatedAt: row.cryptoUpdatedAt } : {}),
     fxPriced: Boolean(row.fxPriced),
     ...(row.cashCurrency ? { cashCurrency: row.cashCurrency } : {}),
     ...(row.cashQuantity != null ? { cashQuantity: Number(row.cashQuantity) } : {}),
     ...(row.fxRatePln != null ? { fxRatePln: Number(row.fxRatePln) } : {}),
+    ...(row.fxChange24hPercent != null ? { fxChange24hPercent: Number(row.fxChange24hPercent) } : {}),
+    ...(row.fxChange1mPercent != null ? { fxChange1mPercent: Number(row.fxChange1mPercent) } : {}),
     ...(row.fxEffectiveDate ? { fxEffectiveDate: row.fxEffectiveDate } : {}),
     ...(row.fxUpdatedAt ? { fxUpdatedAt: row.fxUpdatedAt } : {}),
     stockPriced: Boolean(row.stockPriced),
@@ -190,6 +200,8 @@ export function fromBackendAsset(row: BackendAsset): Asset {
     ...(row.stockTaxRate != null ? { stockTaxRate: Number(row.stockTaxRate) } : {}),
     ...(row.stockTaxAmountPln != null ? { stockTaxAmountPln: Number(row.stockTaxAmountPln) } : {}),
     ...(row.stockChangePercent != null ? { stockChangePercent: Number(row.stockChangePercent) } : {}),
+    ...(row.stockChange24hPlnPercent != null ? { stockChange24hPlnPercent: Number(row.stockChange24hPlnPercent) } : {}),
+    ...(row.stockChange1mPlnPercent != null ? { stockChange1mPlnPercent: Number(row.stockChange1mPlnPercent) } : {}),
     ...(row.stockMarketDate ? { stockMarketDate: row.stockMarketDate } : {}),
     ...(row.stockMarketTime ? { stockMarketTime: row.stockMarketTime } : {}),
     ...(row.stockUpdatedAt ? { stockUpdatedAt: row.stockUpdatedAt } : {}),
@@ -223,6 +235,8 @@ export function fromBackendAsset(row: BackendAsset): Asset {
     ...(row.bondTaxAmount != null ? { bondTaxAmount: Number(row.bondTaxAmount) } : {}),
     ...(row.bondChange1dAmount != null ? { bondChange1dAmount: Number(row.bondChange1dAmount) } : {}),
     ...(row.bondChange1dPercent != null ? { bondChange1dPercent: Number(row.bondChange1dPercent) } : {}),
+    ...(row.bondChange1mAmount != null ? { bondChange1mAmount: Number(row.bondChange1mAmount) } : {}),
+    ...(row.bondChange1mPercent != null ? { bondChange1mPercent: Number(row.bondChange1mPercent) } : {}),
   };
 }
 

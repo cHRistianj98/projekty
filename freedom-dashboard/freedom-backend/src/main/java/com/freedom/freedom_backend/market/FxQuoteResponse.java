@@ -10,6 +10,8 @@ public record FxQuoteResponse(
         CashCurrency currency,
         String currencyName,
         BigDecimal ratePln,
+        BigDecimal change24hPercent,
+        BigDecimal change1mPercent,
         LocalDate effectiveDate,
         String tableNo,
         Instant fetchedAt,

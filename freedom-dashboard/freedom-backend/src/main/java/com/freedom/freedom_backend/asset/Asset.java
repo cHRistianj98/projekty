@@ -85,6 +85,9 @@ public class Asset {
     @Column(name = "crypto_change_24h", precision = 18, scale = 8)
     private BigDecimal cryptoChange24h;
 
+    @Column(name = "crypto_change_1m", precision = 18, scale = 8)
+    private BigDecimal cryptoChange1m;
+
     @Column(name = "crypto_updated_at")
     private Instant cryptoUpdatedAt;
 
@@ -100,6 +103,12 @@ public class Asset {
 
     @Column(name = "fx_rate_pln", precision = 19, scale = 8)
     private BigDecimal fxRatePln;
+
+    @Column(name = "fx_change_24h_percent", precision = 18, scale = 8)
+    private BigDecimal fxChange24hPercent;
+
+    @Column(name = "fx_change_1m_percent", precision = 18, scale = 8)
+    private BigDecimal fxChange1mPercent;
 
     @Column(name = "fx_effective_date")
     private LocalDate fxEffectiveDate;
@@ -149,6 +158,12 @@ public class Asset {
 
     @Column(name = "stock_change_percent", precision = 18, scale = 8)
     private BigDecimal stockChangePercent;
+
+    @Column(name = "stock_change_24h_pln_percent", precision = 18, scale = 8)
+    private BigDecimal stockChange24hPlnPercent;
+
+    @Column(name = "stock_change_1m_pln_percent", precision = 18, scale = 8)
+    private BigDecimal stockChange1mPlnPercent;
 
     @Column(name = "stock_market_date")
     private LocalDate stockMarketDate;
@@ -329,6 +344,11 @@ public class Asset {
             return;
         }
 
+        boolean sameCoin = this.cryptoCoinId != null
+                && coinId != null
+                && this.cryptoCoinId.equalsIgnoreCase(coinId);
+        BigDecimal previousChange1m = sameCoin ? this.cryptoChange1m : null;
+
         this.marketPriced = true;
         clearFxPricing();
         clearStockPricing();
@@ -339,6 +359,7 @@ public class Asset {
             this.cryptoPricePln = quote.pricePln();
             this.cryptoPriceUsd = quote.priceUsd();
             this.cryptoChange24h = quote.change24h();
+            this.cryptoChange1m = quote.change1m() != null ? quote.change1m() : previousChange1m;
             this.cryptoUpdatedAt = quote.updatedAt();
             this.marketUpdatedAt = quote.updatedAt();
         }
@@ -349,6 +370,9 @@ public class Asset {
         this.cryptoPricePln = quote.pricePln();
         this.cryptoPriceUsd = quote.priceUsd();
         this.cryptoChange24h = quote.change24h();
+        if (quote.change1m() != null) {
+            this.cryptoChange1m = quote.change1m();
+        }
         this.cryptoUpdatedAt = quote.updatedAt();
         this.marketUpdatedAt = quote.updatedAt();
     }
@@ -360,6 +384,7 @@ public class Asset {
         this.cryptoPricePln = null;
         this.cryptoPriceUsd = null;
         this.cryptoChange24h = null;
+        this.cryptoChange1m = null;
         this.cryptoUpdatedAt = null;
     }
 
@@ -382,6 +407,8 @@ public class Asset {
 
         if (quote != null) {
             this.fxRatePln = quote.ratePln();
+            this.fxChange24hPercent = quote.change24hPercent();
+            this.fxChange1mPercent = quote.change1mPercent();
             this.fxEffectiveDate = quote.effectiveDate();
             this.fxUpdatedAt = quote.fetchedAt();
         }
@@ -390,6 +417,8 @@ public class Asset {
     public void applyFxValuation(BigDecimal value, FxQuoteResponse quote) {
         this.value = value;
         this.fxRatePln = quote.ratePln();
+        this.fxChange24hPercent = quote.change24hPercent();
+        this.fxChange1mPercent = quote.change1mPercent();
         this.fxEffectiveDate = quote.effectiveDate();
         this.fxUpdatedAt = quote.fetchedAt();
     }
@@ -399,6 +428,8 @@ public class Asset {
         this.cashCurrency = null;
         this.cashQuantity = null;
         this.fxRatePln = null;
+        this.fxChange24hPercent = null;
+        this.fxChange1mPercent = null;
         this.fxEffectiveDate = null;
         this.fxUpdatedAt = null;
     }
@@ -454,6 +485,8 @@ public class Asset {
         this.stockTaxAmountPln = valuation.estimatedTaxPln();
         this.stockBuyFxRatePln = valuation.buyFxRatePln();
         this.stockChangePercent = quote.changePercent();
+        this.stockChange24hPlnPercent = quote.change24hPlnPercent();
+        this.stockChange1mPlnPercent = quote.change1mPlnPercent();
         this.stockMarketDate = quote.marketDate();
         this.stockMarketTime = quote.marketTime();
         this.stockUpdatedAt = quote.fetchedAt();
@@ -474,6 +507,8 @@ public class Asset {
         this.stockTaxRate = null;
         this.stockTaxAmountPln = null;
         this.stockChangePercent = null;
+        this.stockChange24hPlnPercent = null;
+        this.stockChange1mPlnPercent = null;
         this.stockMarketDate = null;
         this.stockMarketTime = null;
         this.stockUpdatedAt = null;
@@ -640,12 +675,15 @@ public class Asset {
     public BigDecimal getCryptoPricePln() { return cryptoPricePln; }
     public BigDecimal getCryptoPriceUsd() { return cryptoPriceUsd; }
     public BigDecimal getCryptoChange24h() { return cryptoChange24h; }
+    public BigDecimal getCryptoChange1m() { return cryptoChange1m; }
     public Instant getCryptoUpdatedAt() { return cryptoUpdatedAt; }
 
     public boolean isFxPriced() { return fxPriced; }
     public CashCurrency getCashCurrency() { return cashCurrency; }
     public BigDecimal getCashQuantity() { return cashQuantity; }
     public BigDecimal getFxRatePln() { return fxRatePln; }
+    public BigDecimal getFxChange24hPercent() { return fxChange24hPercent; }
+    public BigDecimal getFxChange1mPercent() { return fxChange1mPercent; }
     public LocalDate getFxEffectiveDate() { return fxEffectiveDate; }
     public Instant getFxUpdatedAt() { return fxUpdatedAt; }
 
@@ -663,6 +701,8 @@ public class Asset {
     public BigDecimal getStockTaxRate() { return stockTaxRate; }
     public BigDecimal getStockTaxAmountPln() { return stockTaxAmountPln; }
     public BigDecimal getStockChangePercent() { return stockChangePercent; }
+    public BigDecimal getStockChange24hPlnPercent() { return stockChange24hPlnPercent; }
+    public BigDecimal getStockChange1mPlnPercent() { return stockChange1mPlnPercent; }
     public LocalDate getStockMarketDate() { return stockMarketDate; }
     public String getStockMarketTime() { return stockMarketTime; }
     public Instant getStockUpdatedAt() { return stockUpdatedAt; }

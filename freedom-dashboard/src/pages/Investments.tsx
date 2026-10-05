@@ -8,7 +8,7 @@ import type { MonthlySnapshot } from "../types/MonthlySnapshot";
 import type { MoneyFlowOverview } from "../types/GoalAllocation";
 import type { LiabilityAllocationOverview, LiabilityPortfolioAllocation } from "../types/LiabilityAllocation";
 import type { Liability } from "../types/Liability";
-import type { PortfolioWallet } from "../types/Portfolio";
+import type { PortfolioWallet, ValuationEvent } from "../types/Portfolio";
 import { goalAllocationApi } from "../api/goalAllocationApi";
 import { liabilityAllocationApi } from "../api/liabilityAllocationApi";
 import { liabilityApi } from "../api/liabilityApi";
@@ -75,22 +75,26 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
   const [analysisPrompt, setAnalysisPrompt] = useState<string | null>(null);
   const [analysisPromptMode, setAnalysisPromptMode] = useState<"PERCENT" | "AMOUNT">("PERCENT");
   const [promptCopied, setPromptCopied] = useState(false);
+  const [performancePeriod, setPerformancePeriod] = useState<PerformancePeriod>("24H");
+  const [valuationEvents, setValuationEvents] = useState<ValuationEvent[]>([]);
   const requestId = useRef(0);
 
   const refresh = useCallback(async () => {
     const request = ++requestId.current;
     try {
-      const [nextWallets, nextOverview, nextLiabilityOverview, nextLiabilities] = await Promise.all([
+      const [nextWallets, nextOverview, nextLiabilityOverview, nextLiabilities, nextValuationEvents] = await Promise.all([
         portfolioApi.getAll(),
         goalAllocationApi.getOverview(),
         liabilityAllocationApi.getOverview(),
         liabilityApi.getAll(),
+        portfolioApi.valuations(2000).catch(() => []),
       ]);
       if (request === requestId.current) {
         setWallets(nextWallets);
         setOverview(nextOverview);
         setLiabilityOverview(nextLiabilityOverview);
         setLiabilities(nextLiabilities);
+        setValuationEvents(nextValuationEvents);
         setError("");
       }
     } catch (cause) {
@@ -118,8 +122,6 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
   const fundedLiabilities = groupFundedLiabilities(liabilityOverview, portfolio, wallets);
   const selected = wallets.find(wallet => wallet.id === selectedId);
   const selectedAssets = portfolio.filter(asset => asset.portfolioId === selectedId).sort((a, b) => b.value - a.value);
-  const portfolioMonthChanges = portfolioMonthlyChanges(portfolio, realWallets, monthlySnapshots);
-  const assetMonthChanges = assetMonthlyChanges(portfolio, monthlySnapshots);
   const known = !loading && !error && overview !== null && liabilityOverview !== null;
   const addPortfolio = <button type="button" className="investment-button" onClick={() => setForm("new")}><Plus size={16}/>Dodaj portfel</button>;
 
@@ -240,12 +242,12 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
     <section className="investment-panel portfolios-panel">
       <div className="investment-panel-heading">
         <div className="investment-section-title"><span className="investment-section-icon"><WalletCards size={20}/></span><div><h2>Portfele</h2><p>Twoje strategie inwestycyjne w jednym miejscu.</p></div></div>
-        <div className="investment-toolbar"><button type="button" className="investment-button secondary ai-prompt-toolbar" onClick={openAnalysisPrompt} disabled={!known || !realWallets.length || !portfolio.length} title="Wygeneruj lokalnie prompt do analizy portfeli, celów i zobowiązań — bez wysyłania danych do API"><Sparkles size={15}/>Generuj prompt</button><button type="button" className="investment-button secondary" onClick={() => setCashReconciliationOpen(true)}><Landmark size={15}/>Uzgodnij gotówkę</button><button type="button" className="investment-button secondary transfer-toolbar" onClick={() => setTransfer({})} disabled={!known || portfolio.length < 1}><ArrowRightLeft size={15}/>Transfer</button>{addPortfolio}</div>
+        <div className="investment-toolbar"><div className="performance-period-switch" role="group" aria-label="Okres wyniku aktywów i portfeli" title="Wynik aktywów i portfeli w wybranym okresie. Gotówka PLN jest neutralna (0%)."><span>Wynik</span><button type="button" className={performancePeriod === "24H" ? "active" : ""} aria-pressed={performancePeriod === "24H"} onClick={() => setPerformancePeriod("24H")}>24h</button><button type="button" className={performancePeriod === "1M" ? "active" : ""} aria-pressed={performancePeriod === "1M"} onClick={() => setPerformancePeriod("1M")}>1M</button></div><button type="button" className="investment-button secondary ai-prompt-toolbar" onClick={openAnalysisPrompt} disabled={!known || !realWallets.length || !portfolio.length} title="Wygeneruj lokalnie prompt do analizy portfeli, celów i zobowiązań — bez wysyłania danych do API"><Sparkles size={15}/>Generuj prompt</button><button type="button" className="investment-button secondary" onClick={() => setCashReconciliationOpen(true)}><Landmark size={15}/>Uzgodnij gotówkę</button><button type="button" className="investment-button secondary transfer-toolbar" onClick={() => setTransfer({})} disabled={!known || portfolio.length < 1}><ArrowRightLeft size={15}/>Transfer</button>{addPortfolio}</div>
       </div>
       {loading ? <div className="investment-empty"><LoaderCircle size={20} className="animate-spin"/>Pobieranie portfeli…</div> : !realWallets.length ? <div className="investment-empty">Dodaj pierwszy portfel i nadaj swoim inwestycjom kierunek.</div> :
         <div className="portfolio-cards">{realWallets.map(wallet => {
           const assets = portfolio.filter(asset => asset.portfolioId === wallet.id).sort((a, b) => b.value - a.value);
-          const monthChange = portfolioMonthChanges.get(wallet.id);
+          const walletPerformance = portfolioPerformanceChange(assets, performancePeriod, valuationEvents);
           const progress = wallet.targetAmount ? wallet.grossValue / wallet.targetAmount * 100 : null;
           const breakdown = assets.filter(asset => asset.value > 0).map(asset => ({ id: String(asset.id), name: asset.name, value: asset.value, color: asset.color }));
           const debtReservations = liabilityReservationsForWallet(wallet.id, liabilityOverview, portfolio);
@@ -278,14 +280,14 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
               <div className="portfolio-card-value">
                 <strong>{money(wallet.grossValue)}</strong>
                 <span>{percent(wallet.grossValue, total)} majątku</span>
-                {monthChange != null && Math.abs(monthChange) > 0.005 && <span
-                  className={`portfolio-month-change ${monthChange > 0 ? "positive" : "negative"}`}
-                  title="Zmiana wartości portfela względem ostatniego zamkniętego miesiąca"
-                  aria-label={`Zmiana miesiąc do miesiąca: ${monthChange > 0 ? "wzrost" : "spadek"} ${Math.abs(monthChange).toLocaleString("pl-PL", { maximumFractionDigits: 1 })}%`}
+                {walletPerformance != null ? <span
+                  className={`portfolio-month-change ${changeTone(walletPerformance.value)}`}
+                  title={`Przepływowo-neutralny wynik portfela za ${performancePeriod === "24H" ? "ostatnie 24 godziny" : "około 30 dni"}, liczony z jednostkowych zmian cen/wycen w PLN. Zakupy, sprzedaże i transfery nie są zyskiem. Gotówka PLN jest neutralna. Pokrycie danych: ${walletPerformance.coverage.toLocaleString("pl-PL", { maximumFractionDigits: 0 })}% wartości portfela.`}
+                  aria-label={`Wynik portfela ${performancePeriod === "24H" ? "24 godziny" : "1 miesiąc"}: ${formatChangePercent(walletPerformance.value)}`}
                 >
-                  {monthChange > 0 ? <ArrowUpRight size={12}/> : <ArrowDownRight size={12}/>}
-                  {Math.abs(monthChange).toLocaleString("pl-PL", { maximumFractionDigits: 1 })}%
-                </span>}
+                  {walletPerformance.value > 0.005 ? <ArrowUpRight size={12}/> : walletPerformance.value < -0.005 ? <ArrowDownRight size={12}/> : <span className="performance-neutral-dot" aria-hidden="true">•</span>}
+                  {performancePeriod === "24H" ? "24h" : "1M"} {formatChangePercent(walletPerformance.value)}
+                </span> : assets.some(asset => !isPlnCash(asset)) && <span className="portfolio-month-change neutral" title="Brak wystarczających danych historycznych dla aktywów tego portfela. Freedom nie zamienia braku danych na 0%.">{performancePeriod === "24H" ? "24h" : "1M"} —</span>}
               </div>
               <div className="portfolio-progress-block">
                 <div className="investment-progress" role="progressbar" aria-label={`Cel portfela ${wallet.name}`} aria-valuenow={Math.round(Math.min(100, Math.max(0, progress ?? 0)))} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${Math.min(100, Math.max(0, progress ?? 0))}%` }}/></div>
@@ -293,7 +295,7 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
               </div>
               <div className="portfolio-composition"><Donut rows={breakdown} small/><div className="portfolio-composition-legend">
                 {assets.slice(0, 4).map(asset => {
-                  const change = asset.systemCash ? null : assetLiveChange(asset);
+                  const change = assetPerformanceChange(asset, performancePeriod, valuationEvents);
                   const unallocatedDeficit = asset.systemCash && asset.value < 0;
                   return <div
                     key={asset.id}
@@ -306,7 +308,9 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
                     {!asset.systemCash && <span className="portfolio-drag-grip" aria-hidden="true"><GripVertical size={13}/></span>}
                     <span className="investment-dot" style={{ background: asset.color }}/>
                     <span className="composition-name" title={asset.name}>{unallocatedDeficit ? <><span>Środki nierozdzielone</span><small className="unallocated-deficit-note">DO UZGODNIENIA</small></> : <>{percent(asset.value, wallet.grossValue)}&nbsp; {asset.name}</>}</span>
-                    {change != null && <span title={change.title} className={`asset-change-badge ${change.value >= 0 ? "positive" : "negative"}`}><span className="asset-change-icon">{change.value >= 0 ? <ArrowUpRight size={12}/> : <ArrowDownRight size={12}/>}</span>{formatChangePercent(change.value)}</span>}
+                    {!isPlnCash(asset) && <span className="asset-change-badges">
+                      {change != null ? <span title={change.title} className={`asset-change-badge ${changeTone(change.value)}`}><span className="asset-change-icon">{change.value > 0.005 ? <ArrowUpRight size={12}/> : change.value < -0.005 ? <ArrowDownRight size={12}/> : <span className="performance-neutral-dot" aria-hidden="true">•</span>}</span>{change.label} {formatChangePercent(change.value)}</span> : <span title="Brak wiarygodnej ceny/wyceny porównawczej. Brak danych nie jest traktowany jako 0%." className="asset-change-badge neutral">{performancePeriod === "24H" ? "24h" : "1M"} —</span>}
+                    </span>}
                     <span className={`composition-value ${unallocatedDeficit ? "negative" : ""}`}>{money(asset.value)}</span>
                   </div>;
                 })}
@@ -449,8 +453,7 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
         {managerError && <p className="investment-error" role="alert">{managerError}</p>}
         {!selectedAssets.length && <p className="investment-empty">Ten portfel czeka na pierwsze aktywo.</p>}
         {selectedAssets.map(asset => {
-          const change = asset.systemCash ? null : assetLiveChange(asset);
-          const monthChange = asset.systemCash ? undefined : assetMonthChanges.get(asset.id);
+          const change = assetPerformanceChange(asset, performancePeriod, valuationEvents);
           const unallocatedDeficit = asset.systemCash && asset.value < 0;
           return <div className="managed-asset" key={asset.id}>
             <span className="managed-asset-icon" style={{ color: asset.color }}><AssetIcon iconKey={getAssetIconKey(asset)} size={24}/></span>
@@ -459,11 +462,7 @@ export function Investments({ portfolio, goals, monthlySnapshots, onAddAsset, on
               <strong className={unallocatedDeficit ? "unallocated-deficit-value" : ""}>{money(asset.value)}</strong>
               {unallocatedDeficit && <span className="unallocated-deficit-badge" title="Wydatki bez wskazanego źródła przekroczyły nierozdzielone środki. Uzgodnij stan kont i gotówki, gdy będziesz znać rzeczywiste salda.">DO UZGODNIENIA</span>}
               <div className="managed-asset-changes">
-                {monthChange != null && Math.abs(monthChange) > 0.005 && <span
-                  className={`asset-change-badge large ${monthChange > 0 ? "positive" : "negative"}`}
-                  title="Zmiana wartości tej pozycji w PLN względem ostatniego zamkniętego miesiąca"
-                ><span className="asset-change-icon">{monthChange > 0 ? <ArrowUpRight size={14}/> : <ArrowDownRight size={14}/>}</span>m/m {Math.abs(monthChange).toLocaleString("pl-PL", { maximumFractionDigits: 1 })}%</span>}
-                {change != null && <span title={change.title} className={`asset-change-badge large ${change.value >= 0 ? "positive" : "negative"}`}><span className="asset-change-icon">{change.value >= 0 ? <ArrowUpRight size={14}/> : <ArrowDownRight size={14}/>}</span>{change.label} {formatChangePercent(change.value)}</span>}
+                {!isPlnCash(asset) && (change != null ? <span title={change.title} className={`asset-change-badge large ${changeTone(change.value)}`}><span className="asset-change-icon">{change.value > 0.005 ? <ArrowUpRight size={14}/> : change.value < -0.005 ? <ArrowDownRight size={14}/> : <span className="performance-neutral-dot" aria-hidden="true">•</span>}</span>{change.label} {formatChangePercent(change.value)}</span> : <span title="Brak wiarygodnej ceny/wyceny porównawczej. Brak danych nie jest traktowany jako 0%." className="asset-change-badge large neutral">{performancePeriod === "24H" ? "24h" : "1M"} —</span>)}
               </div>
             </div>
             {!asset.systemCash ? <div className="managed-asset-controls">
@@ -958,82 +957,236 @@ async function copyTextToClipboard(text: string): Promise<void> {
   if (!copied) throw new Error("Nie udało się skopiować promptu.");
 }
 
-function latestClosedSnapshot(snapshots: MonthlySnapshot[]): MonthlySnapshot | null {
-  const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  return snapshots
-    .filter(snapshot => snapshot.month < currentMonth)
-    .sort((a, b) => b.month.localeCompare(a.month))[0] ?? null;
+type PerformancePeriod = "24H" | "1M";
+
+function oneMonthReferenceSnapshot(snapshots: MonthlySnapshot[]): MonthlySnapshot | null {
+  if (!snapshots.length) return null;
+  const target = new Date();
+  target.setHours(0, 0, 0, 0);
+  target.setDate(target.getDate() - 30);
+
+  const withDates = snapshots
+    .map(snapshot => ({ snapshot, date: monthEndDate(snapshot.month) }))
+    .filter((row): row is { snapshot: MonthlySnapshot; date: Date } => row.date != null)
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  const onOrBefore = withDates.filter(row => row.date.getTime() <= target.getTime());
+  if (onOrBefore.length) return onOrBefore[onOrBefore.length - 1].snapshot;
+  return withDates[0]?.snapshot ?? null;
 }
 
-function assetMonthlyChanges(assets: Asset[], snapshots: MonthlySnapshot[]): Map<number, number> {
-  const result = new Map<number, number>();
-  const previous = latestClosedSnapshot(snapshots);
-  if (!previous) return result;
-
-  const previousById = new Map(previous.assets.map(asset => [asset.id, asset.value]));
-  for (const asset of assets) {
-    if (asset.systemCash) continue;
-    const previousValue = previousById.get(asset.id);
-    if (previousValue == null || previousValue <= 0) continue;
-    result.set(asset.id, (asset.value - previousValue) / previousValue * 100);
-  }
-  return result;
+function monthEndDate(month: string): Date | null {
+  const match = /^(\d{4})-(\d{2})$/.exec(month);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]);
+  if (!Number.isInteger(year) || monthIndex < 1 || monthIndex > 12) return null;
+  return new Date(year, monthIndex, 0, 23, 59, 59, 999);
 }
 
-function portfolioMonthlyChanges(assets: Asset[], wallets: PortfolioWallet[], snapshots: MonthlySnapshot[]): Map<number, number> {
-  const result = new Map<number, number>();
-  const previous = latestClosedSnapshot(snapshots);
-  if (!previous) return result;
-
-  const currentAssetById = new Map(assets.map(asset => [asset.id, asset]));
-  for (const wallet of wallets) {
-    const currentValue = assets
-      .filter(asset => asset.portfolioId === wallet.id)
-      .reduce((sum, asset) => sum + asset.value, 0);
-
-    let previousValue = 0;
-    let comparableAssets = 0;
-    for (const snapshotAsset of previous.assets) {
-      const currentAsset = currentAssetById.get(snapshotAsset.id);
-      if (currentAsset?.portfolioId !== wallet.id) continue;
-      previousValue += snapshotAsset.value;
-      comparableAssets += 1;
-    }
-
-    if (comparableAssets === 0 || previousValue <= 0) continue;
-    result.set(wallet.id, (currentValue - previousValue) / previousValue * 100);
-  }
-  return result;
-}
-
-type AssetLiveChange = {
+type AssetPerformanceChange = {
   value: number;
-  label: "24h" | "1d";
+  label: "24h" | "1M";
   title: string;
 };
 
-function assetLiveChange(asset: Asset): AssetLiveChange | null {
-  if (asset.cryptoChange24h != null) return {
-    value: asset.cryptoChange24h,
-    label: "24h",
-    title: "Zmiana ceny w ostatnich 24 godzinach",
+function assetPerformanceChange(
+  asset: Asset,
+  period: PerformancePeriod,
+  valuationEvents: ValuationEvent[]
+): AssetPerformanceChange | null {
+  if (isPlnCash(asset)) return null;
+
+  const label = period === "24H" ? "24h" : "1M";
+
+  if (asset.fxPriced) {
+    const value = period === "24H" ? asset.fxChange24hPercent : asset.fxChange1mPercent;
+    return value == null ? null : {
+      value,
+      label,
+      title: period === "24H"
+        ? `Zmiana wartości 1 ${asset.cashCurrency ?? "jednostki waluty"} w PLN względem poprzedniego notowania`
+        : `Zmiana wartości 1 ${asset.cashCurrency ?? "jednostki waluty"} w PLN: dziś vs około 30 dni temu`,
+    };
+  }
+
+  if (getAssetCategory(asset) === "crypto" && asset.marketPriced) {
+    const value = period === "24H" ? asset.cryptoChange24h : asset.cryptoChange1m;
+    return value == null ? null : {
+      value,
+      label,
+      title: period === "24H"
+        ? `Zmiana ceny 1 ${asset.cryptoSymbol ?? "monety"} w PLN w ostatnich 24 godzinach. Ilość monet nie wpływa na wynik.`
+        : `Zmiana ceny 1 ${asset.cryptoSymbol ?? "monety"} w PLN: cena dziś vs surowa cena historyczna sprzed około 30 dni. Dokupywanie i sprzedaż nie wpływają na wynik.`,
+    };
+  }
+
+  if (asset.stockPriced) {
+    const value = period === "24H" ? asset.stockChange24hPlnPercent : asset.stockChange1mPlnPercent;
+    return value == null ? null : {
+      value,
+      label,
+      title: period === "24H"
+        ? `Zmiana ceny 1 ${asset.stockSymbol ?? "jednostki"} w PLN względem poprzedniej sesji; obejmuje również zmianę kursu ${asset.stockCurrency ?? "waluty"}/PLN.`
+        : `Zmiana ceny 1 ${asset.stockSymbol ?? "jednostki"} w PLN: dziś vs około 30 dni temu; obejmuje również zmianę kursu ${asset.stockCurrency ?? "waluty"}/PLN.`,
+    };
+  }
+
+  if (getAssetCategory(asset) === "bonds") {
+    const value = period === "24H" ? asset.bondChange1dPercent : asset.bondChange1mPercent;
+    const amount = period === "24H" ? asset.bondChange1dAmount : asset.bondChange1mAmount;
+    return value == null ? null : {
+      value,
+      label,
+      title: `${period === "24H" ? "Dobowa" : "30-dniowa"} zmiana wartości brutto obligacji wynikająca z naliczonych odsetek${amount != null ? `: ${amount >= 0 ? "+" : ""}${money(amount)}` : ""}. Szacowany podatek Belki jest pokazywany osobno i nie obniża wskaźnika wyniku.`,
+    };
+  }
+
+  // Metals, real estate and manually valued tangible/other assets do not have a
+  // stable external unit-history endpoint in Freedom. For them we use only
+  // recorded valuation events, never monthly balance snapshots. That means a
+  // transfer, purchase or cash flow cannot masquerade as investment performance.
+  const recorded = recordedMarketChange(
+    asset,
+    valuationEvents,
+    period === "24H" ? 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000,
+  );
+  if (recorded == null) return null;
+
+  return {
+    value: recorded,
+    label,
+    title: period === "24H"
+      ? "Zmiana wyceny jednej pozycji w PLN względem wartości obowiązującej około 24 godziny temu. Przepływy środków nie są liczone jako zysk."
+      : "Zmiana wyceny jednej pozycji w PLN względem wartości obowiązującej około 30 dni temu. Przepływy środków nie są liczone jako zysk.",
   };
-  if (asset.stockChangePercent != null) return {
-    value: asset.stockChangePercent,
-    label: "24h",
-    title: "Zmiana ceny instrumentu względem poprzedniej sesji",
+}
+
+type PortfolioPerformanceChange = {
+  value: number;
+  coverage: number;
+};
+
+function portfolioPerformanceChange(
+  assets: Asset[],
+  period: PerformancePeriod,
+  valuationEvents: ValuationEvent[]
+): PortfolioPerformanceChange | null {
+  if (!assets.length) return null;
+
+  let totalCurrent = 0;
+  let currentKnown = 0;
+  let referenceKnown = 0;
+  let nonCashWithPerformance = 0;
+
+  for (const asset of assets) {
+    const value = Number(asset.value);
+    if (!Number.isFinite(value) || value < 0) continue;
+    totalCurrent += value;
+
+    if (isPlnCash(asset)) {
+      currentKnown += value;
+      referenceKnown += value;
+      continue;
+    }
+
+    const performance = assetPerformanceChange(asset, period, valuationEvents);
+    if (performance == null) continue;
+
+    const factor = 1 + performance.value / 100;
+    if (!Number.isFinite(factor) || factor <= 0.000001) continue;
+
+    currentKnown += value;
+    referenceKnown += value / factor;
+    nonCashWithPerformance += 1;
+  }
+
+  if (nonCashWithPerformance === 0 || referenceKnown <= 0 || totalCurrent <= 0) return null;
+  return {
+    value: (currentKnown - referenceKnown) / referenceKnown * 100,
+    coverage: currentKnown / totalCurrent * 100,
   };
-  if (getAssetCategory(asset) === "bonds" && asset.bondChange1dPercent != null) return {
-    value: asset.bondChange1dPercent,
-    label: "1d",
-    title: `Zmiana wartości netto obligacji od poprzedniego dnia${asset.bondChange1dAmount != null ? `: ${asset.bondChange1dAmount >= 0 ? "+" : ""}${money(asset.bondChange1dAmount)}` : ""}`,
-  };
-  return null;
+}
+
+function isPlnCash(asset: Asset): boolean {
+  if (asset.systemCash) return true;
+  if (getAssetCategory(asset) !== "cash") return false;
+  return !asset.fxPriced || asset.cashCurrency == null || asset.cashCurrency === "PLN";
+}
+
+function recordedMarketChange(asset: Asset, events: ValuationEvent[], periodMs: number): number | null {
+  const now = Date.now();
+  const target = now - periodMs;
+  const allowedReasons = valuationReasonsFor(asset);
+  if (!allowedReasons.size) return null;
+
+  const category = getAssetCategory(asset);
+  if (asset.marketPriced && (category === "metals" || category === "realEstate")) {
+    const hasStructuralRevaluation = events.some(event => {
+      if (event.assetId !== asset.id || event.reason !== "MARKET_REVALUATION") return false;
+      const at = Date.parse(event.createdAt);
+      return Number.isFinite(at) && at >= target;
+    });
+    if (hasStructuralRevaluation) return null;
+  }
+
+  const relevant = events
+    .filter(event => event.assetId === asset.id && allowedReasons.has(event.reason))
+    .map(event => ({ event, at: Date.parse(event.createdAt) }))
+    .filter(row => Number.isFinite(row.at))
+    .sort((a, b) => a.at - b.at);
+
+  if (!relevant.length) return null;
+
+  const firstAfter = relevant.find(row => row.at >= target);
+  const lastBefore = [...relevant].reverse().find(row => row.at <= target);
+  const tolerance = periodMs <= 24 * 60 * 60 * 1000
+    ? 18 * 60 * 60 * 1000
+    : 5 * 24 * 60 * 60 * 1000;
+
+  let base: number | null = null;
+  let distance = Number.POSITIVE_INFINITY;
+
+  if (firstAfter) {
+    const candidate = Number(firstAfter.event.previousValue);
+    if (Number.isFinite(candidate) && candidate > 0) {
+      base = candidate;
+      distance = Math.abs(firstAfter.at - target);
+    }
+  }
+
+  if (lastBefore) {
+    const candidate = Number(lastBefore.event.newValue);
+    const candidateDistance = Math.abs(target - lastBefore.at);
+    if (Number.isFinite(candidate) && candidate > 0 && candidateDistance < distance) {
+      base = candidate;
+      distance = candidateDistance;
+    }
+  }
+
+  if (base == null || distance > tolerance) return null;
+  return (asset.value - base) / base * 100;
+}
+
+function valuationReasonsFor(asset: Asset): Set<string> {
+  const category = getAssetCategory(asset);
+  if (category === "metals" && asset.marketPriced) return new Set(["METAL_SPOT_SYNC"]);
+  if (category === "realEstate" && asset.marketPriced) return new Set(["REAL_ESTATE_RCN_SYNC"]);
+  if (category === "business" || category === "vehicle" || category === "other" || category === "realEstate" || category === "metals") {
+    return new Set(["MARKET_REVALUATION"]);
+  }
+  return new Set();
+}
+
+function changeTone(value: number): "positive" | "negative" | "neutral" {
+  if (value > 0.005) return "positive";
+  if (value < -0.005) return "negative";
+  return "neutral";
 }
 
 function formatChangePercent(value: number): string {
-  return `${value >= 0 ? "+" : ""}${value.toLocaleString("pl-PL", { maximumFractionDigits: 2 })}%`;
+  const normalized = Math.abs(value) < 0.005 ? 0 : value;
+  return `${normalized >= 0 ? "+" : ""}${normalized.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 }
 
 type WalletLiabilityReservation = {

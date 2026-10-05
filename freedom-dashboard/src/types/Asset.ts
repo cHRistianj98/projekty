@@ -63,12 +63,15 @@ export type Asset = {
   cryptoPricePln?: number;
   cryptoPriceUsd?: number;
   cryptoChange24h?: number;
+  cryptoChange1m?: number;
   cryptoUpdatedAt?: string;
 
   fxPriced?: boolean;
   cashCurrency?: CashCurrency;
   cashQuantity?: number;
   fxRatePln?: number;
+  fxChange24hPercent?: number;
+  fxChange1mPercent?: number;
   fxEffectiveDate?: string;
   fxUpdatedAt?: string;
 
@@ -86,6 +89,8 @@ export type Asset = {
   stockTaxRate?: number;
   stockTaxAmountPln?: number;
   stockChangePercent?: number;
+  stockChange24hPlnPercent?: number;
+  stockChange1mPlnPercent?: number;
   stockMarketDate?: string;
   stockMarketTime?: string;
   stockUpdatedAt?: string;
@@ -121,6 +126,8 @@ export type Asset = {
   bondTaxAmount?: number;
   bondChange1dAmount?: number;
   bondChange1dPercent?: number;
+  bondChange1mAmount?: number;
+  bondChange1mPercent?: number;
 };
 
 export const assetCategoryLabels: Record<AssetCategory, string> = {

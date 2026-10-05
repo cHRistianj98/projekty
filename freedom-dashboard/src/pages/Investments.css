@@ -127,6 +127,8 @@
 .composition-row { padding: 6px 8px; border-radius: 10px; background: linear-gradient(90deg, #0d1a2d88, #09122033); border: 1px solid #14304d; }
 .composition-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #d2e5ff; font-weight: 600; }
 .composition-value { font-weight: 700; color: #eef5ff; }
+.asset-change-badges { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.asset-change-badges .asset-change-badge { padding-inline: 6px; font-size: 9px; }
 .asset-change-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; white-space: nowrap; font-size: 10px; font-weight: 800; letter-spacing: .1px; }
 .asset-change-badge.positive { color: #8ff0c7; background: #11362b; border: 1px solid #1f6d52; }
 .asset-change-badge.negative { color: #ffd08a; background: #38230f; border: 1px solid #8c5a20; }
@@ -1019,3 +1021,61 @@
 .transfer-fx-source-line { display: flex; justify-content: space-between; gap: 12px; margin-top: 9px; color: #55718d; font-size: 8px; line-height: 1.45; }
 .transfer-fx-source-line span:last-child { text-align: right; }
 @media (max-width: 650px) { .transfer-fx-source-line { flex-direction: column; } .transfer-fx-source-line span:last-child { text-align: left; } }
+
+/* Performance period switch: one selected horizon drives asset + portfolio badges. */
+.performance-period-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 31px;
+  padding: 3px;
+  border: 1px solid #294764;
+  border-radius: 9px;
+  background: #091727;
+  box-shadow: inset 0 0 18px #06111f;
+}
+.performance-period-switch > span {
+  padding: 0 6px 0 7px;
+  color: #7797b9;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .65px;
+  text-transform: uppercase;
+}
+.performance-period-switch button {
+  min-width: 42px;
+  height: 25px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #91acc8;
+  font-size: 10px;
+  font-weight: 850;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s, box-shadow .15s;
+}
+.performance-period-switch button:hover { color: #dcecff; background: #13273f; }
+.performance-period-switch button.active {
+  color: #dff3ff;
+  border-color: #2f70a7;
+  background: linear-gradient(180deg, #1c446a, #143352);
+  box-shadow: 0 0 0 1px #2d77b52c, inset 0 1px 0 #6fbbff22;
+}
+.portfolio-month-change.neutral,
+.asset-change-badge.neutral {
+  color: #9bb4cf !important;
+  border: 1px solid #36506b;
+  background: #122235;
+}
+.performance-neutral-dot {
+  display: inline-block;
+  line-height: 1;
+  font-size: 12px;
+  transform: translateY(-1px);
+}
+
+@media (max-width: 760px) {
+  .performance-period-switch { order: -1; }
+  .performance-period-switch > span { display: none; }
+}

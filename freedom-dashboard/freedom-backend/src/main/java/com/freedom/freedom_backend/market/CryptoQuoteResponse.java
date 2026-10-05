@@ -10,6 +10,7 @@ public record CryptoQuoteResponse(
         BigDecimal pricePln,
         BigDecimal priceUsd,
         BigDecimal change24h,
+        BigDecimal change1m,
         Instant updatedAt,
         String source
 ) {}

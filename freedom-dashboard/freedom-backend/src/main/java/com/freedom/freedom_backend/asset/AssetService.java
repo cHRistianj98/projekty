@@ -11,6 +11,7 @@ import com.freedom.freedom_backend.market.FxPricingService;
 import com.freedom.freedom_backend.market.FxQuoteResponse;
 import com.freedom.freedom_backend.market.StockPricingService;
 import com.freedom.freedom_backend.market.StockQuoteResponse;
+import com.freedom.freedom_backend.retailbond.RetailBondService;
 import com.freedom.freedom_backend.user.User;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -41,6 +42,7 @@ public class AssetService {
     private final StockPricingService stockPricing;
     private final StockTaxValuationService stockTaxValuation;
     private final RetailBondValuationService retailBondValuation;
+    private final RetailBondService retailBondService;
 
     public AssetService(
             AssetRepository repo,
@@ -52,7 +54,8 @@ public class AssetService {
             FxPricingService fxPricing,
             StockPricingService stockPricing,
             StockTaxValuationService stockTaxValuation,
-            RetailBondValuationService retailBondValuation
+            RetailBondValuationService retailBondValuation,
+            RetailBondService retailBondService
     ) {
         this.repo = repo;
         this.jdbc = jdbc;
@@ -64,16 +67,134 @@ public class AssetService {
         this.stockPricing = stockPricing;
         this.stockTaxValuation = stockTaxValuation;
         this.retailBondValuation = retailBondValuation;
+        this.retailBondService = retailBondService;
     }
 
     @Transactional(readOnly = true)
     public List<AssetResponse> getAllAssets(User u) {
-        return repo.findAllByUserId(u.getId()).stream().map(AssetResponse::from).toList();
+        return repo.findAllByUserId(u.getId()).stream().map(asset -> response(asset, u)).toList();
     }
 
     @Transactional(readOnly = true)
     public AssetResponse getAsset(Long id, User u) {
-        return AssetResponse.from(find(id, u));
+        return response(find(id, u), u);
+    }
+
+    private AssetResponse response(Asset asset, User user) {
+        if (asset.getCategory() != AssetCategory.BONDS) return AssetResponse.from(asset);
+
+        RetailBondService.DailyChange daily = retailBondService.dailyChange(asset.getId(), user);
+        RetailBondService.MonthlyChange monthly = retailBondService.monthlyChange(asset.getId(), user);
+        return AssetResponse.from(
+                asset,
+                daily == null ? null : daily.amount(),
+                daily == null ? null : daily.percent(),
+                monthly == null ? null : monthly.amount(),
+                monthly == null ? null : monthly.percent()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public CashReconciliationResponse getCashReconciliation(User u) {
+        List<CashReconciliationAssetResponse> assets = cashReconciliationAssets(u);
+        BigDecimal total = assets.stream()
+                .map(CashReconciliationAssetResponse::value)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return new CashReconciliationResponse(
+                assets,
+                total,
+                total,
+                BigDecimal.ZERO
+        );
+    }
+
+    public CashReconciliationResponse reconcileCash(CashReconciliationRequest request, User u) {
+        if (request == null || request.balances() == null || request.balances().isEmpty()) {
+            throw new IllegalArgumentException("Podaj co najmniej jedno saldo do uzgodnienia.");
+        }
+
+        List<CashReconciliationAssetResponse> before = cashReconciliationAssets(u);
+        BigDecimal previousTotal = before.stream()
+                .map(CashReconciliationAssetResponse::value)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        Set<Long> seen = new java.util.HashSet<>();
+        for (CashReconciliationItemRequest item : request.balances()) {
+            if (item == null || item.assetId() == null || item.targetValue() == null) {
+                throw new IllegalArgumentException("Nieprawidłowe dane uzgodnienia gotówki.");
+            }
+            if (!seen.add(item.assetId())) {
+                throw new IllegalArgumentException("To samo aktywo występuje w uzgodnieniu więcej niż raz.");
+            }
+
+            CashReconciliationAssetResponse current = before.stream()
+                    .filter(asset -> asset.assetId().equals(item.assetId()))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Wybrane aktywo nie jest saldem gotówkowym PLN albo nie należy do użytkownika."
+                    ));
+
+            BigDecimal target = item.targetValue();
+            if (target.signum() < 0) {
+                throw new IllegalArgumentException("Saldo po uzgodnieniu nie może być ujemne.");
+            }
+            if (target.compareTo(current.reserved()) < 0) {
+                throw new IllegalArgumentException(
+                        "Saldo aktywa „" + current.name() + "” nie może spaść poniżej zarezerwowanej kwoty "
+                                + current.reserved() + " PLN."
+                );
+            }
+
+            BigDecimal delta = target.subtract(current.value());
+            ledger.applyReconciliationAdjustment(current.assetId(), delta, u);
+        }
+
+        List<CashReconciliationAssetResponse> after = cashReconciliationAssets(u);
+        BigDecimal currentTotal = after.stream()
+                .map(CashReconciliationAssetResponse::value)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return new CashReconciliationResponse(
+                after,
+                previousTotal,
+                currentTotal,
+                currentTotal.subtract(previousTotal)
+        );
+    }
+
+    private List<CashReconciliationAssetResponse> cashReconciliationAssets(User u) {
+        List<CashAssetRow> rows = jdbc.query(
+                """
+                SELECT id, name, value, system_cash, portfolio_id
+                FROM assets
+                WHERE user_id=?
+                  AND (
+                        system_cash=TRUE
+                        OR (category='CASH' AND COALESCE(fx_priced,FALSE)=FALSE)
+                  )
+                ORDER BY system_cash DESC, id
+                """,
+                (rs, rowNum) -> new CashAssetRow(
+                        rs.getLong("id"),
+                        rs.getString("name"),
+                        rs.getBigDecimal("value"),
+                        rs.getBoolean("system_cash"),
+                        (Long) rs.getObject("portfolio_id")
+                ),
+                u.getId()
+        );
+
+        return rows.stream()
+                .map(row -> new CashReconciliationAssetResponse(
+                        row.assetId(),
+                        row.name(),
+                        row.value(),
+                        ledger.reserved(row.assetId(), u),
+                        row.systemCash(),
+                        row.portfolioId()
+                ))
+                .toList();
     }
 
     public AssetResponse createAsset(AssetRequest r, User u) {
@@ -99,7 +220,7 @@ public class AssetService {
 
         Asset saved = repo.saveAndFlush(asset);
         ledger.recordAssetCreation(saved.getId(), saved.getValue(), u);
-        return AssetResponse.from(saved);
+        return response(saved, u);
     }
 
     public AssetResponse updateAsset(Long id, AssetRequest r, User u) {
@@ -154,7 +275,7 @@ public class AssetService {
             ledger.clampReservationsForAsset(asset.getId(), u);
         }
 
-        return AssetResponse.from(asset);
+        return response(asset, u);
     }
 
     public void deleteAsset(Long id, User u) {
@@ -594,7 +715,7 @@ public class AssetService {
             ledger.recordValuation(asset.getId(), before, after, user);
         }
         ledger.clampReservationsForAsset(asset.getId(), user);
-        return AssetResponse.from(asset);
+        return response(asset, user);
     }
 
     private BigDecimal zero(BigDecimal value) {
@@ -636,6 +757,14 @@ public class AssetService {
             case OTHER -> "circleDollar";
         };
     }
+
+    private record CashAssetRow(
+            Long assetId,
+            String name,
+            BigDecimal value,
+            boolean systemCash,
+            Long portfolioId
+    ) {}
 
     private enum PricingKind { MANUAL, METAL, CRYPTO, FX, STOCK, REAL_ESTATE }
 

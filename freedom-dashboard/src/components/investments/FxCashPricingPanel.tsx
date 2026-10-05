@@ -120,10 +120,18 @@ export function FxCashPricingPanel({
             ) : error ? (
               <div className="text-rose-300">{error}</div>
             ) : quote ? (
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-5">
                 <div>
                   <span className="text-slate-500">Bieżący kurs FX</span>
                   <div className="mt-1 font-black text-white">1 {quote.currency} = {quote.ratePln.toLocaleString("pl-PL", { minimumFractionDigits: 4, maximumFractionDigits: 4 })} zł</div>
+                </div>
+                <div>
+                  <span className="text-slate-500">24h</span>
+                  <div className={`mt-1 font-black ${(quote.change24hPercent ?? 0) >= 0 ? "text-emerald-300" : "text-amber-300"}`}>{quote.change24hPercent == null ? "—" : `${quote.change24hPercent >= 0 ? "+" : ""}${quote.change24hPercent.toLocaleString("pl-PL", { maximumFractionDigits: 2 })}%`}</div>
+                </div>
+                <div>
+                  <span className="text-slate-500">1 miesiąc</span>
+                  <div className={`mt-1 font-black ${(quote.change1mPercent ?? 0) >= 0 ? "text-emerald-300" : "text-amber-300"}`}>{quote.change1mPercent == null ? "—" : `${quote.change1mPercent >= 0 ? "+" : ""}${quote.change1mPercent.toLocaleString("pl-PL", { maximumFractionDigits: 2 })}%`}</div>
                 </div>
                 <div>
                   <span className="text-slate-500">Wartość w PLN</span>

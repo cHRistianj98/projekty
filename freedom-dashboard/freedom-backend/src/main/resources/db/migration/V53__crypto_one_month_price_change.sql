@@ -1,0 +1,2 @@
+ALTER TABLE assets
+    ADD COLUMN IF NOT EXISTS crypto_change_1m NUMERIC(18, 8);

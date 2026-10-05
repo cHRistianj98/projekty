@@ -3,6 +3,8 @@ package com.freedom.freedom_backend.market;
 import tools.jackson.databind.JsonNode;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -10,6 +12,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -22,13 +26,19 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class CryptoPricingService {
+    private static final Logger log = LoggerFactory.getLogger(CryptoPricingService.class);
     private static final String SOURCE = "CoinGecko";
+    private static final int HISTORICAL_RETRY_ATTEMPTS = 3;
+    private static final long HISTORICAL_RETRY_BASE_DELAY_MS = 900L;
+    private static final long HISTORICAL_REQUEST_GAP_MS = 250L;
 
     private final RestClient client;
     private final Duration cacheTtl;
     private final String demoApiKey;
 
     private final Map<String, CachedQuote> cache = new ConcurrentHashMap<>();
+    private final Map<String, CachedHistoricalPrice> monthBaseCache = new ConcurrentHashMap<>();
+    private static final Duration MONTH_BASE_CACHE_TTL = Duration.ofHours(6);
 
     public CryptoPricingService(
             @Value("${app.market.coingecko-api-base-url:https://api.coingecko.com/api/v3}") String baseUrl,
@@ -71,7 +81,12 @@ public class CryptoPricingService {
 
         for (String id : ids) {
             CachedQuote cached = cache.get(id);
-            if (cached != null && cached.cachedAt().plus(cacheTtl).isAfter(now)) {
+            boolean fresh = cached != null && cached.cachedAt().plus(cacheTtl).isAfter(now);
+
+            // A live quote without 1M is intentionally treated as incomplete.
+            // This makes the next refresh retry the historical lookup instead of
+            // hiding the badge for the whole cache TTL after a transient 429/5xx.
+            if (fresh && cached.quote().change1m() != null) {
                 result.put(id, cached.quote());
             } else {
                 missing.add(id);
@@ -81,9 +96,10 @@ public class CryptoPricingService {
         if (!missing.isEmpty()) {
             try {
                 JsonNode root = requestSimplePrice(missing);
+                Map<String, BigDecimal> monthBasePrices = requestOneMonthBasePrices(missing, now);
                 for (String id : missing) {
                     CoinMeta meta = metadata.get(id);
-                    CryptoQuoteResponse quote = parseQuote(root, id, meta, now);
+                    CryptoQuoteResponse quote = parseQuote(root, id, meta, now, monthBasePrices.get(id));
                     if (quote != null) {
                         cache.put(id, new CachedQuote(quote, now));
                         result.put(id, quote);
@@ -172,11 +188,213 @@ public class CryptoPricingService {
                 .body(JsonNode.class);
     }
 
+
+    private Map<String, BigDecimal> requestOneMonthBasePrices(List<String> ids, Instant now) {
+        Map<String, BigDecimal> result = new LinkedHashMap<>();
+        Instant target = now.minus(Duration.ofDays(30));
+        boolean firstNetworkLookup = true;
+
+        for (String id : ids) {
+            CachedHistoricalPrice cached = monthBaseCache.get(id);
+            if (cached != null && cached.cachedAt().plus(MONTH_BASE_CACHE_TTL).isAfter(now)) {
+                result.put(id, cached.pricePln());
+                continue;
+            }
+
+            // CoinGecko's historical endpoints are per coin. Avoid firing a tight
+            // burst for portfolios with several coins, which can otherwise make
+            // only some 1M badges survive the public/demo API rate limit.
+            if (!firstNetworkLookup) sleepQuietly(HISTORICAL_REQUEST_GAP_MS);
+            firstNetworkLookup = false;
+
+            try {
+                BigDecimal price = fetchHistoricalPricePlnWithFallback(id, target);
+                if (price != null && price.signum() > 0) {
+                    monthBaseCache.put(id, new CachedHistoricalPrice(price, now));
+                    result.put(id, price);
+                } else {
+                    log.warn("CoinGecko nie zwróciło historycznej ceny PLN dla {} około {}.", id, target);
+                }
+            } catch (RuntimeException ex) {
+                // Live pricing must remain usable even when history is temporarily
+                // unavailable. Asset.applyCryptoValuation preserves the last good
+                // 1M value instead of replacing it with null.
+                log.warn("Nie udało się pobrać historycznej ceny 1M dla {}: {}", id, ex.getMessage());
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Primary source: raw market_chart/range data around the exact instant from
+     * 30 days ago. CoinGecko documents this endpoint as [timestamp, price] pairs.
+     * We select the point nearest the target, so Freedom compares one coin today
+     * with one coin ~30 days ago and never uses position value/quantity.
+     *
+     * If the range endpoint is temporarily unavailable, fall back to CoinGecko's
+     * daily /history snapshot for the same UTC date. Both paths return a raw PLN
+     * unit price; the percentage is always calculated locally by Freedom.
+     */
+    private BigDecimal fetchHistoricalPricePlnWithFallback(String id, Instant target) {
+        RuntimeException rangeFailure = null;
+
+        for (int attempt = 1; attempt <= HISTORICAL_RETRY_ATTEMPTS; attempt++) {
+            try {
+                BigDecimal price = fetchHistoricalRangePricePln(id, target);
+                if (price != null && price.signum() > 0) return price;
+                break;
+            } catch (RuntimeException ex) {
+                rangeFailure = ex;
+                if (attempt < HISTORICAL_RETRY_ATTEMPTS) {
+                    sleepQuietly(HISTORICAL_RETRY_BASE_DELAY_MS * attempt);
+                }
+            }
+        }
+
+        // Some smaller coins (for example Nosana) can sporadically return an
+        // empty/limited range response even though CoinGecko has 30d chart data.
+        // Try the regular market_chart endpoint as a second raw-price source.
+        RuntimeException chartFailure = null;
+        for (int attempt = 1; attempt <= HISTORICAL_RETRY_ATTEMPTS; attempt++) {
+            try {
+                BigDecimal price = fetchHistoricalChartPricePln(id, target);
+                if (price != null && price.signum() > 0) return price;
+                break;
+            } catch (RuntimeException ex) {
+                chartFailure = ex;
+                if (attempt < HISTORICAL_RETRY_ATTEMPTS) {
+                    sleepQuietly(HISTORICAL_RETRY_BASE_DELAY_MS * attempt);
+                }
+            }
+        }
+
+        RuntimeException historyFailure = null;
+        for (int attempt = 1; attempt <= HISTORICAL_RETRY_ATTEMPTS; attempt++) {
+            try {
+                BigDecimal price = fetchHistoricalDailyPricePln(id, target);
+                if (price != null && price.signum() > 0) return price;
+                break;
+            } catch (RuntimeException ex) {
+                historyFailure = ex;
+                if (attempt < HISTORICAL_RETRY_ATTEMPTS) {
+                    sleepQuietly(HISTORICAL_RETRY_BASE_DELAY_MS * attempt);
+                }
+            }
+        }
+
+        if (historyFailure != null) throw historyFailure;
+        if (chartFailure != null) throw chartFailure;
+        if (rangeFailure != null) throw rangeFailure;
+        return null;
+    }
+
+    private BigDecimal fetchHistoricalRangePricePln(String id, Instant target) {
+        long from = target.minus(Duration.ofDays(2)).getEpochSecond();
+        long to = target.plus(Duration.ofDays(2)).getEpochSecond();
+
+        JsonNode root = client.get()
+                .uri(uri -> uri.path("/coins/{id}/market_chart/range")
+                        .queryParam("vs_currency", "pln")
+                        .queryParam("from", from)
+                        .queryParam("to", to)
+                        .queryParam("precision", "full")
+                        .build(id))
+                .headers(this::addAuthHeader)
+                .retrieve()
+                .body(JsonNode.class);
+
+        JsonNode prices = root == null ? null : root.path("prices");
+        if (prices == null || !prices.isArray() || prices.size() == 0) return null;
+
+        BigDecimal bestPrice = null;
+        long bestDistance = Long.MAX_VALUE;
+        long targetMillis = target.toEpochMilli();
+
+        for (JsonNode point : prices) {
+            if (!point.isArray() || point.size() < 2) continue;
+            JsonNode tsNode = point.get(0);
+            BigDecimal price = decimal(point.get(1));
+            if (tsNode == null || !tsNode.isNumber() || price == null || price.signum() <= 0) continue;
+
+            long distance = Math.abs(tsNode.longValue() - targetMillis);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestPrice = price;
+            }
+        }
+
+        return bestPrice;
+    }
+
+    private BigDecimal fetchHistoricalChartPricePln(String id, Instant target) {
+        JsonNode root = client.get()
+                .uri(uri -> uri.path("/coins/{id}/market_chart")
+                        .queryParam("vs_currency", "pln")
+                        .queryParam("days", "31")
+                        .queryParam("interval", "hourly")
+                        .queryParam("precision", "full")
+                        .build(id))
+                .headers(this::addAuthHeader)
+                .retrieve()
+                .body(JsonNode.class);
+
+        JsonNode prices = root == null ? null : root.path("prices");
+        if (prices == null || !prices.isArray() || prices.size() == 0) return null;
+
+        BigDecimal bestPrice = null;
+        long bestDistance = Long.MAX_VALUE;
+        long targetMillis = target.toEpochMilli();
+
+        for (JsonNode point : prices) {
+            if (!point.isArray() || point.size() < 2) continue;
+            JsonNode tsNode = point.get(0);
+            BigDecimal price = decimal(point.get(1));
+            if (tsNode == null || !tsNode.isNumber() || price == null || price.signum() <= 0) continue;
+
+            long distance = Math.abs(tsNode.longValue() - targetMillis);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestPrice = price;
+            }
+        }
+
+        return bestPrice;
+    }
+
+    private BigDecimal fetchHistoricalDailyPricePln(String id, Instant target) {
+        // CoinGecko /history expects DD-MM-YYYY. The previous ISO YYYY-MM-DD
+        // fallback was invalid, so once range failed there was no working safety net.
+        String date = target.atZone(ZoneOffset.UTC).toLocalDate()
+                .format(DateTimeFormatter.ofPattern("dd-MM-yyyy"));
+
+        JsonNode root = client.get()
+                .uri(uri -> uri.path("/coins/{id}/history")
+                        .queryParam("date", date)
+                        .queryParam("localization", "false")
+                        .build(id))
+                .headers(this::addAuthHeader)
+                .retrieve()
+                .body(JsonNode.class);
+
+        if (root == null) return null;
+        return decimal(root.path("market_data").path("current_price").get("pln"));
+    }
+
+    private void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(Math.max(0L, millis));
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     private CryptoQuoteResponse parseQuote(
             JsonNode root,
             String id,
             CoinMeta meta,
-            Instant fallbackTime
+            Instant fallbackTime,
+            BigDecimal monthBasePricePln
     ) {
         if (root == null) return null;
         JsonNode node = root.get(id);
@@ -187,6 +405,7 @@ public class CryptoPricingService {
         if (pln == null || pln.signum() <= 0) return null;
 
         BigDecimal change24h = decimal(node.get("pln_24h_change"));
+        BigDecimal change1m = percentageChange(pln, monthBasePricePln);
         long epoch = 0L;
         JsonNode updated = node.get("last_updated_at");
         if (updated != null && updated.canConvertToLong()) epoch = updated.asLong();
@@ -199,7 +418,17 @@ public class CryptoPricingService {
                 ? meta.name().trim()
                 : id;
 
-        return new CryptoQuoteResponse(id, symbol, name, pln, usd, change24h, updatedAt, SOURCE);
+        return new CryptoQuoteResponse(id, symbol, name, pln, usd, change24h, change1m, updatedAt, SOURCE);
+    }
+
+
+    private BigDecimal percentageChange(BigDecimal current, BigDecimal base) {
+        if (current == null || base == null || base.signum() <= 0) return null;
+        return current
+                .subtract(base)
+                .divide(base, 10, RoundingMode.HALF_UP)
+                .multiply(new BigDecimal("100"))
+                .setScale(4, RoundingMode.HALF_UP);
     }
 
     private void addAuthHeader(org.springframework.http.HttpHeaders headers) {
@@ -247,4 +476,5 @@ public class CryptoPricingService {
 
     public record CoinMeta(String symbol, String name) {}
     private record CachedQuote(CryptoQuoteResponse quote, Instant cachedAt) {}
+    private record CachedHistoricalPrice(BigDecimal pricePln, Instant cachedAt) {}
 }

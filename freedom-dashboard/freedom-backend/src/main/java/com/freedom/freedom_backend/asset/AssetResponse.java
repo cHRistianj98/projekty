@@ -26,11 +26,14 @@ public record AssetResponse(
         BigDecimal cryptoPricePln,
         BigDecimal cryptoPriceUsd,
         BigDecimal cryptoChange24h,
+        BigDecimal cryptoChange1m,
         Instant cryptoUpdatedAt,
         boolean fxPriced,
         CashCurrency cashCurrency,
         BigDecimal cashQuantity,
         BigDecimal fxRatePln,
+        BigDecimal fxChange24hPercent,
+        BigDecimal fxChange1mPercent,
         LocalDate fxEffectiveDate,
         Instant fxUpdatedAt,
         boolean stockPriced,
@@ -47,6 +50,8 @@ public record AssetResponse(
         BigDecimal stockTaxRate,
         BigDecimal stockTaxAmountPln,
         BigDecimal stockChangePercent,
+        BigDecimal stockChange24hPlnPercent,
+        BigDecimal stockChange1mPlnPercent,
         LocalDate stockMarketDate,
         String stockMarketTime,
         Instant stockUpdatedAt,
@@ -79,13 +84,21 @@ public record AssetResponse(
         BigDecimal bondTaxRate,
         BigDecimal bondTaxAmount,
         BigDecimal bondChange1dAmount,
-        BigDecimal bondChange1dPercent
+        BigDecimal bondChange1dPercent,
+        BigDecimal bondChange1mAmount,
+        BigDecimal bondChange1mPercent
 ) {
     public static AssetResponse from(Asset a) {
-        return from(a, null, null);
+        return from(a, null, null, null, null);
     }
 
-    public static AssetResponse from(Asset a, BigDecimal bondChange1dAmount, BigDecimal bondChange1dPercent) {
+    public static AssetResponse from(
+            Asset a,
+            BigDecimal bondChange1dAmount,
+            BigDecimal bondChange1dPercent,
+            BigDecimal bondChange1mAmount,
+            BigDecimal bondChange1mPercent
+    ) {
         return new AssetResponse(
                 a.getId(),
                 a.getName(),
@@ -108,11 +121,14 @@ public record AssetResponse(
                 a.getCryptoPricePln(),
                 a.getCryptoPriceUsd(),
                 a.getCryptoChange24h(),
+                a.getCryptoChange1m(),
                 a.getCryptoUpdatedAt(),
                 a.isFxPriced(),
                 a.getCashCurrency(),
                 a.getCashQuantity(),
                 a.getFxRatePln(),
+                a.getFxChange24hPercent(),
+                a.getFxChange1mPercent(),
                 a.getFxEffectiveDate(),
                 a.getFxUpdatedAt(),
                 a.isStockPriced(),
@@ -129,6 +145,8 @@ public record AssetResponse(
                 a.getStockTaxRate(),
                 a.getStockTaxAmountPln(),
                 a.getStockChangePercent(),
+                a.getStockChange24hPlnPercent(),
+                a.getStockChange1mPlnPercent(),
                 a.getStockMarketDate(),
                 a.getStockMarketTime(),
                 a.getStockUpdatedAt(),
@@ -161,7 +179,9 @@ public record AssetResponse(
                 a.getBondTaxRate(),
                 a.getBondTaxAmount(),
                 bondChange1dAmount,
-                bondChange1dPercent
+                bondChange1dPercent,
+                bondChange1mAmount,
+                bondChange1mPercent
         );
     }
 }

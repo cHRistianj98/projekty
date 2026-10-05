@@ -337,6 +337,27 @@ public class RetailBondService {
     }
 
     public DailyChange dailyChange(Long assetId, User user) {
+        Change change = changeOverDays(assetId, user, 1, false);
+        return change == null ? null : new DailyChange(change.amount(), change.percent());
+    }
+
+    /**
+     * Rolling ~30 day return for retail Treasury bonds.
+     *
+     * Inside one interest period we reconstruct the value exactly from the same
+     * valuation model that powers the current bond value. When the 30-day window
+     * crosses an interest-period boundary (notably ROR/DOR), the database does not
+     * retain the previous period's historical rate/base. In that case we use a
+     * conservative gross accrual estimate from the current annual rate. The badge
+     * describes market/accrual performance; estimated Belka tax remains a separate
+     * valuation field and is not treated as a daily performance drag.
+     */
+    public MonthlyChange monthlyChange(Long assetId, User user) {
+        Change change = changeOverDays(assetId, user, 30, true);
+        return change == null ? null : new MonthlyChange(change.amount(), change.percent());
+    }
+
+    private Change changeOverDays(Long assetId, User user, int days, boolean allowBoundaryEstimate) {
         bondAsset(assetId, user);
         List<PositionRow> rows = positions(assetId, user.getId());
         if (rows.isEmpty()) return null;
@@ -346,52 +367,67 @@ public class RetailBondService {
             return null;
         }
 
-        BigDecimal currentNet = BigDecimal.ZERO;
-        BigDecimal previousNet = BigDecimal.ZERO;
+        BigDecimal currentGross = BigDecimal.ZERO;
+        BigDecimal previousGross = BigDecimal.ZERO;
         for (PositionRow row : rows) {
-            BigDecimal previous = previousDayNetValue(row);
+            BigDecimal previous = previousGrossValue(row, days, allowBoundaryEstimate);
             if (previous == null) return null;
-            currentNet = currentNet.add(row.currentNetValue());
-            previousNet = previousNet.add(previous);
+            currentGross = currentGross.add(row.currentGrossValue());
+            previousGross = previousGross.add(previous);
         }
 
-        if (previousNet.signum() <= 0) return null;
-        BigDecimal amount = currentNet.subtract(previousNet).setScale(2, RoundingMode.HALF_UP);
+        if (previousGross.signum() <= 0) return null;
+        BigDecimal amount = currentGross.subtract(previousGross).setScale(2, RoundingMode.HALF_UP);
         BigDecimal percent = amount
                 .multiply(new BigDecimal("100"))
-                .divide(previousNet, 4, RoundingMode.HALF_UP);
-        return new DailyChange(amount, percent);
+                .divide(previousGross, 4, RoundingMode.HALF_UP);
+        return new Change(amount, percent);
     }
 
-    private BigDecimal previousDayNetValue(PositionRow row) {
-        LocalDate previousDate = row.valuationDate().minusDays(1);
+    private BigDecimal previousGrossValue(PositionRow row, int days, boolean allowBoundaryEstimate) {
+        LocalDate previousDate = row.valuationDate().minusDays(days);
         if (previousDate.isBefore(row.purchaseDate())) return null;
         if (row.currentRate() == null || row.currentPeriod() == null || row.periodBasePerBond() == null) return null;
 
         RetailBondProduct product = RetailBondProduct.fromEmission(row.emissionCode());
         int previousPeriod = periodForDate(row.purchaseDate(), previousDate, product);
-        if (previousPeriod != row.currentPeriod()) {
-            // Na granicy okresu potrzebowalibyśmy historycznej stopy/bazy poprzedniego okresu.
-            // Zamiast zgadywać, nie pokazujemy zmiany przez ten jeden dzień.
+        if (previousPeriod == row.currentPeriod()) {
+            return calculate(
+                    row.emissionCode(),
+                    row.quantity(),
+                    row.availableQuantity(),
+                    row.blockedQuantity(),
+                    row.nominalValue(),
+                    row.purchaseDate(),
+                    row.maturityDate(),
+                    previousDate,
+                    row.currentRate(),
+                    row.currentPeriod(),
+                    row.periodBasePerBond()
+            ).grossValue();
+        }
+
+        if (!allowBoundaryEstimate) {
+            // For 24h we prefer no value over inventing a previous-period daily rate.
             return null;
         }
 
-        return calculate(
-                row.emissionCode(),
-                row.quantity(),
-                row.availableQuantity(),
-                row.blockedQuantity(),
-                row.nominalValue(),
-                row.purchaseDate(),
-                row.maturityDate(),
-                previousDate,
-                row.currentRate(),
-                row.currentPeriod(),
-                row.periodBasePerBond()
-        ).netValue();
+        // ROR/DOR can cross a monthly interest-period boundary inside a 30-day window.
+        // We do not persist the previous period's rate, so approximate the gross rolling
+        // return with the current annual rate. Tax is deliberately not deducted here.
+        BigDecimal growth = row.currentRate()
+                .divide(new BigDecimal("100"), 12, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(days))
+                .divide(new BigDecimal("365"), 12, RoundingMode.HALF_UP);
+        BigDecimal factor = BigDecimal.ONE.add(growth);
+        if (factor.signum() <= 0) return null;
+        return row.currentGrossValue()
+                .divide(factor, 2, RoundingMode.HALF_UP);
     }
 
     public record DailyChange(BigDecimal amount, BigDecimal percent) {}
+    public record MonthlyChange(BigDecimal amount, BigDecimal percent) {}
+    private record Change(BigDecimal amount, BigDecimal percent) {}
 
     private void validateTradableQuantity(PositionRow row, int quantity) {
         if (quantity <= 0) throw new IllegalArgumentException("Liczba obligacji musi być większa od zera.");
