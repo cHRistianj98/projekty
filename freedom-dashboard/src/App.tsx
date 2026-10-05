@@ -1267,15 +1267,13 @@ function App() {
   path="/analytics"
   element={
     <Analytics
-      monthlyBudget={
-        monthlyBudget
-      }
-      netWorthHistory={
-        netWorthHistory
-      }
-      netWorth={
-        netWorth
-      }
+      monthlyBudget={monthlyBudget}
+      netWorthHistory={netWorthHistory}
+      netWorth={netWorth}
+      portfolio={portfolio}
+      goals={goals}
+      liabilities={liabilities}
+      monthlySnapshots={monthlySnapshots}
     />
   }
 />

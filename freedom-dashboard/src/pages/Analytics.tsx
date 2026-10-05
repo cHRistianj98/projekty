@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -7,17 +7,30 @@ import {
   CircleDollarSign,
   Gauge,
   PiggyBank,
+  Target,
+  Landmark,
+  TrendingDown,
   TrendingUp,
   WalletCards,
 } from "lucide-react";
 
 import type { Expense, ExpenseCategory, Income, MonthlyBudget } from "../types/Cashflow";
 import type { NetWorthSnapshot } from "../types/NetWorthHistory";
+import type { Asset } from "../types/Asset";
+import type { Goal } from "../types/Goal";
+import type { Liability } from "../types/Liability";
+import type { MonthlySnapshot } from "../types/MonthlySnapshot";
+import type { PortfolioWallet } from "../types/Portfolio";
+import { portfolioApi } from "../api/portfolioApi";
 
 type AnalyticsProps = {
   monthlyBudget: MonthlyBudget;
   netWorthHistory: NetWorthSnapshot[];
   netWorth: number;
+  portfolio: Asset[];
+  goals: Goal[];
+  liabilities: Liability[];
+  monthlySnapshots: MonthlySnapshot[];
 };
 
 type Period = 6 | 12 | 24;
@@ -36,6 +49,11 @@ type MonthData = {
 type NetWorthPoint = { date: string; label: string; value: number };
 type IncomeAnomaly = { transaction: Income; reason: string };
 
+type TrendSeries = { id: string; name: string; color: string; currentValue: number; meta?: string };
+type TrendPoint = { month: string; label: string; values: Record<string, number | null> };
+
+const trendPalette = ["#3b82f6", "#8b5cf6", "#10b981", "#f59e0b", "#06b6d4", "#f97316", "#ec4899", "#84cc16", "#14b8a6"];
+
 const categoryLabels: Record<ExpenseCategory, string> = {
   fixed: "Stałe",
   living: "Życie",
@@ -50,8 +68,21 @@ const categoryColors: Record<ExpenseCategory, string> = {
   goal: "#f59e0b",
 };
 
-export function Analytics({ monthlyBudget, netWorthHistory, netWorth }: AnalyticsProps) {
+export function Analytics({ monthlyBudget, netWorthHistory, netWorth, portfolio, goals, liabilities, monthlySnapshots }: AnalyticsProps) {
   const [period, setPeriod] = useState<Period>(12);
+  const [wallets, setWallets] = useState<PortfolioWallet[]>([]);
+  const [walletsError, setWalletsError] = useState("");
+  const [hiddenPortfolioSeries, setHiddenPortfolioSeries] = useState<Set<string>>(() => new Set());
+  const [hiddenGoalSeries, setHiddenGoalSeries] = useState<Set<string>>(() => new Set());
+  const [hiddenLiabilitySeries, setHiddenLiabilitySeries] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    portfolioApi.getAll()
+      .then((loaded) => { if (!cancelled) { setWallets(loaded); setWalletsError(""); } })
+      .catch((error) => { if (!cancelled) { console.error("Nie udało się pobrać portfeli do Analytics:", error); setWalletsError("Nie udało się pobrać nazw portfeli."); } });
+    return () => { cancelled = true; };
+  }, [portfolio]);
 
   const months = useMemo(
     () => buildMonthlyAnalytics(monthlyBudget, period),
@@ -88,6 +119,19 @@ export function Analytics({ monthlyBudget, netWorthHistory, netWorth }: Analytic
   );
   const netWorthChange = calculateNetWorthChange(netWorthPoints);
   const incomeAnomalies = useMemo(() => detectIncomeAnomalies(periodIncomes), [periodIncomes]);
+
+  const portfolioTrend = useMemo(
+    () => buildPortfolioTrend(monthKeys, monthlySnapshots, portfolio, wallets),
+    [monthKeys, monthlySnapshots, portfolio, wallets]
+  );
+  const goalTrend = useMemo(
+    () => buildGoalTrend(monthKeys, monthlySnapshots, goals),
+    [monthKeys, monthlySnapshots, goals]
+  );
+  const liabilityTrend = useMemo(
+    () => buildLiabilityTrend(monthKeys, monthlySnapshots, liabilities),
+    [monthKeys, monthlySnapshots, liabilities]
+  );
 
   const currentMonth = months[months.length - 1];
   const previousMonth = months[months.length - 2];
@@ -132,6 +176,96 @@ export function Analytics({ monthlyBudget, netWorthHistory, netWorth }: Analytic
         } />
         <div className="mt-6"><NetWorthChart points={netWorthPoints} /></div>
       </Panel>
+
+      <Panel className="mt-5">
+        <PanelHeader
+          eyebrow="PORTFOLIOS // CAPITAL"
+          title="Portfele w czasie"
+          subtitle={`Wartość portfeli · ostatnie ${period} miesięcy`}
+          right={<div className="flex items-center gap-2 text-xs text-slate-500"><Landmark size={15} className="text-blue-400" />{walletsError || `${portfolioTrend.series.length} portfeli`}</div>}
+        />
+        <div className="mt-5">
+          <SeriesPicker
+            series={portfolioTrend.series}
+            hidden={hiddenPortfolioSeries}
+            onToggle={(id) => setHiddenPortfolioSeries((current) => toggleSet(current, id))}
+          />
+        </div>
+        <div className="mt-5">
+          <MultiTrendChart
+            points={portfolioTrend.points}
+            series={portfolioTrend.series}
+            hidden={hiddenPortfolioSeries}
+            valueLabel="WARTOŚĆ PORTFELA (PLN)"
+            formatValue={formatMoney}
+            formatAxis={formatAxisMoney}
+          />
+        </div>
+        <TrendSummaryCards series={portfolioTrend.series} points={portfolioTrend.points} hidden={hiddenPortfolioSeries} mode="money" />
+        <p className="mt-4 text-[10px] leading-5 text-slate-600">
+          Historia portfeli jest odtwarzana ze snapshotów aktywów według ich obecnego przypisania do portfeli. Po przeniesieniu aktywa między portfelami starsze punkty mogą zostać przypisane do jego obecnego portfela.
+        </p>
+      </Panel>
+
+      <section className="mt-5 grid grid-cols-1 gap-5 2xl:grid-cols-2">
+        <Panel>
+          <PanelHeader
+            eyebrow="GOALS // PROGRESS"
+            title="Cele w czasie"
+            subtitle="Tempo realizacji celów finansowych"
+            right={<div className="flex items-center gap-2 text-xs text-slate-500"><Target size={15} className="text-violet-400" />Postęp %</div>}
+          />
+          <div className="mt-5">
+            <SeriesPicker
+              series={goalTrend.series}
+              hidden={hiddenGoalSeries}
+              onToggle={(id) => setHiddenGoalSeries((current) => toggleSet(current, id))}
+            />
+          </div>
+          <div className="mt-5">
+            <MultiTrendChart
+              points={goalTrend.points}
+              series={goalTrend.series}
+              hidden={hiddenGoalSeries}
+              valueLabel="REALIZACJA CELU (%)"
+              formatValue={(value) => `${value.toFixed(1)}%`}
+              formatAxis={(value) => `${Math.round(value)}%`}
+              fixedMin={0}
+              fixedMax={100}
+              guide={{ value: 100, label: "CEL 100%" }}
+            />
+          </div>
+          <TrendSummaryCards series={goalTrend.series} points={goalTrend.points} hidden={hiddenGoalSeries} mode="percent" />
+        </Panel>
+
+        <Panel>
+          <PanelHeader
+            eyebrow="LIABILITIES // DEBT"
+            title="Zobowiązania w czasie"
+            subtitle="Malejące saldo oznacza postęp"
+            right={<div className="flex items-center gap-2 text-xs text-slate-500"><TrendingDown size={15} className="text-emerald-400" />Pozostałe saldo</div>}
+          />
+          <div className="mt-5">
+            <SeriesPicker
+              series={liabilityTrend.series}
+              hidden={hiddenLiabilitySeries}
+              onToggle={(id) => setHiddenLiabilitySeries((current) => toggleSet(current, id))}
+            />
+          </div>
+          <div className="mt-5">
+            <MultiTrendChart
+              points={liabilityTrend.points}
+              series={liabilityTrend.series}
+              hidden={hiddenLiabilitySeries}
+              valueLabel="POZOSTAŁE ZADŁUŻENIE (PLN)"
+              formatValue={formatMoney}
+              formatAxis={formatAxisMoney}
+              invertGood
+            />
+          </div>
+          <TrendSummaryCards series={liabilityTrend.series} points={liabilityTrend.points} hidden={hiddenLiabilitySeries} mode="debt" />
+        </Panel>
+      </section>
 
       <section className="mt-5 grid grid-cols-1 gap-5 2xl:grid-cols-5">
         <Panel className="2xl:col-span-3">
@@ -204,6 +338,111 @@ function Metric({ label, value, subtitle, icon, tone }: { label: string; value: 
 
 function ChartLegend({ items }: { items: { label: string; color: string }[] }) {
   return <div className="flex flex-wrap gap-4 text-xs text-slate-500">{items.map(item => <div key={item.label} className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full" style={{background:item.color}} />{item.label}</div>)}</div>;
+}
+
+
+function SeriesPicker({ series, hidden, onToggle }: { series: TrendSeries[]; hidden: Set<string>; onToggle: (id: string) => void }) {
+  if (!series.length) return <p className="text-xs text-slate-600">Brak serii do pokazania.</p>;
+  return <div className="flex flex-wrap gap-2">
+    {series.map((item) => {
+      const isHidden = hidden.has(item.id);
+      return <button
+        key={item.id}
+        type="button"
+        onClick={() => onToggle(item.id)}
+        className={`cursor-pointer rounded-xl border px-3 py-2 text-xs font-bold transition ${isHidden ? "border-slate-800 bg-slate-950/30 text-slate-600" : "border-slate-700 bg-slate-900/70 text-slate-200 hover:border-slate-600"}`}
+      >
+        <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full align-middle" style={{ background: isHidden ? "#334155" : item.color }} />
+        {item.name}
+      </button>;
+    })}
+  </div>;
+}
+
+function MultiTrendChart({
+  points,
+  series,
+  hidden,
+  valueLabel,
+  formatValue,
+  formatAxis,
+  fixedMin,
+  fixedMax,
+  guide,
+}: {
+  points: TrendPoint[];
+  series: TrendSeries[];
+  hidden: Set<string>;
+  valueLabel: string;
+  formatValue: (value: number) => string;
+  formatAxis: (value: number) => string;
+  fixedMin?: number;
+  fixedMax?: number;
+  guide?: { value: number; label: string };
+  invertGood?: boolean;
+}) {
+  const visible = series.filter((item) => !hidden.has(item.id));
+  const availableValues = points.flatMap((point) => visible.map((item) => point.values[item.id]).filter((value): value is number => value != null && Number.isFinite(value)));
+  if (!visible.length) return <EmptyState text="Włącz co najmniej jedną serię." />;
+  if (!availableValues.length || points.length < 2) return <EmptyState text="Za mało historii. Zamknij co najmniej jeden miesiąc, aby zobaczyć trend." />;
+
+  const width = 1080, height = 330, left = 86, right = 24, top = 24, bottom = 54;
+  const rawMin = fixedMin ?? Math.min(...availableValues, guide?.value ?? Infinity);
+  const rawMax = fixedMax ?? Math.max(...availableValues, guide?.value ?? -Infinity);
+  const rawRange = Math.max(rawMax - rawMin, 1);
+  const pad = fixedMin != null || fixedMax != null ? 0 : Math.max(rawRange * 0.12, rawMax * 0.025, 1);
+  const min = fixedMin ?? Math.max(0, rawMin - pad);
+  const max = fixedMax ?? rawMax + pad;
+  const range = Math.max(max - min, 1);
+  const x = (index: number) => left + (index / Math.max(points.length - 1, 1)) * (width - left - right);
+  const y = (value: number) => top + ((max - value) / range) * (height - top - bottom);
+  const ticks = 5;
+
+  return <div className="overflow-x-auto"><svg viewBox={`0 0 ${width} ${height}`} className="h-[330px] min-w-[760px] w-full" role="img" aria-label={valueLabel}>
+    {Array.from({ length: ticks + 1 }, (_, index) => {
+      const value = max - (index / ticks) * range;
+      const yy = y(value);
+      return <g key={index}><line x1={left} x2={width - right} y1={yy} y2={yy} stroke="#1e293b" /><text x={left - 12} y={yy + 4} textAnchor="end" fill="#64748b" fontSize="11">{formatAxis(value)}</text></g>;
+    })}
+    {guide && guide.value >= min && guide.value <= max && <g><line x1={left} x2={width-right} y1={y(guide.value)} y2={y(guide.value)} stroke="#475569" strokeDasharray="6 6"/><text x={width-right-4} y={y(guide.value)-7} textAnchor="end" fill="#64748b" fontSize="10">{guide.label}</text></g>}
+    {visible.map((item) => {
+      const groups: { x: number; y: number; point: TrendPoint; value: number }[][] = [];
+      let current: { x: number; y: number; point: TrendPoint; value: number }[] = [];
+      points.forEach((point, index) => {
+        const value = point.values[item.id];
+        if (value == null || !Number.isFinite(value)) {
+          if (current.length) groups.push(current);
+          current = [];
+        } else current.push({ x: x(index), y: y(value), point, value });
+      });
+      if (current.length) groups.push(current);
+      return <g key={item.id}>
+        {groups.map((group, groupIndex) => group.length > 1 ? <polyline key={groupIndex} points={group.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke={item.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /> : null)}
+        {groups.flat().map((entry, index) => <circle key={index} cx={entry.x} cy={entry.y} r="4" fill={item.color} stroke="#0b1322" strokeWidth="2"><title>{`${item.name} · ${entry.point.label}: ${formatValue(entry.value)}`}</title></circle>)}
+      </g>;
+    })}
+    {points.map((point, index) => <text key={point.month} x={x(index)} y={height - 22} textAnchor="middle" fill="#64748b" fontSize="11">{point.label}</text>)}
+    <text x="17" y={height / 2} fill="#475569" fontSize="10" transform={`rotate(-90 17 ${height / 2})`} textAnchor="middle">{valueLabel}</text>
+  </svg></div>;
+}
+
+function TrendSummaryCards({ series, points, hidden, mode }: { series: TrendSeries[]; points: TrendPoint[]; hidden: Set<string>; mode: "money" | "percent" | "debt" }) {
+  const visible = series.filter((item) => !hidden.has(item.id));
+  if (!visible.length) return null;
+  return <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+    {visible.map((item) => {
+      const values = points.map((point) => point.values[item.id]).filter((value): value is number => value != null && Number.isFinite(value));
+      const first = values[0];
+      const last = values[values.length - 1] ?? item.currentValue;
+      const change = values.length >= 2 ? last - first : null;
+      const good = change == null ? null : mode === "debt" ? change <= 0 : change >= 0;
+      return <div key={item.id} className="rounded-xl border border-slate-800 bg-slate-950/25 p-3">
+        <div className="flex items-center justify-between gap-3"><div className="min-w-0 flex items-center gap-2"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: item.color }}/><span className="truncate text-xs font-bold text-slate-300">{item.name}</span></div>{change != null && <span className={`shrink-0 text-[10px] font-black ${good ? "text-emerald-400" : "text-orange-400"}`}>{mode === "percent" ? `${change >= 0 ? "+" : ""}${change.toFixed(1)} pp` : formatSignedMoney(change)}</span>}</div>
+        <p className="mt-2 text-base font-black text-white">{mode === "percent" ? `${last.toFixed(1)}%` : formatMoney(last)}</p>
+        {item.meta && <p className="mt-1 truncate text-[10px] text-slate-600">{item.meta}</p>}
+      </div>;
+    })}
+  </div>;
 }
 
 function NetWorthChart({ points }: { points: NetWorthPoint[] }) {
@@ -299,6 +538,153 @@ function AnomalyBanner({ anomalies }: { anomalies: IncomeAnomaly[] }) {
 }
 
 function EmptyState({text}:{text:string}) { return <div className="rounded-xl border border-dashed border-slate-700 p-8 text-center text-sm text-slate-500">{text}</div>; }
+
+
+function toggleSet(current: Set<string>, id: string) {
+  const next = new Set(current);
+  if (next.has(id)) next.delete(id); else next.add(id);
+  return next;
+}
+
+function buildPortfolioTrend(monthKeys: string[], snapshots: MonthlySnapshot[], assets: Asset[], wallets: PortfolioWallet[]) {
+  const currentMonth = getCurrentMonth();
+  const visibleWallets = wallets.filter((wallet) => wallet.type !== "GOALS");
+  const assetsByWallet = new Map<number, Asset[]>();
+  visibleWallets.forEach((wallet) => assetsByWallet.set(wallet.id, []));
+  assets.forEach((asset) => {
+    if (asset.portfolioId == null) return;
+    const bucket = assetsByWallet.get(asset.portfolioId);
+    if (bucket) bucket.push(asset);
+  });
+
+  const series: TrendSeries[] = visibleWallets
+    .map((wallet, index) => {
+      const walletAssets = assetsByWallet.get(wallet.id) ?? [];
+      return {
+        id: String(wallet.id),
+        name: wallet.name,
+        color: wallet.color || trendPalette[index % trendPalette.length],
+        currentValue: walletAssets.reduce((sum, asset) => sum + asset.value, 0),
+        meta: `${walletAssets.length} ${walletAssets.length === 1 ? "aktywo" : "aktywów"}`,
+      };
+    })
+    .filter((item) => item.currentValue !== 0 || monthKeys.some((month) => snapshots.some((snapshot) => snapshot.month === month)));
+
+  const portfolioByAssetId = new Map<number, number>();
+  assets.forEach((asset) => { if (asset.portfolioId != null) portfolioByAssetId.set(asset.id, asset.portfolioId); });
+  const snapshotsByMonth = new Map(snapshots.map((snapshot) => [snapshot.month, snapshot]));
+
+  const points: TrendPoint[] = monthKeys.map((month) => {
+    const values: Record<string, number | null> = {};
+    if (month === currentMonth) {
+      series.forEach((item) => { values[item.id] = item.currentValue; });
+    } else {
+      const snapshot = snapshotsByMonth.get(month);
+      series.forEach((item) => { values[item.id] = snapshot ? 0 : null; });
+      snapshot?.assets.forEach((asset) => {
+        const walletId = portfolioByAssetId.get(asset.id);
+        if (walletId == null) return;
+        const key = String(walletId);
+        if (!(key in values) || values[key] == null) return;
+        values[key] = (values[key] ?? 0) + asset.value;
+      });
+    }
+    return { month, label: formatMonthShort(month), values };
+  });
+
+  return { series, points };
+}
+
+function buildGoalTrend(monthKeys: string[], snapshots: MonthlySnapshot[], goals: Goal[]) {
+  const currentMonth = getCurrentMonth();
+  const snapshotsByMonth = new Map(snapshots.map((snapshot) => [snapshot.month, snapshot]));
+  const historical = snapshots
+    .filter((snapshot) => monthKeys.includes(snapshot.month))
+    .flatMap((snapshot) => snapshot.goals);
+  const ids = [...new Set([...goals.map((goal) => goal.id), ...historical.map((goal) => goal.id)])];
+
+  const series: TrendSeries[] = ids.map((id, index) => {
+    const current = goals.find((goal) => goal.id === id);
+    const lastHistorical = [...historical].reverse().find((goal) => goal.id === id);
+    const source = current ?? lastHistorical;
+    const target = source?.targetAmount ?? 0;
+    const amount = current?.currentAmount ?? lastHistorical?.currentAmount ?? 0;
+    return {
+      id: String(id),
+      name: source?.name ?? `Cel #${id}`,
+      color: current?.color ?? trendPalette[(index + 2) % trendPalette.length],
+      currentValue: target > 0 ? Math.max(0, Math.min(100, amount / target * 100)) : 0,
+      meta: target > 0 ? `${formatMoney(amount)} / ${formatMoney(target)}` : undefined,
+    };
+  });
+
+  const points: TrendPoint[] = monthKeys.map((month) => {
+    const values: Record<string, number | null> = {};
+    if (month === currentMonth) {
+      series.forEach((item) => {
+        const current = goals.find((goal) => String(goal.id) === item.id);
+        values[item.id] = current && current.targetAmount > 0
+          ? Math.max(0, Math.min(100, current.currentAmount / current.targetAmount * 100))
+          : null;
+      });
+    } else {
+      const snapshot = snapshotsByMonth.get(month);
+      series.forEach((item) => {
+        const goal = snapshot?.goals.find((candidate) => String(candidate.id) === item.id);
+        values[item.id] = goal && goal.targetAmount > 0
+          ? Math.max(0, Math.min(100, goal.currentAmount / goal.targetAmount * 100))
+          : null;
+      });
+    }
+    return { month, label: formatMonthShort(month), values };
+  });
+
+  return { series, points };
+}
+
+function buildLiabilityTrend(monthKeys: string[], snapshots: MonthlySnapshot[], liabilities: Liability[]) {
+  const currentMonth = getCurrentMonth();
+  const snapshotsByMonth = new Map(snapshots.map((snapshot) => [snapshot.month, snapshot]));
+  const historical = snapshots
+    .filter((snapshot) => monthKeys.includes(snapshot.month))
+    .flatMap((snapshot) => snapshot.liabilities);
+  const ids = [...new Set([...liabilities.map((liability) => liability.id), ...historical.map((liability) => liability.id)])];
+
+  const series: TrendSeries[] = ids.map((id, index) => {
+    const current = liabilities.find((liability) => liability.id === id);
+    const lastHistorical = [...historical].reverse().find((liability) => liability.id === id);
+    const source = current ?? lastHistorical;
+    const remaining = current?.remainingAmount ?? lastHistorical?.remainingAmount ?? 0;
+    const original = current?.originalAmount ?? lastHistorical?.originalAmount ?? 0;
+    const paid = original > 0 ? Math.max(0, Math.min(100, (1 - remaining / original) * 100)) : 0;
+    return {
+      id: String(id),
+      name: source?.name ?? `Zobowiązanie #${id}`,
+      color: trendPalette[(index + 4) % trendPalette.length],
+      currentValue: remaining,
+      meta: original > 0 ? `Spłacono ${paid.toFixed(1)}%` : undefined,
+    };
+  });
+
+  const points: TrendPoint[] = monthKeys.map((month) => {
+    const values: Record<string, number | null> = {};
+    if (month === currentMonth) {
+      series.forEach((item) => {
+        const current = liabilities.find((liability) => String(liability.id) === item.id);
+        values[item.id] = current?.remainingAmount ?? null;
+      });
+    } else {
+      const snapshot = snapshotsByMonth.get(month);
+      series.forEach((item) => {
+        const liability = snapshot?.liabilities.find((candidate) => String(candidate.id) === item.id);
+        values[item.id] = liability?.remainingAmount ?? null;
+      });
+    }
+    return { month, label: formatMonthShort(month), values };
+  });
+
+  return { series, points };
+}
 
 function buildMonthlyAnalytics(budget: MonthlyBudget, period: number): MonthData[] {
   const currentMonth=getCurrentMonth();
