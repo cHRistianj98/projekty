@@ -36,6 +36,8 @@ const categoryPhotoFiles: Record<string, string> = {
   "siłownia": "gym.webp",
   "tańce": "dance.webp",
   "inwestycje": "investments.webp",
+  "prowizje i opłaty": "investments.webp",
+  "spread walutowy": "fx-spread.webp",
   "gaming": "gaming.webp",
   "szachy": "chess.webp",
   "przeszczep włosów": "hair-transplant.webp",

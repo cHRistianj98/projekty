@@ -1,6 +1,11 @@
 package com.freedom.freedom_backend.portfolio;
 
 import com.freedom.freedom_backend.user.User;
+import com.freedom.freedom_backend.asset.AssetCategory;
+import com.freedom.freedom_backend.asset.AssetService;
+import com.freedom.freedom_backend.asset.CashCurrency;
+import com.freedom.freedom_backend.market.FxPricingService;
+import com.freedom.freedom_backend.market.FxQuoteResponse;
 import com.freedom.freedom_backend.category.Category;
 import com.freedom.freedom_backend.category.CategoryService;
 import com.freedom.freedom_backend.transaction.ExpenseCategory;
@@ -16,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -32,6 +38,8 @@ public class PortfolioService {
     private final RetailBondService retailBondService;
     private final CategoryService categoryService;
     private final TransactionService transactionService;
+    private final AssetService assetService;
+    private final FxPricingService fxPricing;
 
     public PortfolioService(
             JdbcTemplate jdbc,
@@ -40,7 +48,9 @@ public class PortfolioService {
             GoalPortfolioReservationService goalPortfolioReservations,
             RetailBondService retailBondService,
             CategoryService categoryService,
-            TransactionService transactionService
+            TransactionService transactionService,
+            AssetService assetService,
+            FxPricingService fxPricing
     ) {
         this.jdbc = jdbc;
         this.ledger = ledger;
@@ -49,6 +59,8 @@ public class PortfolioService {
         this.retailBondService = retailBondService;
         this.categoryService = categoryService;
         this.transactionService = transactionService;
+        this.assetService = assetService;
+        this.fxPricing = fxPricing;
     }
 
     @Transactional(readOnly = true)
@@ -174,21 +186,78 @@ public class PortfolioService {
     }
 
     public void transfer(PortfolioTransferRequest r, User user) {
+        AssetRow source = asset(r.sourceAssetId(), user.getId());
+        BigDecimal fee = r.normalizedFee();
+        BigDecimal totalDebit = r.amount().add(fee);
+
+        if (r.isPurchase()) {
+            if (r.acquiredQuantity().signum() <= 0) {
+                throw new IllegalArgumentException("Liczba otrzymanych jednostek musi być większa od zera.");
+            }
+            if (!"CASH".equals(source.category()) || source.fxPriced()) {
+                throw new IllegalArgumentException(
+                        "Zakup jednostek musi być finansowany z konta / gotówki w PLN. Walutę obcą jako źródło obsłużymy osobną operacją sprzedaży / wymiany."
+                );
+            }
+            if (totalDebit.compareTo(ledger.available(source.id(), user)) > 0) {
+                throw new IllegalArgumentException(
+                        "Za mało wolnych środków na zakup i prowizję. Potrzeba łącznie "
+                                + totalDebit.stripTrailingZeros().toPlainString() + " zł."
+                );
+            }
+
+            Long targetId = r.targetAssetId();
+            if (targetId == null) {
+                if (r.newTarget() == null || r.targetPortfolioId() == null) {
+                    throw new IllegalArgumentException("Wybierz istniejące aktywo albo podaj dane nowej pozycji.");
+                }
+                ensureTargetPortfolio(r.targetPortfolioId(), user.getId());
+                targetId = assetService.createEmptyPurchaseTarget(r.newTarget(), r.targetPortfolioId(), user);
+            } else {
+                if (source.id().equals(targetId)) {
+                    throw new IllegalArgumentException("Źródło i cel muszą być różne.");
+                }
+                asset(targetId, user.getId());
+                if (!assetService.supportsUnitPurchase(targetId, user)) {
+                    throw new IllegalArgumentException(
+                            "Wybrane aktywo docelowe nie ma ilościowej wyceny. Zakup jednostkowy obsługuje krypto, akcje / ETF i waluty obce."
+                    );
+                }
+            }
+
+            AssetRow target = asset(targetId, user.getId());
+
+            // For PLN -> foreign currency the amount entered by the user is the real cash
+            // removed from the source account. The retained capital is the received currency
+            // valued using a fresh intraday FX benchmark fetched at execution time. Any positive
+            // difference is a real, irreversible spread cost. It is NOT debited a second time:
+            // amountPaid = retainedCapital + spreadLoss.
+            CurrencySpreadResult fxSpread = currencySpread(target, r.acquiredQuantity(), r.amount());
+            BigDecimal embeddedFxSpread = fxSpread.loss();
+            BigDecimal capitalTransferred = r.amount().subtract(embeddedFxSpread).max(BigDecimal.ZERO);
+
+            ledger.transfer(source.id(), target.id(), capitalTransferred, user);
+            insertTransferAudit(source, target, r.amount(), fxSpread, user);
+
+            assetService.applyPurchasedQuantity(target.id(), r.acquiredQuantity(), capitalTransferred.max(new BigDecimal("0.01")), user);
+            createCurrencySpreadExpense(source, target, fxSpread, user);
+            createInvestmentFeeExpense(source, target, fee, user);
+            return;
+        }
+
+        if (r.targetAssetId() == null) {
+            throw new IllegalArgumentException("Wybierz aktywo docelowe.");
+        }
         if (r.sourceAssetId().equals(r.targetAssetId())) {
             throw new IllegalArgumentException("Źródło i cel muszą być różne.");
         }
 
-        AssetRow s = asset(r.sourceAssetId(), user.getId());
-        AssetRow t = asset(r.targetAssetId(), user.getId());
-        BigDecimal fee = r.normalizedFee();
-
+        AssetRow target = asset(r.targetAssetId(), user.getId());
         if (fee.signum() > 0) {
-            // Prowizja jest prawdziwym kosztem i musi zejść z konta/gotówki,
-            // z którego finansowany jest zakup. Sam transfer pozostaje neutralny
-            // dla cashflow i wartości majątku.
-            ledger.resolveTransactionAsset(s.id(), user);
-            BigDecimal totalDebit = r.amount().add(fee);
-            if (totalDebit.compareTo(ledger.available(s.id(), user)) > 0) {
+            if (!"CASH".equals(source.category()) || source.fxPriced()) {
+                throw new IllegalArgumentException("Prowizję można pobrać z konta / gotówki w PLN.");
+            }
+            if (totalDebit.compareTo(ledger.available(source.id(), user)) > 0) {
                 throw new IllegalArgumentException(
                         "Za mało wolnych środków na transfer i prowizję. Potrzeba łącznie "
                                 + totalDebit.stripTrailingZeros().toPlainString() + " zł."
@@ -196,28 +265,137 @@ public class PortfolioService {
             }
         }
 
-        ledger.transfer(s.id(), t.id(), r.amount(), user);
+        ledger.transfer(source.id(), target.id(), r.amount(), user);
         jdbc.update(
                 "INSERT INTO portfolio_transfers(user_id,source_asset_id,target_asset_id,source_name_snapshot,target_name_snapshot,amount) VALUES(?,?,?,?,?,?)",
-                user.getId(), s.id(), t.id(), s.name(), t.name(), r.amount()
+                user.getId(), source.id(), target.id(), source.name(), target.name(), r.amount()
         );
+        createInvestmentFeeExpense(source, target, fee, user);
+    }
 
-        if (fee.signum() > 0) {
-            Category feeCategory = categoryService.investmentFeeCategory(user);
-            transactionService.create(
-                    new TransactionRequest(
-                            TransactionType.EXPENSE,
-                            "Prowizja inwestycyjna · " + t.name(),
-                            fee,
-                            ExpenseCategory.INVESTMENT,
-                            feeCategory.getId(),
-                            false,
-                            LocalDate.now(),
-                            null,
-                            s.id(),
-                            null
-                    ),
-                    user
+    private void createInvestmentFeeExpense(AssetRow source, AssetRow target, BigDecimal fee, User user) {
+        if (fee.signum() <= 0) return;
+        Category feeCategory = categoryService.investmentFeeCategory(user);
+        transactionService.create(
+                new TransactionRequest(
+                        TransactionType.EXPENSE,
+                        "Prowizja inwestycyjna · " + target.name(),
+                        fee,
+                        ExpenseCategory.INVESTMENT,
+                        feeCategory.getId(),
+                        false,
+                        LocalDate.now(),
+                        null,
+                        source.id(),
+                        null
+                ),
+                user
+        );
+    }
+
+    private CurrencySpreadResult currencySpread(AssetRow target, BigDecimal acquiredQuantity, BigDecimal amountPaid) {
+        if (!"CASH".equals(target.category())
+                || !target.fxPriced()
+                || target.cashCurrency() == null
+                || target.cashCurrency() == CashCurrency.PLN) {
+            return CurrencySpreadResult.none();
+        }
+
+        // Deliberately bypass the short quote cache when the transaction is actually booked.
+        FxQuoteResponse quote = fxPricing.quoteFresh(target.cashCurrency());
+        BigDecimal marketValue = quote.ratePln()
+                .multiply(acquiredQuantity)
+                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal loss = amountPaid.subtract(marketValue)
+                .max(BigDecimal.ZERO)
+                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal effectiveRate = amountPaid
+                .divide(acquiredQuantity, 8, RoundingMode.HALF_UP);
+        BigDecimal spreadPercent = quote.ratePln().signum() > 0
+                ? effectiveRate.subtract(quote.ratePln())
+                    .max(BigDecimal.ZERO)
+                    .divide(quote.ratePln(), 8, RoundingMode.HALF_UP)
+                    .multiply(new BigDecimal("100"))
+                    .setScale(4, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+
+        return new CurrencySpreadResult(
+                loss,
+                marketValue,
+                effectiveRate,
+                spreadPercent,
+                quote
+        );
+    }
+
+    private void insertTransferAudit(
+            AssetRow source,
+            AssetRow target,
+            BigDecimal amount,
+            CurrencySpreadResult fxSpread,
+            User user
+    ) {
+        FxQuoteResponse quote = fxSpread.quote();
+        if (quote == null) {
+            jdbc.update(
+                    "INSERT INTO portfolio_transfers(user_id,source_asset_id,target_asset_id,source_name_snapshot,target_name_snapshot,amount) VALUES(?,?,?,?,?,?)",
+                    user.getId(), source.id(), target.id(), source.name(), target.name(), amount
+            );
+            return;
+        }
+
+        jdbc.update("""
+                INSERT INTO portfolio_transfers(
+                    user_id, source_asset_id, target_asset_id, source_name_snapshot, target_name_snapshot, amount,
+                    fx_currency, fx_market_rate, fx_effective_rate, fx_spread_loss, fx_spread_percent,
+                    fx_quote_timestamp, fx_quote_source, fx_quote_provider
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                user.getId(), source.id(), target.id(), source.name(), target.name(), amount,
+                target.cashCurrency().name(), quote.ratePln(), fxSpread.effectiveRate(), fxSpread.loss(),
+                fxSpread.spreadPercent(), quote.quotedAt(), quote.source(), quote.provider()
+        );
+    }
+
+    private void createCurrencySpreadExpense(AssetRow source, AssetRow target, CurrencySpreadResult spread, User user) {
+        if (spread.loss().signum() <= 0 || target.cashCurrency() == null) return;
+        Category spreadCategory = categoryService.currencySpreadCategory(user);
+        FxQuoteResponse quote = spread.quote();
+        String quoteMarker = quote == null
+                ? ""
+                : " · benchmark " + quote.provider() + " "
+                    + quote.ratePln().stripTrailingZeros().toPlainString();
+        transactionService.create(
+                new TransactionRequest(
+                        TransactionType.EXPENSE,
+                        "Spread walutowy · " + target.cashCurrency() + " · " + target.name() + quoteMarker,
+                        spread.loss(),
+                        ExpenseCategory.INVESTMENT,
+                        spreadCategory.getId(),
+                        false,
+                        LocalDate.now(),
+                        null,
+                        source.id(),
+                        null
+                ),
+                user
+        );
+    }
+
+    private record CurrencySpreadResult(
+            BigDecimal loss,
+            BigDecimal marketValue,
+            BigDecimal effectiveRate,
+            BigDecimal spreadPercent,
+            FxQuoteResponse quote
+    ) {
+        private static CurrencySpreadResult none() {
+            return new CurrencySpreadResult(
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    null
             );
         }
     }
@@ -307,10 +485,17 @@ public class PortfolioService {
 
     private AssetRow asset(Long id, Long uid) {
         return jdbc.query(
-                "SELECT id,name,value FROM assets WHERE id=? AND user_id=?",
+                "SELECT id,name,value,category,fx_priced,cash_currency FROM assets WHERE id=? AND user_id=?",
                 rs -> {
                     if (!rs.next()) throw new IllegalArgumentException("Nie znaleziono aktywa.");
-                    return new AssetRow(rs.getLong(1), rs.getString(2), rs.getBigDecimal(3));
+                    return new AssetRow(
+                            rs.getLong("id"),
+                            rs.getString("name"),
+                            rs.getBigDecimal("value"),
+                            rs.getString("category"),
+                            rs.getBoolean("fx_priced"),
+                            rs.getString("cash_currency") == null ? null : CashCurrency.valueOf(rs.getString("cash_currency"))
+                    );
                 },
                 id,
                 uid
@@ -342,6 +527,6 @@ public class PortfolioService {
         return value == null ? PortfolioImagePosition.CENTER : value;
     }
 
-    private record AssetRow(Long id, String name, BigDecimal value) {}
+    private record AssetRow(Long id, String name, BigDecimal value, String category, boolean fxPriced, CashCurrency cashCurrency) {}
     private record AssetMoveRow(Long id, String name, BigDecimal value, boolean systemCash, Long portfolioId, String category) {}
 }

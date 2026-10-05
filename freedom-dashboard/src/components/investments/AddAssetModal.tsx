@@ -494,7 +494,7 @@ export function AddAssetModal({ onClose, onAdd }: AddAssetModalProps) {
               <Field label="Wartość w PLN">
                 <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[.07] px-4 py-3.5">
                   <div className="text-lg font-black text-white">{fxEstimatedValue == null ? "—" : `${fxEstimatedValue.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł`}</div>
-                  <div className="mt-1 text-[11px] font-semibold text-slate-500">{cashCurrency} × średni kurs NBP</div>
+                  <div className="mt-1 text-[11px] font-semibold text-slate-500">{cashCurrency} × bieżący kurs FX</div>
                 </div>
               </Field>
             ) : category === "stocks" && stockPriced ? (

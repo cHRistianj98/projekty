@@ -13,5 +13,10 @@ public record FxQuoteResponse(
         LocalDate effectiveDate,
         String tableNo,
         Instant fetchedAt,
-        String source
+        String source,
+        String provider,
+        String symbol,
+        Instant quotedAt,
+        boolean intraday,
+        boolean fallback
 ) {}

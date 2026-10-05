@@ -1212,6 +1212,9 @@ function App() {
                     handleAllocateGoalMoney
                   }
                   onReleaseMoney={handleReleaseGoalMoney}
+                  onGoalsChanged={async () => {
+                    await refreshGoals();
+                  }}
                 />
               }
             />

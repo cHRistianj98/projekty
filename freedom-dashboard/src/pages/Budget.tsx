@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import { CategoryMiniImage } from "../components/categories/CategoryMiniImage";
+import { BudgetAiPromptModal } from "../components/budget/BudgetAiPromptModal";
 import { categoryApi } from "../api/categoryApi";
 
 import type {
@@ -55,6 +56,9 @@ export function Budget({
   onSavePlan,
 }: BudgetProps) {
   const [isPlanOpen, setIsPlanOpen] =
+    useState(false);
+
+  const [isAiPromptOpen, setIsAiPromptOpen] =
     useState(false);
 
   const [expenseCategories, setExpenseCategories] =
@@ -148,10 +152,21 @@ export function Budget({
           </div>
         </div>
 
-        <MonthPicker
-          month={selectedMonth}
-          onChange={onChangeMonth}
-        />
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setIsAiPromptOpen(true)}
+            className="flex cursor-pointer items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.08] px-4 py-3 text-sm font-black text-emerald-300 transition hover:border-emerald-400/40 hover:bg-emerald-500/15"
+          >
+            <Sparkles size={16} />
+            Budżet AI
+          </button>
+
+          <MonthPicker
+            month={selectedMonth}
+            onChange={onChangeMonth}
+          />
+        </div>
       </header>
 
       <section className="mt-8 grid gap-4 xl:grid-cols-4">
@@ -323,6 +338,16 @@ export function Budget({
             await onSavePlan(nextPlan);
             setIsPlanOpen(false);
           }}
+        />
+      )}
+
+      {isAiPromptOpen && (
+        <BudgetAiPromptModal
+          budget={budget}
+          categories={expenseCategories}
+          anchorMonth={selectedMonth}
+          currentPlan={plan}
+          onClose={() => setIsAiPromptOpen(false)}
         />
       )}
     </main>

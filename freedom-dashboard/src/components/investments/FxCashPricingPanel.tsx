@@ -7,6 +7,7 @@ const currencies: Array<{ code: Exclude<CashCurrency, "PLN">; label: string; sym
   { code: "EUR", label: "Euro", symbol: "€" },
   { code: "CHF", label: "Frank", symbol: "CHF" },
   { code: "USD", label: "Dolar", symbol: "$" },
+  { code: "GBP", label: "Funt", symbol: "£" },
   { code: "CZK", label: "Korona czeska", symbol: "Kč" },
 ];
 
@@ -65,7 +66,7 @@ export function FxCashPricingPanel({
         <>
           <div>
             <div className="mb-2 text-[10px] font-black uppercase tracking-[.18em] text-slate-500">Waluta</div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
               {currencies.map((item) => (
                 <button
                   key={item.code}
@@ -115,13 +116,13 @@ export function FxCashPricingPanel({
 
           <div className="rounded-xl border border-slate-800 bg-slate-950/45 p-3 text-xs">
             {loading ? (
-              <div className="flex items-center gap-2 text-slate-400"><RefreshCw size={13} className="animate-spin" />Pobieranie kursu NBP…</div>
+              <div className="flex items-center gap-2 text-slate-400"><RefreshCw size={13} className="animate-spin" />Pobieranie bieżącego kursu FX…</div>
             ) : error ? (
               <div className="text-rose-300">{error}</div>
             ) : quote ? (
               <div className="grid gap-3 sm:grid-cols-3">
                 <div>
-                  <span className="text-slate-500">Kurs średni NBP</span>
+                  <span className="text-slate-500">Bieżący kurs FX</span>
                   <div className="mt-1 font-black text-white">1 {quote.currency} = {quote.ratePln.toLocaleString("pl-PL", { minimumFractionDigits: 4, maximumFractionDigits: 4 })} zł</div>
                 </div>
                 <div>
@@ -129,9 +130,9 @@ export function FxCashPricingPanel({
                   <div className="mt-1 font-black text-cyan-300">{estimated == null ? "—" : `${estimated.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł`}</div>
                 </div>
                 <div>
-                  <span className="text-slate-500">Tabela</span>
-                  <div className="mt-1 font-black text-white">{quote.effectiveDate}</div>
-                  <div className="mt-0.5 text-[10px] text-slate-600">{quote.tableNo}</div>
+                  <span className="text-slate-500">Notowanie</span>
+                  <div className="mt-1 font-black text-white">{quote.quotedAt ? new Date(quote.quotedAt).toLocaleString("pl-PL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : quote.effectiveDate}</div>
+                  <div className="mt-0.5 text-[10px] text-slate-600">{quote.fallback ? "NBP fallback" : quote.provider ?? quote.tableNo}</div>
                 </div>
               </div>
             ) : (
@@ -139,7 +140,7 @@ export function FxCashPricingPanel({
             )}
           </div>
 
-          <div className="text-[10px] leading-relaxed text-slate-600">Źródło: Narodowy Bank Polski, tabela A kursów średnich. Backend cache’uje kurs maksymalnie przez 60 minut.</div>
+          <div className="text-[10px] leading-relaxed text-slate-600">Źródło podstawowe: Yahoo Finance intraday/delayed. Backend odświeża krótki cache co ok. 30 s; gdy feed rynkowy nie odpowiada, używa kursu NBP jako fallbacku.</div>
         </>
       )}
     </div>

@@ -23,8 +23,11 @@ public class FxMarketController {
     }
 
     @GetMapping("/quote")
-    public FxQuoteResponse quote(@RequestParam CashCurrency currency) {
-        return pricingService.quote(currency);
+    public FxQuoteResponse quote(
+            @RequestParam CashCurrency currency,
+            @RequestParam(defaultValue = "false") boolean fresh
+    ) {
+        return fresh ? pricingService.quoteFresh(currency) : pricingService.quote(currency);
     }
 
     @GetMapping("/quotes")

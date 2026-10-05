@@ -12,16 +12,14 @@ import com.freedom.freedom_backend.market.FxQuoteResponse;
 import com.freedom.freedom_backend.market.StockPricingService;
 import com.freedom.freedom_backend.market.StockQuoteResponse;
 import com.freedom.freedom_backend.user.User;
-import com.freedom.freedom_backend.retailbond.RetailBondService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -43,7 +41,6 @@ public class AssetService {
     private final StockPricingService stockPricing;
     private final StockTaxValuationService stockTaxValuation;
     private final RetailBondValuationService retailBondValuation;
-    private final RetailBondService retailBondService;
 
     public AssetService(
             AssetRepository repo,
@@ -55,8 +52,7 @@ public class AssetService {
             FxPricingService fxPricing,
             StockPricingService stockPricing,
             StockTaxValuationService stockTaxValuation,
-            RetailBondValuationService retailBondValuation,
-            RetailBondService retailBondService
+            RetailBondValuationService retailBondValuation
     ) {
         this.repo = repo;
         this.jdbc = jdbc;
@@ -68,126 +64,16 @@ public class AssetService {
         this.stockPricing = stockPricing;
         this.stockTaxValuation = stockTaxValuation;
         this.retailBondValuation = retailBondValuation;
-        this.retailBondService = retailBondService;
     }
 
+    @Transactional(readOnly = true)
     public List<AssetResponse> getAllAssets(User u) {
-        retailBondService.refreshAllForUser(u);
-        return repo.findAllByUserId(u.getId()).stream()
-                .map(asset -> response(asset, u))
-                .toList();
+        return repo.findAllByUserId(u.getId()).stream().map(AssetResponse::from).toList();
     }
 
     @Transactional(readOnly = true)
     public AssetResponse getAsset(Long id, User u) {
-        return response(find(id, u), u);
-    }
-
-    private AssetResponse response(Asset asset, User u) {
-        if (asset.getCategory() != AssetCategory.BONDS) return AssetResponse.from(asset);
-        RetailBondService.DailyChange change = retailBondService.dailyChange(asset.getId(), u);
-        return AssetResponse.from(
-                asset,
-                change == null ? null : change.amount(),
-                change == null ? null : change.percent()
-        );
-    }
-
-    @Transactional(readOnly = true)
-    public CashReconciliationResponse getCashReconciliation(User u) {
-        List<CashAssetRow> rows = reconciliationCashAssets(u);
-        BigDecimal total = rows.stream().map(CashAssetRow::value).reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new CashReconciliationResponse(
-                cashReconciliationResponses(rows, u),
-                total,
-                total,
-                BigDecimal.ZERO
-        );
-    }
-
-    public CashReconciliationResponse reconcileCash(CashReconciliationRequest request, User u) {
-        List<CashAssetRow> rows = reconciliationCashAssets(u);
-        if (rows.isEmpty()) {
-            throw new IllegalArgumentException("Brak aktywów gotówkowych do uzgodnienia.");
-        }
-
-        Map<Long, BigDecimal> targets = new LinkedHashMap<>();
-        for (CashReconciliationItemRequest item : request.balances()) {
-            if (item.assetId() == null || item.targetValue() == null) {
-                throw new IllegalArgumentException("Każde saldo musi wskazywać aktywo i wartość docelową.");
-            }
-            BigDecimal target = item.targetValue().setScale(2, RoundingMode.HALF_UP);
-            if (target.signum() < 0) {
-                throw new IllegalArgumentException("Saldo po uzgodnieniu nie może być ujemne.");
-            }
-            if (targets.put(item.assetId(), target) != null) {
-                throw new IllegalArgumentException("To samo aktywo występuje w uzgodnieniu więcej niż raz.");
-            }
-        }
-
-        if (targets.size() != rows.size() || rows.stream().anyMatch(row -> !targets.containsKey(row.id()))) {
-            throw new IllegalArgumentException(
-                    "Lista kont lub gotówki zmieniła się. Odśwież okno uzgodnienia i spróbuj ponownie."
-            );
-        }
-
-        BigDecimal previousTotal = rows.stream().map(CashAssetRow::value).reduce(BigDecimal.ZERO, BigDecimal::add);
-        Map<Long, BigDecimal> deficits = new LinkedHashMap<>();
-        Map<Long, BigDecimal> surpluses = new LinkedHashMap<>();
-
-        for (CashAssetRow row : rows) {
-            BigDecimal target = targets.get(row.id());
-            BigDecimal reserved = ledger.reserved(row.id(), u);
-            if (target.compareTo(reserved) < 0) {
-                throw new IllegalArgumentException(
-                        "Saldo „" + reconciliationName(row) + "” nie może być niższe niż "
-                                + reserved.setScale(2, RoundingMode.HALF_UP)
-                                + " zł zarezerwowane na cele lub zobowiązania."
-                );
-            }
-            int comparison = target.compareTo(row.value());
-            if (comparison > 0) deficits.put(row.id(), target.subtract(row.value()));
-            if (comparison < 0) surpluses.put(row.id(), row.value().subtract(target));
-        }
-
-        // First redistribute already existing cash. This preserves the original
-        // money lots and therefore the provenance of imported/manual income.
-        for (Map.Entry<Long, BigDecimal> source : surpluses.entrySet()) {
-            BigDecimal remainingSource = source.getValue();
-            if (remainingSource.signum() == 0) continue;
-            for (Map.Entry<Long, BigDecimal> target : deficits.entrySet()) {
-                BigDecimal remainingTarget = target.getValue();
-                if (remainingTarget.signum() == 0) continue;
-                BigDecimal moved = remainingSource.min(remainingTarget);
-                ledger.transfer(source.getKey(), target.getKey(), moved, u);
-                remainingSource = remainingSource.subtract(moved);
-                target.setValue(remainingTarget.subtract(moved));
-                if (remainingSource.signum() == 0) break;
-            }
-            source.setValue(remainingSource);
-        }
-
-        // Any remaining difference is the real-world correction. It changes net
-        // worth but is deliberately not an income or expense transaction.
-        for (Map.Entry<Long, BigDecimal> target : deficits.entrySet()) {
-            if (target.getValue().signum() > 0) {
-                ledger.applyReconciliationAdjustment(target.getKey(), target.getValue(), u);
-            }
-        }
-        for (Map.Entry<Long, BigDecimal> source : surpluses.entrySet()) {
-            if (source.getValue().signum() > 0) {
-                ledger.applyReconciliationAdjustment(source.getKey(), source.getValue().negate(), u);
-            }
-        }
-
-        List<CashAssetRow> afterRows = reconciliationCashAssets(u);
-        BigDecimal currentTotal = afterRows.stream().map(CashAssetRow::value).reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new CashReconciliationResponse(
-                cashReconciliationResponses(afterRows, u),
-                previousTotal,
-                currentTotal,
-                currentTotal.subtract(previousTotal)
-        );
+        return AssetResponse.from(find(id, u));
     }
 
     public AssetResponse createAsset(AssetRequest r, User u) {
@@ -224,7 +110,7 @@ public class AssetService {
                 : resolvePortfolio(r.portfolioId() != null ? r.portfolioId() : asset.getPortfolioId(), u.getId());
 
         if (asset.isSystemCash() && r.value().compareTo(asset.getValue()) != 0) {
-            throw new IllegalArgumentException("Środki nierozdzielone są sterowane przez przychody, wydatki i uzgodnienia salda.");
+            throw new IllegalArgumentException("Systemowa Gotówka jest sterowana przez przychody i wydatki.");
         }
 
         PricingSetup pricing = asset.isSystemCash() ? PricingSetup.manual() : pricingSetup(r, category);
@@ -273,50 +159,12 @@ public class AssetService {
 
     public void deleteAsset(Long id, User u) {
         Asset asset = find(id, u);
-        if (asset.isSystemCash()) throw new IllegalArgumentException("Środków nierozdzielonych nie można usunąć.");
+        if (asset.isSystemCash()) throw new IllegalArgumentException("Systemowej Gotówki nie można usunąć.");
         if (ledger.reserved(id, u).signum() > 0) {
             throw new IllegalArgumentException("Najpierw zwolnij środki tego aktywa z celów i zobowiązań.");
         }
         ledger.consumeAssetBeforeDelete(id, u);
         repo.delete(asset);
-    }
-
-    private List<CashAssetRow> reconciliationCashAssets(User u) {
-        return jdbc.query(
-                """
-                SELECT id,name,value,system_cash,portfolio_id
-                FROM assets
-                WHERE user_id=?
-                  AND category='CASH'
-                  AND (system_cash=TRUE OR COALESCE(fx_priced,FALSE)=FALSE)
-                ORDER BY system_cash DESC,id
-                """,
-                (rs, n) -> new CashAssetRow(
-                        rs.getLong("id"),
-                        rs.getString("name"),
-                        rs.getBigDecimal("value"),
-                        rs.getBoolean("system_cash"),
-                        rs.getLong("portfolio_id")
-                ),
-                u.getId()
-        );
-    }
-
-    private List<CashReconciliationAssetResponse> cashReconciliationResponses(List<CashAssetRow> rows, User u) {
-        return rows.stream()
-                .map(row -> new CashReconciliationAssetResponse(
-                        row.id(),
-                        reconciliationName(row),
-                        row.value(),
-                        ledger.reserved(row.id(), u),
-                        row.systemCash(),
-                        row.portfolioId()
-                ))
-                .toList();
-    }
-
-    private String reconciliationName(CashAssetRow row) {
-        return row.systemCash() ? "Środki nierozdzielone" : row.name();
     }
 
     private PricingSetup pricingSetup(AssetRequest request, AssetCategory category) {
@@ -566,6 +414,193 @@ public class AssetService {
         );
     }
 
+    public Long createEmptyPurchaseTarget(AssetPurchaseTargetRequest request, Long portfolioId, User user) {
+        if (request == null) throw new IllegalArgumentException("Brak danych nowej pozycji.");
+        if (request.category() == null) throw new IllegalArgumentException("Wybierz typ nowej pozycji.");
+        if (request.name() == null || request.name().isBlank()) throw new IllegalArgumentException("Podaj nazwę nowej pozycji.");
+
+        Long resolvedPortfolioId = resolvePortfolio(portfolioId, user.getId());
+        String color = request.color() == null || request.color().isBlank() ? "#3b82f6" : request.color().trim();
+        Asset asset = new Asset(
+                user,
+                request.name().trim(),
+                BigDecimal.ZERO,
+                color,
+                request.category(),
+                icon(request.iconKey(), request.category(), null),
+                resolvedPortfolioId
+        );
+
+        switch (request.category()) {
+            case CRYPTO -> {
+                if (request.cryptoCoinId() == null || request.cryptoCoinId().isBlank()) {
+                    throw new IllegalArgumentException("Podaj identyfikator kryptowaluty CoinGecko.");
+                }
+                String symbol = request.cryptoSymbol() == null || request.cryptoSymbol().isBlank()
+                        ? request.cryptoCoinId().trim().toUpperCase(Locale.ROOT)
+                        : request.cryptoSymbol().trim().toUpperCase(Locale.ROOT);
+                asset.configureCryptoPricing(
+                        true,
+                        request.cryptoCoinId().trim().toLowerCase(Locale.ROOT),
+                        symbol,
+                        BigDecimal.ZERO,
+                        null
+                );
+            }
+            case CASH -> {
+                if (request.cashCurrency() == null || request.cashCurrency() == CashCurrency.PLN) {
+                    throw new IllegalArgumentException("Nowa pozycja walutowa musi być walutą obcą.");
+                }
+                asset.configureFxPricing(true, request.cashCurrency(), BigDecimal.ZERO, null);
+            }
+            case STOCKS -> {
+                if (request.stockSymbol() == null || request.stockSymbol().isBlank()) {
+                    throw new IllegalArgumentException("Podaj ticker akcji / ETF.");
+                }
+                if (request.stockCurrency() == null) {
+                    throw new IllegalArgumentException("Wybierz walutę notowania akcji / ETF.");
+                }
+                asset.configureStockPricing(
+                        true,
+                        request.stockSymbol().trim().toUpperCase(Locale.ROOT),
+                        request.stockCurrency(),
+                        BigDecimal.ZERO,
+                        null,
+                        null,
+                        null,
+                        null
+                );
+            }
+            default -> throw new IllegalArgumentException(
+                    "Zakup z podaniem liczby jednostek obsługuje krypto, akcje / ETF i waluty obce."
+            );
+        }
+
+        return repo.saveAndFlush(asset).getId();
+    }
+
+    public boolean supportsUnitPurchase(Long assetId, User user) {
+        Asset asset = find(assetId, user);
+        return (asset.getCategory() == AssetCategory.CRYPTO
+                    && asset.getCryptoCoinId() != null
+                    && !asset.getCryptoCoinId().isBlank())
+                || (asset.getCategory() == AssetCategory.STOCKS
+                    && asset.isStockPriced()
+                    && asset.getStockSymbol() != null
+                    && asset.getStockCurrency() != null)
+                || (asset.getCategory() == AssetCategory.CASH
+                    && asset.isFxPriced()
+                    && asset.getCashCurrency() != null
+                    && asset.getCashCurrency() != CashCurrency.PLN);
+    }
+
+    /**
+     * Finalizes a purchase after the PLN capital has already been moved to the target asset in the ledger.
+     * The quantity becomes the source of truth and the visible PLN value is recalculated from the latest market quote.
+     * The difference between transferred cost and current market value is a valuation change, never an income transaction.
+     */
+    public AssetResponse applyPurchasedQuantity(
+            Long assetId,
+            BigDecimal acquiredQuantity,
+            BigDecimal purchaseAmountPln,
+            User user
+    ) {
+        if (acquiredQuantity == null || acquiredQuantity.signum() <= 0) {
+            throw new IllegalArgumentException("Liczba otrzymanych jednostek musi być większa od zera.");
+        }
+        if (purchaseAmountPln == null || purchaseAmountPln.signum() <= 0) {
+            throw new IllegalArgumentException("Kwota zakupu musi być większa od zera.");
+        }
+
+        Asset asset = find(assetId, user);
+        BigDecimal before = jdbc.queryForObject(
+                "SELECT value FROM assets WHERE id=? AND user_id=?",
+                BigDecimal.class, assetId, user.getId()
+        );
+        if (before == null) throw new AssetNotFoundException(assetId);
+
+        BigDecimal after;
+
+        if (asset.getCategory() == AssetCategory.CRYPTO
+                && asset.getCryptoCoinId() != null
+                && !asset.getCryptoCoinId().isBlank()) {
+            BigDecimal newQuantity = zero(asset.getCryptoQuantity()).add(acquiredQuantity);
+            String symbol = asset.getCryptoSymbol() == null || asset.getCryptoSymbol().isBlank()
+                    ? asset.getCryptoCoinId().toUpperCase(Locale.ROOT)
+                    : asset.getCryptoSymbol();
+            CryptoQuoteResponse quote = cryptoPricing.quote(asset.getCryptoCoinId(), symbol, asset.getName());
+            after = cryptoPricing.valuePln(quote, newQuantity);
+            asset.configureCryptoPricing(true, asset.getCryptoCoinId(), symbol, newQuantity, quote);
+            asset.applyCryptoValuation(after, quote);
+        } else if (asset.getCategory() == AssetCategory.CASH
+                && asset.isFxPriced()
+                && asset.getCashCurrency() != null
+                && asset.getCashCurrency() != CashCurrency.PLN) {
+            BigDecimal newQuantity = zero(asset.getCashQuantity()).add(acquiredQuantity);
+            FxQuoteResponse quote = fxPricing.quote(asset.getCashCurrency());
+            after = fxPricing.valuePln(quote, newQuantity);
+            asset.configureFxPricing(true, asset.getCashCurrency(), newQuantity, quote);
+            asset.applyFxValuation(after, quote);
+        } else if (asset.getCategory() == AssetCategory.STOCKS
+                && asset.isStockPriced()
+                && asset.getStockSymbol() != null
+                && asset.getStockCurrency() != null) {
+            BigDecimal oldQuantity = zero(asset.getStockQuantity());
+            BigDecimal newQuantity = oldQuantity.add(acquiredQuantity);
+            StockQuoteResponse quote = stockPricing.quote(asset.getStockSymbol(), asset.getStockCurrency());
+
+            BigDecimal oldCostBasis = asset.getStockCostBasisPln();
+            if (oldCostBasis == null) {
+                BigDecimal oldAverage = zero(asset.getStockAverageBuyPrice());
+                BigDecimal oldBuyFx = asset.getStockBuyFxRatePln() == null
+                        ? quote.fxRatePln()
+                        : asset.getStockBuyFxRatePln();
+                oldCostBasis = oldQuantity.multiply(oldAverage).multiply(oldBuyFx);
+            }
+            BigDecimal totalCostBasis = oldCostBasis.add(purchaseAmountPln);
+            BigDecimal buyFx = quote.fxRatePln();
+            if (buyFx == null || buyFx.signum() <= 0) buyFx = BigDecimal.ONE;
+            BigDecimal averageBuyPrice = totalCostBasis
+                    .divide(newQuantity, 16, RoundingMode.HALF_UP)
+                    .divide(buyFx, 16, RoundingMode.HALF_UP);
+
+            StockTaxValuationService.StockValuation valuation = stockTaxValuation.calculate(
+                    quote, newQuantity, averageBuyPrice, buyFx
+            );
+            after = valuation.netValuePln();
+            asset.configureStockPricing(
+                    true,
+                    quote.symbol(),
+                    asset.getStockCurrency(),
+                    newQuantity,
+                    averageBuyPrice,
+                    buyFx,
+                    quote,
+                    valuation
+            );
+        } else {
+            throw new IllegalArgumentException(
+                    "Wybrane aktywo nie obsługuje zakupu jednostkowego. Wybierz krypto, akcje / ETF lub walutę obcą z automatyczną wyceną."
+            );
+        }
+
+        repo.flush();
+
+        if (before.compareTo(after) != 0) {
+            jdbc.update(
+                    "INSERT INTO asset_valuation_events(user_id,asset_id,asset_name_snapshot,previous_value,new_value,delta,reason) VALUES(?,?,?,?,?,?,'PURCHASE_REVALUATION')",
+                    user.getId(), asset.getId(), asset.getName(), before, after, after.subtract(before)
+            );
+            ledger.recordValuation(asset.getId(), before, after, user);
+        }
+        ledger.clampReservationsForAsset(asset.getId(), user);
+        return AssetResponse.from(asset);
+    }
+
+    private BigDecimal zero(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
     private Asset find(Long id, User u) {
         return repo.findByIdAndUserId(id, u.getId()).orElseThrow(() -> new AssetNotFoundException(id));
     }
@@ -727,12 +762,4 @@ public class AssetService {
 
         private boolean enabled() { return kind != PricingKind.MANUAL; }
     }
-    private record CashAssetRow(
-            Long id,
-            String name,
-            BigDecimal value,
-            boolean systemCash,
-            Long portfolioId
-    ) {}
-
 }

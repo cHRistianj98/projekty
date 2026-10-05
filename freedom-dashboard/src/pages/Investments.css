@@ -964,3 +964,58 @@
   .portfolio-ai-prompt-actions { flex-direction: column-reverse; }
   .portfolio-ai-prompt-actions .investment-button { width: 100%; justify-content: center; }
 }
+
+/* Unit-based purchases: crypto / stocks / foreign currencies */
+.transfer-target-mode, .transfer-target-type { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border: 1px solid #263e59; border-radius: 10px; background: #071221; }
+.transfer-target-type { grid-template-columns: repeat(3, 1fr); }
+.transfer-target-mode button, .transfer-target-type button { cursor: pointer; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #748eac; padding: 8px 9px; font-size: 9px; font-weight: 800; transition: .15s ease; }
+.transfer-target-mode button:hover, .transfer-target-type button:hover { color: #c2ddfb; background: #11233b; }
+.transfer-target-mode button.selected, .transfer-target-type button.selected { border-color: #5c51b9; background: linear-gradient(135deg, #31205f88, #152448); color: #d4c8ff; box-shadow: 0 0 0 1px #775eea22; }
+.transfer-new-target { display: flex; flex-direction: column; gap: 11px; padding-top: 2px; }
+.transfer-new-target > label { gap: 6px; font-size: 10px; color: #90a9c6; }
+.transfer-new-target input, .transfer-new-target select { border-color: #29425c; background: #081322; padding: 10px 11px; font-size: 11px; }
+.transfer-source-warning { margin: -6px 0 0; border: 1px solid #76512266; border-radius: 9px; background: #39281033; color: #d7b572; padding: 9px 10px; font-size: 9px; line-height: 1.55; }
+.transfer-quantity-block { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px 14px; padding: 14px 16px; border: 1px solid #3d3470; border-radius: 12px; background: linear-gradient(120deg, #2d215044, #0b1627 76%); }
+.transfer-quantity-heading { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.transfer-quantity-heading > div { display: flex; flex-direction: column; gap: 3px; }
+.transfer-quantity-heading strong { color: #d9c9ff; font-size: 11px; }
+.transfer-quantity-heading small { color: #8296ae; font-size: 9px; line-height: 1.5; }
+.transfer-quantity-heading > span { border: 1px solid #4d427a; border-radius: 6px; padding: 3px 6px; color: #9489c7; font-size: 8px; font-weight: 900; letter-spacing: .08em; }
+.transfer-quantity-block > input { min-width: 0; border: 1px solid #514776; border-radius: 10px; background: #071221; padding: 12px 13px; color: #fff; font-size: 17px; font-weight: 800; outline: none; appearance: textfield; -moz-appearance: textfield; }
+.transfer-quantity-block > input:focus { border-color: #8269dc; box-shadow: 0 0 0 3px #7c5ce215; }
+.transfer-quantity-block > input::-webkit-inner-spin-button, .transfer-quantity-block > input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.transfer-quantity-preview { min-width: 155px; display: flex; flex-direction: column; justify-content: center; align-items: flex-end; gap: 2px; padding: 0 4px; }
+.transfer-quantity-preview span { color: #837aa9; font-size: 9px; }
+.transfer-quantity-preview strong { color: #cbb7ff; font-size: 13px; white-space: nowrap; }
+.transfer-implied-price { grid-column: 1 / -1; margin: 0; color: #8399b4; font-size: 9px; }
+.transfer-implied-price strong { color: #b5cceb; }
+.transfer-fee-heading strong em { color: #8e9db2; font-size: 9px; font-style: normal; font-weight: 600; }
+@media (max-width: 760px) {
+  .transfer-target-type { grid-template-columns: 1fr; }
+  .transfer-quantity-block { grid-template-columns: 1fr; }
+  .transfer-quantity-preview { align-items: flex-start; min-width: 0; }
+}
+
+.transfer-fx-benchmark { border: 1px solid #31506f; border-radius: 14px; background: linear-gradient(135deg, #0d2032cc, #091523dd); padding: 14px; }
+.transfer-fx-benchmark-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.transfer-fx-benchmark-heading strong { display: block; color: #dcecff; font-size: 12px; font-weight: 900; }
+.transfer-fx-benchmark-heading small { display: block; margin-top: 4px; color: #6f8fae; font-size: 10px; line-height: 1.5; }
+.transfer-fx-live { flex: 0 0 auto; border: 1px solid #2d6ea0; border-radius: 999px; background: #0d2a43; color: #78c9ff; padding: 5px 8px; font-size: 8px; font-weight: 900; letter-spacing: .09em; }
+.transfer-fx-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.transfer-fx-grid > div { min-width: 0; border: 1px solid #1f3851; border-radius: 11px; background: #071321b8; padding: 10px; }
+.transfer-fx-grid span, .transfer-fx-grid small { display: block; color: #65829f; font-size: 8px; line-height: 1.45; }
+.transfer-fx-grid strong { display: block; margin: 4px 0; color: #dbe9fb; font-size: 10px; line-height: 1.45; }
+.transfer-fx-grid .loss { border-color: #8a5a18; background: #2b1d0b8a; }
+.transfer-fx-grid .loss strong { color: #ffd06a; }
+.transfer-fx-grid .ok { border-color: #1f6d59; background: #0b2a2280; }
+.transfer-fx-grid .ok strong { color: #63e7bd; }
+.transfer-fx-expense-note { display: flex; align-items: flex-start; gap: 9px; margin-top: 10px; border-top: 1px solid #20384f; padding-top: 10px; color: #f4c96e; }
+.transfer-fx-expense-note p { margin: 0; color: #94aac2; font-size: 9px; line-height: 1.55; }
+.transfer-fx-expense-note strong { color: #f6d47f; }
+.transfer-fx-error { margin: 10px 0 0; color: #f4a2a2; font-size: 9px; }
+@media (max-width: 850px) { .transfer-fx-grid { grid-template-columns: 1fr 1fr; } }
+.transfer-fx-live.intraday { border-color: #16765f; background: #0c2d25; color: #77e9c2; }
+.transfer-fx-live.fallback { border-color: #855c1d; background: #2a1d0d; color: #f5cb72; }
+.transfer-fx-source-line { display: flex; justify-content: space-between; gap: 12px; margin-top: 9px; color: #55718d; font-size: 8px; line-height: 1.45; }
+.transfer-fx-source-line span:last-child { text-align: right; }
+@media (max-width: 650px) { .transfer-fx-source-line { flex-direction: column; } .transfer-fx-source-line span:last-child { text-align: left; } }

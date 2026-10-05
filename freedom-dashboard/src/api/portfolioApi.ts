@@ -1,7 +1,54 @@
 import { authApi } from "./authApi";
 import type { PortfolioInput, PortfolioWallet, ValuationEvent } from "../types/Portfolio";
+import type { AssetCategory, CashCurrency } from "../types/Asset";
 
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
+
+export type PurchaseTargetInput = {
+  name: string;
+  category: AssetCategory;
+  color?: string;
+  iconKey?: string;
+  cryptoCoinId?: string;
+  cryptoSymbol?: string;
+  cashCurrency?: CashCurrency;
+  stockSymbol?: string;
+  stockCurrency?: CashCurrency;
+};
+
+export type PortfolioTransferInput = {
+  sourceAssetId: number;
+  targetAssetId?: number | null;
+  targetPortfolioId?: number | null;
+  newTarget?: PurchaseTargetInput | null;
+  amount: number;
+  acquiredQuantity?: number | null;
+  fee?: number;
+};
+
+function toBackendAssetCategory(category: AssetCategory) {
+  switch (category) {
+    case "cash": return "CASH";
+    case "stocks": return "STOCKS";
+    case "crypto": return "CRYPTO";
+    case "realEstate": return "REAL_ESTATE";
+    case "business": return "BUSINESS";
+    case "vehicle": return "VEHICLE";
+    case "metals": return "METALS";
+    case "bonds": return "BONDS";
+    default: return "OTHER";
+  }
+}
+
+function transferBody(input: PortfolioTransferInput) {
+  return {
+    ...input,
+    newTarget: input.newTarget ? {
+      ...input.newTarget,
+      category: toBackendAssetCategory(input.newTarget.category),
+    } : null,
+  };
+}
 
 type PortfolioApiWallet = Omit<PortfolioWallet, "imagePosition"> & {
   imagePosition?: "TOP" | "CENTER" | "BOTTOM" | null;
@@ -61,9 +108,9 @@ export const portfolioApi = {
     method: "DELETE", headers: headers(),
   }).then(read<void>),
 
-  transfer: (sourceAssetId: number, targetAssetId: number, amount: number, fee = 0) =>
+  transfer: (input: PortfolioTransferInput) =>
     fetch(`${API}/api/portfolios/transfer`, {
-      method: "POST", headers: headers(), body: JSON.stringify({ sourceAssetId, targetAssetId, amount, fee }),
+      method: "POST", headers: headers(), body: JSON.stringify(transferBody(input)),
     }).then(read<void>),
 
   moveAsset: (assetId: number, targetPortfolioId: number) =>

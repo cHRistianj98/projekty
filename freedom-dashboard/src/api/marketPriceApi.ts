@@ -23,6 +23,11 @@ export type FxQuote = {
   tableNo: string;
   fetchedAt: string;
   source: string;
+  provider?: string | null;
+  symbol?: string | null;
+  quotedAt?: string | null;
+  intraday?: boolean;
+  fallback?: boolean;
 };
 
 export type CryptoQuote = {
@@ -123,8 +128,8 @@ export const marketPriceApi = {
     return rows.map(fromBackendAsset);
   },
 
-  async getFxQuote(currency: CashCurrency): Promise<FxQuote> {
-    const params = new URLSearchParams({ currency });
+  async getFxQuote(currency: CashCurrency, fresh = false): Promise<FxQuote> {
+    const params = new URLSearchParams({ currency, fresh: String(fresh) });
     const row = await handle<FxQuote>(
       await fetch(`${API_URL}/api/market/fx/quote?${params.toString()}`, { headers: headers() })
     );

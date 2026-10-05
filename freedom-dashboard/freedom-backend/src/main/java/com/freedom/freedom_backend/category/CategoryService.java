@@ -95,6 +95,12 @@ public class CategoryService {
                 .orElseThrow(() -> new IllegalStateException("Brak kategorii prowizji inwestycyjnych."));
     }
 
+    public Category currencySpreadCategory(User user) {
+        ensureDefaults(user);
+        return repository.findByUserIdAndTypeAndSlug(user.getId(), CategoryType.EXPENSE, "currency-spread")
+                .orElseThrow(() -> new IllegalStateException("Brak kategorii kosztu spreadu walutowego."));
+    }
+
     private void ensureDefaults(User user) {
         int order = 0;
         for (Seed seed : DEFAULTS) {
@@ -162,6 +168,7 @@ public class CategoryService {
         new Seed(CategoryType.EXPENSE, CategoryGroup.LIFESTYLE, "dance", "Tańce", "Music", "#FF9800"),
         new Seed(CategoryType.EXPENSE, CategoryGroup.WEALTH, "investments", "Inwestycje", "ChartNoAxesCombined", "#F7D14A"),
         new Seed(CategoryType.EXPENSE, CategoryGroup.WEALTH, "investment-fees", "Prowizje i opłaty", "ReceiptText", "#F7D14A"),
+        new Seed(CategoryType.EXPENSE, CategoryGroup.WEALTH, "currency-spread", "Spread walutowy", "ArrowRightLeft", "#F59E0B"),
         new Seed(CategoryType.EXPENSE, CategoryGroup.LIFESTYLE, "gaming", "Gaming", "Gamepad2", "#C14C00"),
         new Seed(CategoryType.EXPENSE, CategoryGroup.LIFESTYLE, "chess", "Szachy", "Trophy", "#C14C00"),
         new Seed(CategoryType.EXPENSE, CategoryGroup.HEALTH, "hair-transplant", "Przeszczep włosów", "HeartPulse", "#2BEA3A"),

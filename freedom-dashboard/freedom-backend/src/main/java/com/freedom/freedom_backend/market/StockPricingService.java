@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class StockPricingService {
 
     private static final String SOURCE =
-            "Yahoo Finance — delayed market quote (unofficial chart endpoint); FX: NBP tabela A";
+            "Yahoo Finance — delayed market quote (unofficial chart endpoint); FX: intraday Yahoo, NBP fallback";
 
     /*
      * Bare GPW symbols that were used by the previous Stooq implementation.
