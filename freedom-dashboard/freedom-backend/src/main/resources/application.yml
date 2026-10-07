@@ -37,6 +37,10 @@ app:
     coingecko-api-base-url: "https://api.coingecko.com/api/v3"
     coingecko-demo-api-key: "${COINGECKO_DEMO_API_KEY:}"
     crypto-cache-minutes: 10
+    crypto-history-cache-hours: 26
+    crypto-history-failure-cooldown-minutes: 30
+    crypto-live-failure-cooldown-seconds: 60
+    crypto-history-request-gap-ms: 750
     nbp-api-base-url: "https://api.nbp.pl/api"
     fx-cash-cache-minutes: 60
     stooq-base-url: "https://stooq.com"
