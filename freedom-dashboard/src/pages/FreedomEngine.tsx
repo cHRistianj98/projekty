@@ -96,6 +96,7 @@ import type { Liability } from "../types/Liability";
 
 
 import type { MonthlyBudget } from "../types/Cashflow";
+import { useLanguage } from "../i18n/LanguageContext";
 
 
 
@@ -156,11 +157,10 @@ type FreedomEngineProps = {
 
 
 export function FreedomEngine(props: FreedomEngineProps) {
-
-
-
-  const engine = calculateFreedomEngine(props);
-  const missions = getFreedomMissions(props);
+  const { language } = useLanguage();
+  const ui = (pl: string, en: string) => (language === "pl" ? pl : en);
+  const engine = calculateFreedomEngine(props, language);
+  const missions = getFreedomMissions(props, language);
 
   const [focusedMissionId, setFocusedMissionId] =
     useState<string | null>(() =>
@@ -288,7 +288,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-              Freedom Engine 2.1
+              {ui("Silnik Freedom", "Freedom Engine")}
 
 
 
@@ -304,7 +304,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-            Twój finansowy silnik
+            {ui("Twój finansowy silnik", "Your financial engine")}
 
 
 
@@ -316,15 +316,10 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-            Score oparty na rolling cashflow, strukturze aktywów,
-
-
-
-            cashflow, strukturze aktywów, płynności i zadłużeniu. Cele użytkownika
-
-
-
-            są teraz źródłem misji — bez sztucznego Safety Shield.
+            {ui(
+              "Wynik oparty na średnim przepływie pieniężnym, strukturze aktywów, płynności i zadłużeniu. Cele użytkownika są źródłem misji — bez sztucznej poduszki systemowej.",
+              "Score based on rolling cashflow, asset structure, liquidity and debt. Your real goals are the source of missions — without an artificial system shield."
+            )}
 
 
 
@@ -460,7 +455,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-            ⚠ Sklasyfikuj stare aktywa
+            ⚠ {ui("Sklasyfikuj stare aktywa", "Classify legacy assets")}
 
 
 
@@ -472,19 +467,10 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-            {formatMoney(engine.unclassifiedAssets)} portfela pochodzi
-
-
-
-            ze starego modelu Asset i nie ma jeszcze kategorii. Wejdź
-
-
-
-            w Inwestycje → edytuj pozycję → wybierz kategorię. Do tego
-
-
-
-            czasu Engine traktuje ją jako „Inne”.
+            {ui(
+              `${formatMoney(engine.unclassifiedAssets)} portfela pochodzi ze starego modelu aktywów i nie ma jeszcze kategorii. Wejdź w Inwestycje → edytuj pozycję → wybierz kategorię. Do tego czasu silnik traktuje ją jako „Inne”.`,
+              `${formatMoney(engine.unclassifiedAssets)} of the portfolio comes from the legacy asset model and is still uncategorized. Go to Investments → edit the position → choose a category. Until then, the Engine treats it as “Other”.`
+            )}
 
 
 
@@ -612,15 +598,10 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-              Cashflow i savings rate używają maksymalnie 3 ostatnich
-
-
-
-              miesięcy danych. Płynność pokazuje wyłącznie kategorię
-
-
-
-              „Gotówka / konto” i nie tworzy osobnego celu.
+              {ui(
+                "Przepływ pieniężny i stopa oszczędności używają maksymalnie 3 ostatnich miesięcy danych. Płynność pokazuje wyłącznie kategorię „Gotówka / konto” i nie tworzy osobnego celu.",
+                "Cashflow and savings rate use up to the last 3 months of data. Liquidity includes only the Cash / account category and does not create a separate goal."
+              )}
 
 
 
@@ -656,7 +637,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-              Score breakdown
+              {ui("Składowe wyniku", "Score breakdown")}
 
 
 
@@ -712,7 +693,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-          label="Net worth"
+          label={ui("Majątek netto", "Net worth")}
 
 
 
@@ -720,7 +701,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-          sub={`${engine.progressToFreedom.toFixed(1)}% drogi do FREE`}
+          sub={ui(`${engine.progressToFreedom.toFixed(1)}% drogi do WOLNOŚCI`, `${engine.progressToFreedom.toFixed(1)}% of the road to FREE`)}
 
 
 
@@ -764,7 +745,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-          label="Kapitał inwestycyjny"
+          label={ui("Kapitał inwestycyjny", "Invested capital")}
 
 
 
@@ -772,7 +753,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-          sub={`${engine.investmentRatio.toFixed(1)}% aktywów brutto`}
+          sub={ui(`${engine.investmentRatio.toFixed(1)}% aktywów brutto`, `${engine.investmentRatio.toFixed(1)}% of gross assets`)}
 
 
 
@@ -788,7 +769,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-          label="Płynność"
+          label={ui("Płynność", "Liquidity")}
 
 
 
@@ -796,7 +777,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-          sub={`${engine.safetyMonths.toFixed(1)} mies. średnich kosztów`}
+          sub={ui(`${engine.safetyMonths.toFixed(1)} mies. średnich kosztów`, `${engine.safetyMonths.toFixed(1)} months of average expenses`)}
 
 
 
@@ -832,7 +813,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-              Your freedom path
+              {ui("Twoja droga do wolności", "Your freedom path")}
 
 
 
@@ -840,7 +821,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-            <h2 className="mt-2 text-2xl font-black">Droga do 3 milionów</h2>
+            <h2 className="mt-2 text-2xl font-black">{ui("Droga do 3 milionów", "Road to PLN 3 million")}</h2>
 
 
 
@@ -1037,21 +1018,23 @@ export function FreedomEngine(props: FreedomEngineProps) {
           <div>
             <div className="flex items-center gap-2">
               <Target size={19} className="text-blue-400" />
-              <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-400">Missions 3.0 · Goal Driven</p>
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-400">{ui("Misje · Oparte na celach", "Missions · Goal driven")}</p>
             </div>
-            <h2 className="mt-2 text-2xl font-black">Co robimy teraz?</h2>
+            <h2 className="mt-2 text-2xl font-black">{ui("Co robimy teraz?", "What are we doing now?")}</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              Misje są teraz warstwą działania nad Twoimi prawdziwymi celami. Engine może dorzucić dług lub cashflow,
-              ale nie tworzy już osobnej wirtualnej poduszki.
+              {ui(
+                "Misje są warstwą działania nad Twoimi prawdziwymi celami. Silnik może dodać dług lub przepływy pieniężne, ale nie tworzy osobnej wirtualnej poduszki.",
+                "Missions are an action layer on top of your real goals. The Engine can add debt or cashflow priorities, but it no longer creates a separate virtual safety goal."
+              )}
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
             <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-400">Mission queue</p>
-              <p className="mt-1 text-lg font-black">{activeMissions.length} ACTIVE</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-400">{ui("Kolejka misji", "Mission queue")}</p>
+              <p className="mt-1 text-lg font-black">{activeMissions.length} {ui("AKTYWNE", "ACTIVE")}</p>
             </div>
             <div className="rounded-xl border border-violet-500/20 bg-violet-500/10 px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-400">Goal missions</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-400">{ui("Misje celów", "Goal missions")}</p>
               <p className="mt-1 text-lg font-black">{missions.filter((mission) => mission.source === "GOAL").length}</p>
             </div>
           </div>
@@ -1074,7 +1057,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
               <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
                 <div className="max-w-2xl">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-cyan-400/20 bg-cyan-500/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-300">Primary mission</span>
+                    <span className="rounded-full border border-cyan-400/20 bg-cyan-500/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-300">{ui("Główna misja", "Primary mission")}</span>
                     <span className="rounded-full border border-slate-700 bg-slate-950/50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-300">{focusedMission.source}</span>
                   </div>
                   <h3 className="mt-4 text-3xl font-black tracking-tight">{focusedMission.title}</h3>
@@ -1085,7 +1068,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
                   onClick={() => setFocusedMissionId(null)}
                   className="cursor-pointer shrink-0 rounded-xl border border-slate-700 bg-slate-950/60 px-4 py-2.5 text-xs font-black text-slate-300 backdrop-blur transition hover:border-slate-500 hover:text-white"
                 >
-                  Usuń z fokusu
+                  {ui("Usuń z fokusu", "Remove from focus")}
                 </button>
               </div>
 
@@ -1106,8 +1089,8 @@ export function FreedomEngine(props: FreedomEngineProps) {
           </div>
         ) : (
           <div className="mt-6 rounded-2xl border border-dashed border-slate-700 bg-slate-900/20 p-5">
-            <p className="font-black text-slate-300">Wybierz swoją główną misję.</p>
-            <p className="mt-1 text-sm text-slate-600">Najlepiej cel, który faktycznie chcesz teraz dowieźć. Engine podpowiada kolejkę poniżej.</p>
+            <p className="font-black text-slate-300">{ui("Wybierz swoją główną misję.", "Choose your primary mission.")}</p>
+            <p className="mt-1 text-sm text-slate-600">{ui("Najlepiej cel, który faktycznie chcesz teraz dowieźć. Silnik podpowiada kolejkę poniżej.", "Prefer the goal you genuinely want to deliver now. The Engine suggests the queue below.")}</p>
           </div>
         )}
 
@@ -1123,10 +1106,12 @@ export function FreedomEngine(props: FreedomEngineProps) {
         </div>
 
         <div className="mt-5 rounded-2xl border border-violet-500/15 bg-violet-500/5 px-5 py-4">
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-violet-400">Jak działa kolejka?</p>
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-violet-400">{ui("Jak działa kolejka?", "How does the queue work?")}</p>
           <p className="mt-1 text-sm leading-6 text-slate-500">
-            Najpierw realny cel o najwyższym priorytecie. Pozostałe miejsca mogą dostać redukcja długu,
-            utrzymanie cashflow albo kolejny cel. XP nadal pochodzi wyłącznie z Achievements.
+            {ui(
+              "Najpierw realny cel o najwyższym priorytecie. Pozostałe miejsca mogą dostać redukcja długu, utrzymanie przepływów albo kolejny cel. XP nadal pochodzi wyłącznie z osiągnięć.",
+              "Your highest-priority real goal comes first. Remaining slots can be filled by debt reduction, cashflow maintenance or another goal. XP still comes only from Achievements."
+            )}
           </p>
         </div>
       </section>
@@ -1137,13 +1122,15 @@ export function FreedomEngine(props: FreedomEngineProps) {
             <div className="flex items-center gap-2">
               <BrainCircuit size={20} className="text-violet-400" />
               <p className="text-xs font-black uppercase tracking-[0.2em] text-violet-400">
-                Freedom Intelligence 3.2
+                Inteligencja Freedom
               </p>
             </div>
-            <h2 className="mt-2 text-2xl font-black">Money Router</h2>
+            <h2 className="mt-2 text-2xl font-black">{ui("Router środków", "Money Router")}</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-              Wybierz tryb miesięczny oparty o rolling cashflow albo zasymuluj jednorazową nadwyżkę.
-              Router najpierw zabezpiecza fundamenty, potem konkretne długi i miesięczne minimum celów z deadline'em.
+              {ui(
+                "Wybierz tryb miesięczny oparty o średni przepływ pieniężny albo zasymuluj jednorazową nadwyżkę. Router najpierw zabezpiecza fundamenty, potem konkretne długi i miesięczne minimum celów z terminem.",
+                "Choose a monthly mode based on rolling cashflow or simulate a one-off surplus. The Router secures the foundations first, then specific debts and the monthly minimum for goals with deadlines."
+              )}
             </p>
           </div>
 
@@ -1158,7 +1145,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
                     : "text-slate-500 hover:text-slate-300"
                 }`}
               >
-                Monthly Plan
+                {ui("Plan miesięczny", "Monthly plan")}
               </button>
 
               <button
@@ -1170,7 +1157,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
                     : "text-slate-500 hover:text-slate-300"
                 }`}
               >
-                Extra Cash
+                {ui("Dodatkowa gotówka", "Extra cash")}
               </button>
             </div>
 
@@ -1184,10 +1171,10 @@ export function FreedomEngine(props: FreedomEngineProps) {
                   <div>
                     <p className="text-2xl font-black text-white">
                       {formatMoney(monthlyRouterAmount)}
-                      <span className="ml-1 text-sm text-slate-500">/ mies.</span>
+                      <span className="ml-1 text-sm text-slate-500">{ui("/ mies.", "/ month")}</span>
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
-                      Pobierane automatycznie z aktualnych danych finansowych.
+                      {ui("Pobierane automatycznie z aktualnych danych finansowych.", "Pulled automatically from current financial data.")}
                     </p>
                   </div>
 
@@ -1199,7 +1186,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
             ) : (
               <>
                 <label className="mt-3 block text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">
-                  Mam dodatkowo
+                  {ui("Mam dodatkowo", "Extra amount")}
                 </label>
 
                 <div className="mt-2 flex items-center rounded-xl border border-slate-700 bg-[#08111f] px-4">
@@ -1251,24 +1238,20 @@ export function FreedomEngine(props: FreedomEngineProps) {
               }`}
             >
               {routerMode === "MONTHLY"
-                ? "Monthly Operating Mode"
-                : "One-Off Simulation"}
+                ? ui("Tryb miesięczny", "Monthly operating mode")
+                : ui("Symulacja jednorazowa", "One-off simulation")}
             </p>
 
             <p className="mt-1 font-black">
               {routerMode === "MONTHLY"
-                ? `Rozdzielam aktualną miesięczną nadwyżkę ${formatMoney(
-                    monthlyRouterAmount
-                  )}.`
-                : `Symuluję jednorazowe rozdysponowanie ${formatMoney(
-                    routerAmount
-                  )}.`}
+                ? ui(`Rozdzielam aktualną miesięczną nadwyżkę ${formatMoney(monthlyRouterAmount)}.`, `Routing the current monthly surplus of ${formatMoney(monthlyRouterAmount)}.`)
+                : ui(`Symuluję jednorazowe rozdysponowanie ${formatMoney(routerAmount)}.`, `Simulating a one-off allocation of ${formatMoney(routerAmount)}.`)}
             </p>
           </div>
 
           {routerMode === "MONTHLY" && (
             <div className="text-xs text-slate-500">
-              Źródło: rolling cashflow {engine.rollingMonths}M
+              {ui("Źródło", "Source")}: rolling cashflow {engine.rollingMonths}M
             </div>
           )}
         </div>
@@ -1284,9 +1267,9 @@ export function FreedomEngine(props: FreedomEngineProps) {
             ))
           ) : (
             <div className="xl:col-span-3 rounded-2xl border border-dashed border-slate-700 bg-slate-900/20 p-6 text-center">
-              <p className="font-black text-slate-300">Brak dodatniej nadwyżki do rozdysponowania.</p>
+              <p className="font-black text-slate-300">{ui("Brak dodatniej nadwyżki do rozdysponowania.", "No positive surplus available to allocate.")}</p>
               <p className="mt-1 text-sm text-slate-600">
-                W trybie MONTHLY PLAN potrzebny jest dodatni rolling cashflow; w EXTRA CASH możesz wpisać własną kwotę.
+                {ui("W trybie planu miesięcznego potrzebny jest dodatni średni przepływ; w trybie dodatkowej gotówki możesz wpisać własną kwotę.", "Monthly plan requires positive rolling cashflow; in Extra cash mode you can enter your own amount.")}
               </p>
             </div>
           )}
@@ -1309,25 +1292,26 @@ export function FreedomEngine(props: FreedomEngineProps) {
                       : "text-rose-400"
                   }`}
                 >
-                  Deadline Intelligence
+                  {ui("Analiza terminów", "Deadline Intelligence")}
                 </p>
                 <p className="mt-1 font-black">
                   {moneyPlan.deadlineSummary.onTrack
-                    ? "Miesięczne minimum deadline'ów zabezpieczone"
-                    : `Brakuje ${formatMoney(
-                        moneyPlan.deadlineSummary.shortfall
-                      )} do miesięcznego minimum`}
+                    ? ui("Miesięczne minimum celów z terminem zabezpieczone", "Monthly deadline minimum secured")
+                    : ui(
+                        `Brakuje ${formatMoney(moneyPlan.deadlineSummary.shortfall)} do miesięcznego minimum`,
+                        `${formatMoney(moneyPlan.deadlineSummary.shortfall)} short of the monthly minimum`
+                      )}
                 </p>
               </div>
 
               <div className="text-sm text-slate-400">
-                Wymagane{" "}
+                {ui("Wymagane", "Required")}{" "}
                 <span className="font-black text-white">
                   {formatMoney(
                     moneyPlan.deadlineSummary.requiredMonthly
                   )}
                 </span>
-                {" • "}przydzielone{" "}
+                {" • "}{ui("przydzielone", "allocated")}{" "}
                 <span className="font-black text-white">
                   {formatMoney(
                     moneyPlan.deadlineSummary.allocatedMonthly
@@ -1341,9 +1325,9 @@ export function FreedomEngine(props: FreedomEngineProps) {
         {moneyPlan.routes.length > 0 && (
           <div className="mt-6 rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-5">
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-400">
-              {routerMode === "MONTHLY" ? "Miesięczny plan" : "Plan dla"}{" "}
+              {routerMode === "MONTHLY" ? ui("Miesięczny plan", "Monthly plan") : ui("Plan dla", "Plan for")}{" "}
               {formatMoney(moneyPlan.amount)}
-              {routerMode === "MONTHLY" ? " / mies." : ""}
+              {routerMode === "MONTHLY" ? ui(" / mies.", " / month") : ""}
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-sm font-black">
               {moneyPlan.routes.map((route, index) => (
@@ -1358,8 +1342,10 @@ export function FreedomEngine(props: FreedomEngineProps) {
         )}
 
         <p className="mt-4 text-xs leading-5 text-slate-600">
-          MONTHLY PLAN korzysta z aktualnego rolling cashflow i pokazuje operacyjny podział nadwyżki na ten miesiąc.
-          EXTRA CASH pozostaje symulatorem jednorazowej kwoty. Cele z deadline'em dostają miesięczne minimum; przy niedoborze priorytet HIGH → MEDIUM → LOW rozstrzyga kolejność, a konkretne długi wybiera Debt Intelligence.
+          {ui(
+            "Plan miesięczny korzysta z aktualnego średniego przepływu i pokazuje operacyjny podział nadwyżki na ten miesiąc. Dodatkowa gotówka pozostaje symulatorem jednorazowej kwoty. Cele z terminem dostają miesięczne minimum; przy niedoborze priorytet WYSOKI → ŚREDNI → NISKI rozstrzyga kolejność, a konkretne długi wybiera analiza zadłużenia.",
+            "Monthly plan uses current rolling cashflow and shows the operational surplus allocation for this month. Extra cash remains a one-off amount simulator. Goals with deadlines receive their monthly minimum; when funds are short, HIGH → MEDIUM → LOW priority decides the order, while Debt Intelligence selects specific debts."
+          )}
         </p>
       </section>
 
@@ -1479,7 +1465,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-              label="Śr. dochód"
+              label={ui("Śr. dochód", "Avg. income")}
 
 
 
@@ -1495,7 +1481,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-              label="Śr. wydatki"
+              label={ui("Śr. wydatki", "Avg. expenses")}
 
 
 
@@ -1511,7 +1497,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-              label="Śr. nadwyżka"
+              label={ui("Śr. nadwyżka", "Avg. surplus")}
 
 
 
@@ -1635,7 +1621,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-                Wszystkie milestone'y osiągnięte.
+                {ui("Wszystkie kamienie milowe osiągnięte.", "All milestones reached.")}
 
 
 
@@ -1759,7 +1745,7 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-              Engine 1.2
+              Silnik
 
 
 
@@ -1771,19 +1757,10 @@ export function FreedomEngine(props: FreedomEngineProps) {
 
 
 
-              Score jest wskaźnikiem gry FREEDOM, nie ratingiem
-
-
-
-              inwestycyjnym. Projekcja jest liniowa i nie zawiera stóp
-
-
-
-              zwrotu, inflacji, podatków ani zmienności — scenariusze
-
-
-
-              inwestycyjne nadal zostają w Simulatorze.
+              {ui(
+                "Wynik jest wskaźnikiem gry FREEDOM, nie ratingiem inwestycyjnym. Projekcja jest liniowa i nie zawiera stóp zwrotu, inflacji, podatków ani zmienności — scenariusze inwestycyjne nadal pozostają w Symulatorze.",
+                "The score is a FREEDOM game indicator, not an investment rating. The projection is linear and does not include returns, inflation, taxes or volatility — investment scenarios remain in the Simulator."
+              )}
 
 
 
@@ -2385,6 +2362,8 @@ function MissionCard({
   focused: boolean;
   onFocus: () => void;
 }) {
+  const { language } = useLanguage();
+  const ui = (pl: string, en: string) => (language === "pl" ? pl : en);
   const style = missionAccentStyles[mission.accent];
   const complete = mission.status === "COMPLETE";
 
@@ -2415,7 +2394,7 @@ function MissionCard({
 
         <div className="mt-5 flex items-end justify-between gap-3 text-xs">
           <span className="text-slate-500">{formatMissionValue(mission.current, mission.unit)}</span>
-          <span className={`font-black ${style.text}`}>{complete ? "COMPLETE" : formatMissionValue(mission.target, mission.unit)}</span>
+          <span className={`font-black ${style.text}`}>{complete ? ui("UKOŃCZONE", "COMPLETE") : formatMissionValue(mission.target, mission.unit)}</span>
         </div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800">
           <div className={`h-full rounded-full transition-all duration-700 ${style.bar}`} style={{ width: `${mission.progress}%` }} />
@@ -2431,7 +2410,7 @@ function MissionCard({
             onClick={onFocus}
             className={`mt-5 w-full cursor-pointer rounded-xl border px-4 py-2.5 text-xs font-black transition ${focused ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/15" : "border-slate-700 bg-slate-900/50 text-slate-300 hover:border-cyan-500/30 hover:text-cyan-300"}`}
           >
-            {focused ? "✓ Główna misja" : "Ustaw jako fokus"}
+            {focused ? ui("✓ Główna misja", "✓ Primary mission") : ui("Ustaw jako fokus", "Set as focus")}
           </button>
         )}
       </div>

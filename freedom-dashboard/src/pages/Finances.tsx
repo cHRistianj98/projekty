@@ -53,6 +53,8 @@ import { getAssetCategory } from "../types/Asset";
 import type { PortfolioWallet } from "../types/Portfolio";
 import type { Goal } from "../types/Goal";
 import { portfolioApi } from "../api/portfolioApi";
+import { useLanguage } from "../i18n/LanguageContext";
+import { localizedCategoryName } from "../i18n/categoryNames";
 
 type FinancesProps = {
   budget: MonthlyBudget;
@@ -205,6 +207,9 @@ export function Finances({
   onDeleteRecurringTransaction,
   onDataImported,
 }: FinancesProps) {
+  const { language, locale } = useLanguage();
+  const ui = (pl: string, en: string) => (language === "pl" ? pl : en);
+
   const [
     isAddExpenseOpen,
     setIsAddExpenseOpen,
@@ -429,7 +434,8 @@ export function Finances({
 
   const monthLabel =
     formatMonth(
-      selectedMonth
+      selectedMonth,
+      locale
     );
 
   return (
@@ -444,12 +450,11 @@ export function Finances({
           </p>
 
           <h1 className="mt-2 text-4xl font-bold">
-            Finanse
+            {ui("Finanse", "Finances")}
           </h1>
 
           <p className="mt-2 text-slate-500">
-            Zarządzaj miesięcznym
-            cashflow.
+            {ui("Zarządzaj miesięcznymi przepływami pieniężnymi.", "Manage your monthly cashflow.")}
           </p>
         </div>
 
@@ -494,7 +499,7 @@ export function Finances({
             className="flex cursor-pointer items-center gap-2 rounded-xl border border-violet-400/20 bg-violet-500/[0.07] px-4 py-3 text-sm font-semibold text-violet-200 transition hover:border-violet-400/40 hover:bg-violet-500/12 hover:text-white"
           >
             <Sparkles size={18} />
-            Analiza AI
+            {ui("Analiza AI", "AI analysis")}
           </button>
 
           <button
@@ -505,7 +510,7 @@ export function Finances({
             className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:border-blue-500/50 hover:bg-blue-500/10 hover:text-white"
           >
             <FileUp size={18} />
-            Import z Finanse
+            {ui("Import z Finanse", "Import from Finanse")}
           </button>
 
           <button
@@ -519,7 +524,7 @@ export function Finances({
           >
             <Plus size={18} />
 
-            Dodaj wydatek
+            {ui("Dodaj wydatek", "Add expense")}
           </button>
         </div>
       </div>
@@ -528,45 +533,45 @@ export function Finances({
 
       <section className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
-          label="Dochód"
+          label={ui("Dochód", "Income")}
           value={income}
           color="text-emerald-300"
-          subtitle={`${monthlyIncomes.length} źródeł`}
+          subtitle={ui(`${monthlyIncomes.length} źródeł`, `${monthlyIncomes.length} sources`)}
           icon={WalletCards}
           accent="emerald"
-          eyebrow="INCOME"
+          eyebrow={ui("DOCHÓD", "INCOME")}
         />
 
         <SummaryCard
-          label="Wydatki i alokacje"
+          label={ui("Wydatki i alokacje", "Expenses & allocations")}
           value={totalExpenses}
           color="text-rose-300"
-          subtitle={`${monthlyExpenses.length} pozycji`}
+          subtitle={ui(`${monthlyExpenses.length} pozycji`, `${monthlyExpenses.length} items`)}
           icon={CreditCard}
           accent="rose"
-          eyebrow="OUTFLOW"
+          eyebrow={ui("WYDATKI", "OUTFLOW")}
         />
 
         <SummaryCard
-          label="Wolne środki"
+          label={ui("Wolne środki", "Free cash")}
           value={available}
           color={available >= 0 ? "text-sky-300" : "text-red-300"}
-          subtitle={available >= 0 ? "Kapitał gotowy do alokacji" : "Miesiąc na minusie"}
+          subtitle={available >= 0 ? ui("Kapitał gotowy do alokacji", "Capital ready to allocate") : ui("Miesiąc na minusie", "Month below zero")}
           icon={available >= 0 ? PiggyBank : TrendingDown}
           accent={available >= 0 ? "sky" : "rose"}
-          eyebrow="AVAILABLE"
+          eyebrow={ui("DOSTĘPNE", "AVAILABLE")}
         />
 
         <SummaryCard
-          label="Stopa oszczędności"
+          label={ui("Stopa oszczędności", "Savings rate")}
           value={savingsRate}
           color={savingsRate >= 50 ? "text-emerald-300" : "text-amber-300"}
-          subtitle="Cel: minimum 50%"
+          subtitle={ui("Cel: minimum 50%", "Target: minimum 50%")} 
           suffix="%"
           decimals={1}
           icon={savingsRate >= 50 ? TrendingUp : Target}
           accent={savingsRate >= 50 ? "emerald" : "amber"}
-          eyebrow="SAVINGS RATE"
+          eyebrow={ui("STOPA OSZCZĘDNOŚCI", "SAVINGS RATE")}
           progress={Math.max(0, Math.min(100, savingsRate))}
         />
       </section>
@@ -620,19 +625,19 @@ export function Finances({
 
             <div>
               <h2 className="text-lg font-bold">
-                Przychody
+                {ui("Przychody", "Income")}
               </h2>
 
               <p className="mt-0.5 text-xs text-slate-500">
-                Wpływy z pracy, działalności i innych źródeł w {monthLabel.toLowerCase()}.
+                {ui(`Wpływy z pracy, działalności i innych źródeł w ${monthLabel.toLowerCase()}.`, `Income from work, business and other sources in ${monthLabel}.`)}
               </p>
 
               <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-200/90">
                 <span className="rounded-full border border-emerald-400/15 bg-emerald-400/[0.08] px-2.5 py-1">
-                  {monthlyIncomes.length} źródeł
+                  {monthlyIncomes.length} {language === "pl" ? polishCountWord(monthlyIncomes.length, "źródło", "źródła", "źródeł") : monthlyIncomes.length === 1 ? "source" : "sources"}
                 </span>
                 <span className="rounded-full border border-slate-700 bg-slate-950/50 px-2.5 py-1 text-slate-300">
-                  Śledzenie wpływów
+                  {ui("Śledzenie wpływów", "Income tracking")}
                 </span>
               </div>
             </div>
@@ -642,9 +647,9 @@ export function Finances({
             <span className="text-lg font-black text-emerald-300 sm:text-xl">
               +
               {income.toLocaleString(
-                "pl-PL"
+                locale
               )}{" "}
-              zł
+              {language === "pl" ? "zł" : "PLN"}
             </span>
 
             <button
@@ -658,7 +663,7 @@ export function Finances({
             >
               <Plus size={16} />
 
-              Dodaj
+              {ui("Dodaj", "Add")}
             </button>
           </div>
         </div>
@@ -666,7 +671,7 @@ export function Finances({
         {monthlyIncomes.length ===
         0 ? (
           <EmptyRows
-            text={`Brak przychodów w ${monthLabel}.`}
+            text={ui(`Brak przychodów w ${monthLabel}.`, `No income in ${monthLabel}.`)}
           />
         ) : (
           monthlyIncomes
@@ -691,7 +696,7 @@ export function Finances({
                   amount={incomeItem.amount}
                   date={incomeItem.date}
                   recurring={incomeItem.recurring}
-                  categoryName={incomeItem.categoryName ?? "Przychód"}
+                  categoryName={localizedCategoryName(incomeItem.categoryName ?? "Przychód", language)}
                   categoryIconKey={incomeItem.categoryIconKey ?? "Wallet"}
                   categoryColor={incomeItem.categoryColor ?? "#10b981"}
                   tone="income"
@@ -765,17 +770,17 @@ export function Finances({
                     <div>
                       <h2 className="text-lg font-bold">
                         {
-                          config.title
+                          ui(config.title, financeCategoryTitleEn(config.category))
                         }
                       </h2>
 
                       <p className="mt-0.5 text-xs text-slate-500">
-                        {config.subtitle}
+                        {ui(config.subtitle, financeCategorySubtitleEn(config.category))}
                       </p>
 
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em]">
                         <span className={`rounded-full border px-2.5 py-1 ${config.chipTone}`}>
-                          {categoryExpenses.length} pozycji
+                          {categoryExpenses.length} {ui("pozycji", "items")}
                         </span>
                         <span className="rounded-full border border-slate-700 bg-slate-950/50 px-2.5 py-1 text-slate-300">
                           {monthLabel}
@@ -786,9 +791,9 @@ export function Finances({
 
                   <span className="text-lg font-black text-slate-100 sm:text-xl">
                     {categoryTotal.toLocaleString(
-                      "pl-PL"
+                      locale
                     )}{" "}
-                    zł
+                    {language === "pl" ? "zł" : "PLN"}
                   </span>
                 </div>
 
@@ -796,7 +801,7 @@ export function Finances({
                   {categoryExpenses.length ===
                   0 ? (
                     <EmptyRows
-                      text={`Brak pozycji w kategorii „${config.title}”.`}
+                      text={ui(`Brak pozycji w kategorii „${config.title}”.`, `No items in “${financeCategoryTitleEn(config.category)}”.`)}
                     />
                   ) : (
                     categoryExpenses
@@ -824,7 +829,7 @@ export function Finances({
                             amount={expense.amount}
                             date={expense.date}
                             recurring={expense.recurring}
-                            categoryName={expense.categoryName ?? config.title}
+                            categoryName={localizedCategoryName(expense.categoryName ?? config.title, language)}
                             categoryIconKey={expense.categoryIconKey ?? fallbackIconKey(config.category)}
                             categoryColor={expense.categoryColor ?? fallbackCategoryColor(config.category)}
                             tone="expense"
@@ -1034,6 +1039,8 @@ function TransactionVisualRow({
   onEdit,
   onDelete,
 }: TransactionVisualRowProps) {
+  const { language, locale } = useLanguage();
+  const ui = (pl: string, en: string) => (language === "pl" ? pl : en);
   const amountClass =
     tone === "income"
       ? "text-emerald-300"
@@ -1069,14 +1076,14 @@ function TransactionVisualRow({
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
           <span className="flex items-center gap-1">
             <CalendarDays size={12} />
-            {formatTransactionDate(date)}
+            {formatTransactionDate(date, locale, language)}
           </span>
 
           <span>•</span>
 
           <span className="flex items-center gap-1">
             {recurring && <Repeat2 size={12} />}
-            {recurring ? "Powtarzalny" : "Jednorazowy"}
+            {recurring ? ui("Powtarzalny", "Recurring") : ui("Jednorazowy", "One-off")}
           </span>
 
           <span>•</span>
@@ -1094,7 +1101,7 @@ function TransactionVisualRow({
               <div
                 className="inline-flex min-w-0 items-center gap-2 rounded-xl border bg-slate-950/65 px-2 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
                 style={{ borderColor: `${goal.color || "#8b5cf6"}45` }}
-                title={`Powiązany cel: ${goal.name}`}
+                title={`${ui("Powiązany cel", "Linked goal")}: ${goal.name}`}
               >
                 {goal.imageUrl ? (
                   <img
@@ -1115,10 +1122,9 @@ function TransactionVisualRow({
                     <Target size={13} />
                   </span>
                 )}
-
                 <span className="min-w-0">
                   <span className="block text-[9px] font-bold uppercase tracking-[0.14em] text-slate-600">
-                    Cel
+                    {ui("Cel", "Goal")}
                   </span>
                   <span className="block max-w-[190px] truncate text-[11px] font-bold text-violet-200">
                     {goal.name}
@@ -1133,13 +1139,13 @@ function TransactionVisualRow({
       <div className="ml-auto flex items-center gap-3">
         <div className={`min-w-[110px] text-right text-base font-black ${amountClass}`}>
           {tone === "income" ? "+" : ""}
-          {amount.toLocaleString("pl-PL")} zł
+          {amount.toLocaleString(locale)} {language === "pl" ? "zł" : "PLN"}
         </div>
 
         <button
           type="button"
           onClick={onEdit}
-          title="Edytuj"
+          title={ui("Edytuj", "Edit")}
           className="cursor-pointer rounded-xl p-2 text-slate-500 transition hover:bg-blue-500/10 hover:text-blue-300"
         >
           <Pencil size={17} />
@@ -1148,7 +1154,7 @@ function TransactionVisualRow({
         <button
           type="button"
           onClick={onDelete}
-          title="Usuń"
+          title={ui("Usuń", "Delete")}
           className="cursor-pointer rounded-xl p-2 text-slate-500 transition hover:bg-red-500/10 hover:text-red-300"
         >
           <Trash2 size={17} />
@@ -1158,19 +1164,27 @@ function TransactionVisualRow({
   );
 }
 
-function formatTransactionDate(date?: string) {
-  if (!date) return "Brak daty";
+function formatTransactionDate(date: string | undefined, locale: "pl-PL" | "en-US", language: "pl" | "en") {
+  if (!date) return language === "pl" ? "Brak daty" : "No date";
 
   const [year, month, day] = date.split("-");
   if (!year || !month || !day) return date;
 
-  return `${day}.${month}.${year}`;
+  return new Intl.DateTimeFormat(locale, { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(Number(year), Number(month) - 1, Number(day), 12));
 }
 
 function goalImagePosition(position?: Goal["imagePosition"]) {
   if (position === "top") return "center top";
   if (position === "bottom") return "center bottom";
   return "center center";
+}
+
+function polishCountWord(value: number, one: string, few: string, many: string) {
+  if (value === 1) return one;
+  const lastTwo = value % 100;
+  const last = value % 10;
+  if (last >= 2 && last <= 4 && !(lastTwo >= 12 && lastTwo <= 14)) return few;
+  return many;
 }
 
 function fallbackIconKey(category: ExpenseCategory) {
@@ -1251,7 +1265,9 @@ function SummaryCard({
   eyebrow,
   progress,
 }: SummaryCardProps) {
+  const { language, locale } = useLanguage();
   const palette = summaryAccent[accent];
+  const effectiveSuffix = suffix === " zł" ? (language === "pl" ? " zł" : " PLN") : suffix;
 
   return (
     <div className={`group relative min-h-[180px] overflow-hidden rounded-2xl border ${palette.border} bg-gradient-to-br from-slate-900 via-slate-900/95 to-[#07111f] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.22)] transition duration-300 hover:-translate-y-0.5 hover:border-slate-600`}>
@@ -1276,11 +1292,11 @@ function SummaryCard({
 
         <div className="mt-6">
           <div className={`text-[2rem] font-black leading-none tracking-tight ${color}`}>
-            {value.toLocaleString("pl-PL", {
+            {value.toLocaleString(locale, {
               minimumFractionDigits: decimals,
               maximumFractionDigits: decimals,
             })}
-            {suffix}
+            {effectiveSuffix}
           </div>
 
           <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
@@ -1291,7 +1307,7 @@ function SummaryCard({
           {progress !== undefined && (
             <div className="mt-4">
               <div className="mb-1.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-600">
-                <span>Progress</span>
+                <span>{language === "pl" ? "Postęp" : "Progress"}</span>
                 <span>{Math.round(progress)}%</span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
@@ -1389,8 +1405,28 @@ function createDateForMonth(
   ).padStart(2, "0")}`;
 }
 
+
+function financeCategoryTitleEn(category: ExpenseCategory) {
+  switch (category) {
+    case "fixed": return "Fixed costs";
+    case "living": return "Living";
+    case "investment": return "Investments";
+    case "goal": return "Goals";
+  }
+}
+
+function financeCategorySubtitleEn(category: ExpenseCategory) {
+  switch (category) {
+    case "fixed": return "Bills, home and all recurring charges.";
+    case "living": return "Everyday life, food, transport and current spending.";
+    case "investment": return "Asset purchases, contributions and building future value.";
+    case "goal": return "Expenses linked to plans, dreams and larger projects.";
+  }
+}
+
 function formatMonth(
-  month: string
+  month: string,
+  locale: string
 ) {
   const [
     year,
@@ -1408,7 +1444,7 @@ function formatMonth(
     );
 
   return date.toLocaleDateString(
-    "pl-PL",
+    locale,
     {
       month: "long",
       year: "numeric",

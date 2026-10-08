@@ -129,7 +129,7 @@ export function FinancialTimeline({
           <div>
             <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-cyan-400">
               <History size={16} />
-              FREEDOM 7.0
+              FREEDOM
             </div>
             <h1 className="mt-3 text-4xl font-black tracking-tight">
               Financial Timeline
@@ -152,7 +152,7 @@ export function FinancialTimeline({
 
         <section className="mt-7 grid gap-4 md:grid-cols-3">
           <SummaryCard
-            label="Current Net Worth"
+            label="Bieżący majątek netto"
             value={formatMoney(newest?.netWorth ?? netWorth)}
             detail={newest ? formatMonth(newest.month) : "Teraz"}
             icon={<WalletCards size={18} />}
@@ -177,7 +177,7 @@ export function FinancialTimeline({
               <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
                 Wealth trajectory
               </p>
-              <h2 className="mt-1 text-lg font-bold">Net Worth</h2>
+              <h2 className="mt-1 text-lg font-bold">Majątek netto</h2>
             </div>
             <Sparkles className="text-violet-400" size={20} />
           </div>
@@ -186,7 +186,7 @@ export function FinancialTimeline({
             <WealthChart points={chartPoints} min={chartMin} range={chartRange} />
           ) : (
             <div className="mt-6 rounded-2xl border border-dashed border-slate-800 p-8 text-center text-sm text-slate-600">
-              Zamknij pierwszy miesiąc, aby rozpocząć historię Net Worth.
+              Zamknij pierwszy miesiąc, aby rozpocząć historię majątku netto.
             </div>
           )}
         </section>
@@ -226,10 +226,10 @@ export function FinancialTimeline({
                       </div>
 
                       <div className="grid flex-1 grid-cols-2 gap-4 md:grid-cols-4">
-                        <Metric label="Net Worth" value={item.netWorth === null ? "—" : formatMoney(item.netWorth)} />
-                        <Metric label="Δ Net Worth" value={item.delta === null ? "—" : signedMoney(item.delta)} positive={item.delta} />
+                        <Metric label="Majątek netto" value={item.netWorth === null ? "—" : formatMoney(item.netWorth)} />
+                        <Metric label="Δ majątku netto" value={item.delta === null ? "—" : signedMoney(item.delta)} positive={item.delta} />
                         <Metric label="Surplus" value={signedMoney(item.surplus)} positive={item.surplus} />
-                        <Metric label="Savings Rate" value={`${item.savingsRate.toFixed(1)}%`} positive={item.savingsRate} />
+                        <Metric label="Stopa oszczędności" value={`${item.savingsRate.toFixed(1)}%`} positive={item.savingsRate} />
                       </div>
 
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-800 text-slate-500">
@@ -244,7 +244,7 @@ export function FinancialTimeline({
                         <Detail label="Surplus" value={signedMoney(item.surplus)} />
                         <Detail label="Player XP" value={item.totalXp === null ? "LIVE" : `${item.totalXp.toLocaleString("pl-PL")} XP`} />
                         <Detail
-                          label="Player Level"
+                          label="Poziom gracza"
                           value={item.level === null ? "LIVE" : `Lv. ${item.level} · ${item.levelName}`}
                         />
                       </div>
@@ -316,7 +316,7 @@ function WealthChart({
           viewBox={`0 0 ${width} ${height}`}
           className="h-[290px] w-full overflow-visible"
           role="img"
-          aria-label="Wykres historii Net Worth"
+          aria-label="Wykres historii majątku netto"
         >
           <defs>
             <linearGradient id="timelineArea" x1="0" y1="0" x2="0" y2="1">
@@ -382,7 +382,7 @@ function WealthChart({
             fontWeight="900"
             letterSpacing="1.5"
           >
-            NET WORTH · PLN
+            MAJĄTEK NETTO · PLN
           </text>
 
           {coords.length > 1 && <path d={area} fill="url(#timelineArea)" />}

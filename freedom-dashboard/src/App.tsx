@@ -23,6 +23,7 @@ import { Achievements } from "./pages/Achievements";
 import { FreedomEngine } from "./pages/FreedomEngine";
 import { MonthlyReview } from "./pages/MonthlyReview";
 import { FinancialTimeline } from "./pages/FinancialTimeline";
+import { Settings } from "./pages/Settings";
 import { AchievementUnlockManager } from "./features/achievements/AchievementUnlockManager";
 
 
@@ -1341,6 +1342,11 @@ function App() {
       netWorth={netWorth}
     />
   }
+/>
+
+<Route
+  path="/settings"
+  element={<Settings />}
 />
 
             <Route

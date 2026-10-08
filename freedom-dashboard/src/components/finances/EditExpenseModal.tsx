@@ -12,6 +12,7 @@ import { CategoryPicker } from "../categories/CategoryPicker";
 import { CashSourcePicker } from "./CashSourcePicker";
 import { CheckboxCard, DateInput, modalInputClass, ModalCloseButton, MoneyInput } from "./ModalFieldKit";
 import { GoalLinkPicker } from "./GoalLinkPicker";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 type EditExpenseModalProps = {
   expense: Expense;
@@ -35,6 +36,8 @@ export function EditExpenseModal({
   onClose,
   onSave,
 }: EditExpenseModalProps) {
+  const { language } = useLanguage();
+  const ui = (pl: string, en: string) => (language === "pl" ? pl : en);
   const cashAssets = useMemo(
     () => assets.filter((asset) => asset.systemCash || getAssetCategory(asset) === "cash"),
     [assets]
@@ -66,7 +69,7 @@ export function EditExpenseModal({
       })
       .catch((reason) => {
         console.error("Nie udało się pobrać kategorii:", reason);
-        if (!cancelled) setError("Nie udało się pobrać kategorii.");
+        if (!cancelled) setError(ui("Nie udało się pobrać kategorii.", "Could not load categories."));
       })
       .finally(() => {
         if (!cancelled) setLoadingCategories(false);
@@ -129,13 +132,13 @@ export function EditExpenseModal({
     setError("");
 
     const numericAmount = Number(amount);
-    if (!name.trim()) return setError("Podaj nazwę wydatku.");
+    if (!name.trim()) return setError(ui("Podaj nazwę wydatku.", "Enter an expense name."));
     if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
-      return setError("Kwota musi być większa od 0.");
+      return setError(ui("Kwota musi być większa od 0.", "Amount must be greater than 0."));
     }
-    if (!date) return setError("Wybierz datę wydatku.");
-    if (!categoryId) return setError("Wybierz kategorię.");
-    if (!assetId) return setError("Wybierz źródło środków.");
+    if (!date) return setError(ui("Wybierz datę wydatku.", "Choose an expense date."));
+    if (!categoryId) return setError(ui("Wybierz kategorię.", "Choose a category."));
+    if (!assetId) return setError(ui("Wybierz źródło środków.", "Choose a source of funds."));
 
     const selectedCategory = categories.find((item) => item.id === categoryId);
 
@@ -161,9 +164,9 @@ export function EditExpenseModal({
       <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[24px] border border-slate-800 bg-[#0b1322] shadow-2xl shadow-black/40">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-800 bg-[#0b1322]/95 px-6 py-5 backdrop-blur">
           <div>
-            <h2 className="text-2xl font-black tracking-tight">Edytuj wydatek</h2>
+            <h2 className="text-2xl font-black tracking-tight">{ui("Edytuj wydatek", "Edit expense")}</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Możesz także przypisać istniejący lub importowany wydatek do konkretnego celu.
+              {ui("Możesz także przypisać istniejący lub importowany wydatek do konkretnego celu.", "You can also link an existing or imported expense to a specific goal.")}
             </p>
           </div>
           <ModalCloseButton onClick={onClose} />
@@ -179,28 +182,28 @@ export function EditExpenseModal({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-300">Nazwa</label>
+              <label className="mb-2 block text-sm font-medium text-slate-300">{ui("Nazwa", "Name")}</label>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="np. Zakupy spożywcze"
+                placeholder={ui("np. Zakupy spożywcze", "e.g. Groceries")}
                 autoFocus
                 className={`${modalInputClass} focus:border-cyan-400 focus:ring-cyan-500/15`}
               />
             </div>
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-300">Kwota</label>
+              <label className="mb-2 block text-sm font-medium text-slate-300">{ui("Kwota", "Amount")}</label>
               <MoneyInput value={amount} onChange={setAmount} accent="blue" currency="PLN" />
             </div>
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">Data</label>
+            <label className="mb-2 block text-sm font-medium text-slate-300">{ui("Data", "Date")}</label>
             <DateInput value={date} onChange={setDate} accent="blue" />
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">Źródło środków</label>
+            <label className="mb-2 block text-sm font-medium text-slate-300">{ui("Źródło środków", "Source of funds")}</label>
             <CashSourcePicker
               assets={cashAssets}
               wallets={wallets}
@@ -210,7 +213,7 @@ export function EditExpenseModal({
               tone="blue"
             />
             <p className="mt-2 text-xs leading-5 text-slate-500">
-              Przy zmianie źródła Freedom cofnie stare księgowanie i zaksięguje wydatek na wybranym aktywie.
+              {ui("Przy zmianie źródła Freedom cofnie stare księgowanie i zaksięguje wydatek na wybranym aktywie.", "When the source changes, Freedom will reverse the old posting and book the expense on the selected asset.")}
             </p>
           </div>
 
@@ -225,13 +228,13 @@ export function EditExpenseModal({
 
           <div>
             <div className="mb-3 flex items-center justify-between">
-              <label className="text-sm font-medium text-slate-300">Kategoria</label>
-              {categoryId && <span className="text-xs font-semibold text-cyan-400">Wybrano ✓</span>}
+              <label className="text-sm font-medium text-slate-300">{ui("Kategoria", "Category")}</label>
+              {categoryId && <span className="text-xs font-semibold text-cyan-400">{ui("Wybrano ✓", "Selected ✓")}</span>}
             </div>
 
             {loadingCategories ? (
               <div className="flex items-center justify-center rounded-2xl border border-slate-800 bg-slate-950/40 py-12 text-slate-500">
-                <LoaderCircle className="mr-2 h-5 w-5 animate-spin" /> Ładowanie kategorii…
+                <LoaderCircle className="mr-2 h-5 w-5 animate-spin" /> {ui("Ładowanie kategorii…", "Loading categories…")}
               </div>
             ) : (
               <CategoryPicker categories={categories} type="EXPENSE" value={categoryId} onChange={setCategoryId} />
@@ -242,11 +245,11 @@ export function EditExpenseModal({
             checked={recurring}
             disabled={Boolean(goalId)}
             onChange={setRecurring}
-            title="Powtarzaj co miesiąc"
+            title={ui("Powtarzaj co miesiąc", "Repeat monthly")}
             description={
               goalId
-                ? "Wydatek powiązany z celem nie może być cykliczny."
-                : "Transakcja będzie oznaczona jako cykliczna."
+                ? ui("Wydatek powiązany z celem nie może być cykliczny.", "An expense linked to a goal cannot be recurring.")
+                : ui("Transakcja będzie oznaczona jako cykliczna.", "The transaction will be marked as recurring.")
             }
           />
 
@@ -256,13 +259,13 @@ export function EditExpenseModal({
               onClick={onClose}
               className="cursor-pointer rounded-xl border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
             >
-              Anuluj
+              {ui("Anuluj", "Cancel")}
             </button>
             <button
               type="submit"
               className="cursor-pointer rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold transition hover:bg-blue-500"
             >
-              Zapisz zmiany
+              {ui("Zapisz zmiany", "Save changes")}
             </button>
           </div>
         </form>

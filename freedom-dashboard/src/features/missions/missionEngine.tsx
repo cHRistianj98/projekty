@@ -60,7 +60,7 @@ export function getFreedomMissions(input: MissionEngineInput): FreedomMission[] 
     candidates.push(
       createMission({
         id: "safety-shield",
-        title: "Build The Shield",
+        title: "Zbuduj tarczę",
         description: "Zbuduj płynną poduszkę równą 6 miesiącom średnich wydatków.",
         priority: engine.safetyMonths < 3 ? "CRITICAL" : "HIGH",
         current: engine.liquidAssets,
@@ -93,7 +93,7 @@ export function getFreedomMissions(input: MissionEngineInput): FreedomMission[] 
     candidates.push(
       createReductionMission({
         id: "debt-attack",
-        title: "Debt Attack",
+        title: "Atak na dług",
         description: "Zredukuj zobowiązania poniżej 10% wartości aktywów brutto.",
         priority: debtRatio >= 30 ? "CRITICAL" : "HIGH",
         current: totalDebt,
@@ -112,7 +112,7 @@ export function getFreedomMissions(input: MissionEngineInput): FreedomMission[] 
     candidates.push(
       createMission({
         id: "investor-mode",
-        title: "Investor Mode",
+        title: "Tryb inwestora",
         description: "Zwiększ udział kapitału inwestycyjnego do 50% aktywów brutto.",
         priority: engine.safetyMonths >= 6 ? "MEDIUM" : "GROWTH",
         current: engine.investmentRatio,
@@ -130,8 +130,8 @@ export function getFreedomMissions(input: MissionEngineInput): FreedomMission[] 
     candidates.push(
       createMission({
         id: "positive-cashflow",
-        title: "Turn Cashflow Green",
-        description: "Doprowadź rolling cashflow do dodatniej wartości.",
+        title: "Zmień przepływy na dodatnie",
+        description: "Doprowadź średni przepływ pieniężny do dodatniej wartości.",
         priority: "CRITICAL",
         current: Math.max(engine.averageSurplus, 0),
         target: Math.max(engine.averageExpenses * 0.1, 1_000),
@@ -145,7 +145,7 @@ export function getFreedomMissions(input: MissionEngineInput): FreedomMission[] 
     candidates.push(
       createMission({
         id: "cashflow-streak",
-        title: "Keep The Machine Running",
+        title: "Utrzymaj maszynę w ruchu",
         description: "Utrzymuj dodatni cashflow i wysoką stopę oszczędności.",
         priority: "GROWTH",
         current: Math.min(engine.savingsRate, 50),
@@ -153,7 +153,7 @@ export function getFreedomMissions(input: MissionEngineInput): FreedomMission[] 
         unit: "percent",
         icon: <Flame size={22} />,
         accent: "cyan",
-        footer: `${engine.savingsRate.toFixed(1)}% rolling savings rate`,
+        footer: `${engine.savingsRate.toFixed(1)}% średnia stopa oszczędności`,
       })
     );
   }
@@ -170,7 +170,7 @@ export function getFreedomMissions(input: MissionEngineInput): FreedomMission[] 
     candidates.push(
       createMission({
         id: `wealth-${engine.nextMilestone.value}`,
-        title: `Next Milestone — ${engine.nextMilestone.name}`,
+        title: `Następny kamień milowy — ${engine.nextMilestone.name}`,
         description: `Osiągnij ${formatMoney(engine.nextMilestone.value)} majątku netto.`,
         priority: "GROWTH",
         current: input.netWorth,
@@ -179,7 +179,7 @@ export function getFreedomMissions(input: MissionEngineInput): FreedomMission[] 
         icon: <Rocket size={22} />,
         accent: "blue",
         footer: wealthAchievement
-          ? `Reward → ${wealthAchievement.name} • +${wealthAchievement.xp} XP`
+          ? `Nagroda → ${wealthAchievement.name} • +${wealthAchievement.xp} XP`
           : `Brakuje ${formatMoney(engine.amountToNextMilestone)}`,
         achievement: wealthAchievement,
       })
@@ -191,7 +191,7 @@ export function getFreedomMissions(input: MissionEngineInput): FreedomMission[] 
     candidates.push(
       createMission({
         id: "freedom-target",
-        title: "Road To FREE",
+        title: "Droga do wolności",
         description: "Buduj majątek w kierunku głównego celu FREEDOM.",
         priority: "GROWTH",
         current: input.netWorth,

@@ -1,4 +1,5 @@
 import { Crown } from "lucide-react";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 type HeaderProps = {
   level: number;
@@ -6,6 +7,8 @@ type HeaderProps = {
 };
 
 export function Header({ level, levelName }: HeaderProps) {
+  const { t, levelName: translateLevelName } = useLanguage();
+
   return (
     <header className="flex items-center border-b border-slate-800 pb-5">
       <div className="flex items-center gap-4">
@@ -14,8 +17,10 @@ export function Header({ level, levelName }: HeaderProps) {
         </div>
 
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-white">Cześć, Andrew!</h1>
-          <p className="mt-0.5 text-sm font-medium text-blue-300">Level {level} • {levelName}</p>
+          <h1 className="text-2xl font-black tracking-tight text-white">{t("hello")}</h1>
+          <p className="mt-0.5 text-sm font-medium text-blue-300">
+            {t("level")} {level} • {translateLevelName(levelName)}
+          </p>
         </div>
       </div>
     </header>

@@ -2,6 +2,7 @@ import type { Asset } from "../../types/Asset";
 import { getAssetCategory } from "../../types/Asset";
 import type { Liability } from "../../types/Liability";
 import type { MonthlyBudget } from "../../types/Cashflow";
+import type { AppLanguage } from "../../i18n/LanguageContext";
 
 export type FreedomEngineInput = {
   netWorth: number;
@@ -75,7 +76,8 @@ export function calculateFreedomEngine({
   portfolio,
   liabilities,
   monthlyBudget,
-}: FreedomEngineInput): FreedomEngineResult {
+}: FreedomEngineInput, language: AppLanguage = "pl"): FreedomEngineResult {
+  const ui = (pl: string, en: string) => (language === "pl" ? pl : en);
   const monthlyStats = buildMonthlyStats(monthlyBudget);
   const rolling = monthlyStats.slice(-3);
   const rollingMonths = rolling.length;
@@ -159,51 +161,51 @@ export function calculateFreedomEngine({
   const scoreComponents: FreedomScoreComponent[] = [
     {
       id: "wealth",
-      label: "Droga do FREE",
+      label: ui("Droga do WOLNOŚCI", "Road to FREE"),
       score: wealthScore,
       maxScore: 30,
       explanation: `${formatMoney(netWorth)} / ${formatMoney(FREEDOM_TARGET)}`,
     },
     {
       id: "savings",
-      label: "Savings rate 3M",
+      label: ui("Stopa oszczędności 3M", "Savings rate 3M"),
       score: savingsScore,
       maxScore: 20,
-      explanation: `${savingsRate.toFixed(1)}% średnio z ${rollingMonths} mies.`,
+      explanation: ui(`${savingsRate.toFixed(1)}% średnio z ${rollingMonths} mies.`, `${savingsRate.toFixed(1)}% average over ${rollingMonths} mo.`),
     },
     {
       id: "cashflow",
-      label: "Cashflow 3M",
+      label: ui("Przepływy 3M", "Cashflow 3M"),
       score: cashflowScore,
       maxScore: 15,
-      explanation: `${formatSignedMoney(averageSurplus)} średnio / mies.`,
+      explanation: ui(`${formatSignedMoney(averageSurplus)} średnio / mies.`, `${formatSignedMoney(averageSurplus)} average / month`),
     },
     {
       id: "investments",
-      label: "Kapitał inwestycyjny",
+      label: ui("Kapitał inwestycyjny", "Invested capital"),
       score: investmentScore,
       maxScore: 15,
-      explanation: `${investmentRatio.toFixed(1)}% aktywów brutto`,
+      explanation: ui(`${investmentRatio.toFixed(1)}% aktywów brutto`, `${investmentRatio.toFixed(1)}% of gross assets`),
     },
     {
       id: "safety",
-      label: "Płynna poduszka",
+      label: ui("Płynna poduszka", "Liquidity buffer"),
       score: safetyScore,
       maxScore: 10,
       explanation:
         averageExpenses > 0
-          ? `${safetyMonths.toFixed(1)} mies. • ${formatMoney(liquidAssets)} płynne`
-          : "Brak wystarczających danych o wydatkach",
+          ? ui(`${safetyMonths.toFixed(1)} mies. • ${formatMoney(liquidAssets)} płynne`, `${safetyMonths.toFixed(1)} months • ${formatMoney(liquidAssets)} liquid`)
+          : ui("Brak wystarczających danych o wydatkach", "Not enough expense data"),
     },
     {
       id: "debt",
-      label: "Zadłużenie",
+      label: ui("Zadłużenie", "Debt"),
       score: debtScore,
       maxScore: 10,
       explanation:
         totalLiabilities > 0
-          ? `${formatMoney(totalLiabilities)} • ${(debtToAssets * 100).toFixed(1)}% aktywów`
-          : "Brak aktywnych zobowiązań",
+          ? ui(`${formatMoney(totalLiabilities)} • ${(debtToAssets * 100).toFixed(1)}% aktywów`, `${formatMoney(totalLiabilities)} • ${(debtToAssets * 100).toFixed(1)}% of assets`)
+          : ui("Brak aktywnych zobowiązań", "No active liabilities"),
     },
   ];
 
@@ -248,7 +250,7 @@ export function calculateFreedomEngine({
     monthsToFreedom === null ? null : monthsToFreedom / 12;
 
   const projectedFreedomDate =
-    monthsToFreedom === null ? null : addMonthsToToday(monthsToFreedom);
+    monthsToFreedom === null ? null : addMonthsToToday(monthsToFreedom, language);
 
   const progressToFreedom = clamp(
     (netWorth / FREEDOM_TARGET) * 100,
@@ -270,6 +272,7 @@ export function calculateFreedomEngine({
     yearsToFreedom,
     projectedFreedomDate,
     unclassifiedAssets,
+    language,
   });
 
   return {
@@ -344,6 +347,7 @@ function buildIntelligence({
   yearsToFreedom,
   projectedFreedomDate,
   unclassifiedAssets,
+  language,
 }: {
   netWorth: number;
   averageSurplus: number;
@@ -358,88 +362,96 @@ function buildIntelligence({
   yearsToFreedom: number | null;
   projectedFreedomDate: string | null;
   unclassifiedAssets: number;
+  language: AppLanguage;
 }): FreedomInsight[] {
+  const ui = (pl: string, en: string) => (language === "pl" ? pl : en);
   const insights: FreedomInsight[] = [];
 
   if (unclassifiedAssets > 0) {
     insights.push({
       type: "mission",
-      title: "Sklasyfikuj stare aktywa",
-      text: `${formatMoney(
-        unclassifiedAssets
-      )} portfela nadal nie ma kategorii. Edytuj te pozycje w Inwestycjach, aby Safety i Investment Score były wiarygodne.`,
+      title: ui("Sklasyfikuj stare aktywa", "Classify legacy assets"),
+      text: ui(
+        `${formatMoney(unclassifiedAssets)} portfela nadal nie ma kategorii. Edytuj te pozycje w Inwestycjach, aby wyniki płynności i inwestycji były wiarygodne.`,
+        `${formatMoney(unclassifiedAssets)} of the portfolio is still unclassified. Edit those positions in Investments so liquidity and investment scores are reliable.`
+      ),
     });
   }
 
   if (averageSurplus > 0 && savingsRate >= 30) {
     insights.push({
       type: "strength",
-      title: "Największa siła",
-      text: `Rolling cashflow to ${formatSignedMoney(
-        averageSurplus
-      )} miesięcznie przy ${savingsRate.toFixed(1)}% savings rate.`,
+      title: ui("Największa siła", "Biggest strength"),
+      text: ui(
+        `Średni przepływ to ${formatSignedMoney(averageSurplus)} miesięcznie przy stopie oszczędności ${savingsRate.toFixed(1)}%.`,
+        `Rolling cashflow is ${formatSignedMoney(averageSurplus)} per month with a ${savingsRate.toFixed(1)}% savings rate.`
+      ),
     });
   } else if (investedAssets > 0) {
     insights.push({
       type: "strength",
-      title: "Największa siła",
-      text: `Masz ${formatMoney(
-        investedAssets
-      )} sklasyfikowanego kapitału inwestycyjnego.`,
+      title: ui("Największa siła", "Biggest strength"),
+      text: ui(
+        `Masz ${formatMoney(investedAssets)} sklasyfikowanego kapitału inwestycyjnego.`,
+        `You have ${formatMoney(investedAssets)} of classified invested capital.`
+      ),
     });
   }
 
   if (nextMilestone) {
     insights.push({
       type: "mission",
-      title: `Next mission: ${nextMilestone.name}`,
+      title: ui(`Następna misja: ${nextMilestone.name}`, `Next mission: ${nextMilestone.name}`),
       text:
         monthsToNextMilestone !== null
-          ? `Brakuje ${formatMoney(
-              amountToNextMilestone
-            )}. Przy rolling cashflow to około ${formatMonths(
-              monthsToNextMilestone
-            )}.`
-          : `Brakuje ${formatMoney(amountToNextMilestone)}.`,
+          ? ui(
+              `Brakuje ${formatMoney(amountToNextMilestone)}. Przy obecnym tempie to około ${formatMonths(monthsToNextMilestone)}.`,
+              `${formatMoney(amountToNextMilestone)} remains. At the current pace that is about ${formatMonthsEnglish(monthsToNextMilestone)}.`
+            )
+          : ui(`Brakuje ${formatMoney(amountToNextMilestone)}.`, `${formatMoney(amountToNextMilestone)} remains.`),
     });
   }
 
   insights.push({
     type: "projection",
-    title: "Trajektoria FREE",
+    title: ui("Trajektoria WOLNOŚCI", "FREE trajectory"),
     text:
       yearsToFreedom === null
-        ? "Rolling cashflow nie pozwala jeszcze wyznaczyć dodatniej trajektorii."
+        ? ui("Średni przepływ nie pozwala jeszcze wyznaczyć dodatniej trajektorii.", "Rolling cashflow does not yet support a positive trajectory.")
         : yearsToFreedom <= 0
-          ? "Cel 3 mln zł został osiągnięty."
-          : `Przy utrzymaniu rolling cashflow prosta trajektoria wskazuje około ${formatYears(
-              yearsToFreedom
-            )}${projectedFreedomDate ? ` — ${projectedFreedomDate}` : ""}.`,
+          ? ui("Cel 3 mln zł został osiągnięty.", "The PLN 3M target has been reached.")
+          : ui(
+              `Przy utrzymaniu obecnego przepływu prosta trajektoria wskazuje około ${formatYears(yearsToFreedom)}${projectedFreedomDate ? ` — ${projectedFreedomDate}` : ""}.`,
+              `At the current rolling cashflow, the simple trajectory points to about ${formatYearsEnglish(yearsToFreedom)}${projectedFreedomDate ? ` — ${projectedFreedomDate}` : ""}.`
+            ),
   });
 
   if (safetyMonths < 6) {
     insights.push({
       type: "opportunity",
-      title: "Build the shield",
-      text: `Płynna poduszka pokrywa około ${safetyMonths.toFixed(
-        1
-      )} mies. kosztów. Cel Engine to 6 miesięcy.`,
+      title: ui("Zbuduj poduszkę", "Build the shield"),
+      text: ui(
+        `Płynna poduszka pokrywa około ${safetyMonths.toFixed(1)} mies. kosztów. Cel silnika to 6 miesięcy.`,
+        `The liquidity buffer covers about ${safetyMonths.toFixed(1)} months of expenses. The Engine target is 6 months.`
+      ),
     });
   } else if (totalLiabilities > 0) {
     insights.push({
       type: "opportunity",
-      title: "Debt pressure",
-      text: `Pozostałe zobowiązania: ${formatMoney(
-        totalLiabilities
-      )}. Ich spadek bez utraty aktywów poprawia Debt Score.`,
+      title: ui("Presja długu", "Debt pressure"),
+      text: ui(
+        `Pozostałe zobowiązania: ${formatMoney(totalLiabilities)}. Ich spadek bez utraty aktywów poprawia wynik zadłużenia.`,
+        `Remaining liabilities: ${formatMoney(totalLiabilities)}. Reducing them without losing assets improves the debt score.`
+      ),
     });
   } else {
     insights.push({
       type: "opportunity",
-      title: "Capital efficiency",
-      text: `Płynna poduszka wynosi ${formatMoney(
-        liquidAssets
-      )}. Nadwyżkę ponad własny docelowy bufor możesz świadomie rozdzielać między cele i inwestycje.`,
+      title: ui("Efektywność kapitału", "Capital efficiency"),
+      text: ui(
+        `Płynna poduszka wynosi ${formatMoney(liquidAssets)}. Nadwyżkę ponad własny docelowy bufor możesz świadomie rozdzielać między cele i inwestycje.`,
+        `The liquidity buffer is ${formatMoney(liquidAssets)}. Capital above your target buffer can be routed deliberately between goals and investments.`
+      ),
     });
   }
 
@@ -459,10 +471,10 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(value, max));
 }
 
-function addMonthsToToday(months: number) {
+function addMonthsToToday(months: number, language: AppLanguage) {
   const date = new Date();
   date.setMonth(date.getMonth() + months);
-  return date.toLocaleDateString("pl-PL", {
+  return date.toLocaleDateString(language === "pl" ? "pl-PL" : "en-US", {
     month: "long",
     year: "numeric",
   });
@@ -486,4 +498,16 @@ function formatMonths(months: number) {
 
 function formatYears(years: number) {
   return formatMonths(Math.round(years * 12));
+}
+
+function formatMonthsEnglish(months: number) {
+  if (months < 12) return `${months} ${months === 1 ? "month" : "months"}`;
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+  if (rest > 0) return `${years} ${years === 1 ? "year" : "years"} ${rest} ${rest === 1 ? "month" : "months"}`;
+  return `${years} ${years === 1 ? "year" : "years"}`;
+}
+
+function formatYearsEnglish(years: number) {
+  return formatMonthsEnglish(Math.round(years * 12));
 }

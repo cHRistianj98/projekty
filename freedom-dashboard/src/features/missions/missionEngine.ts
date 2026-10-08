@@ -5,6 +5,7 @@ import type { Asset } from "../../types/Asset";
 import type { Goal, GoalPriority } from "../../types/Goal";
 import type { Liability } from "../../types/Liability";
 import type { MonthlyBudget } from "../../types/Cashflow";
+import type { AppLanguage } from "../../i18n/LanguageContext";
 import { calculateFreedomEngine } from "../freedom/freedomEngine";
 
 export type MissionPriority = "CRITICAL" | "HIGH" | "MEDIUM" | "GROWTH";
@@ -39,14 +40,18 @@ export type MissionEngineInput = {
   monthlyBudget: MonthlyBudget;
 };
 
-export function getFreedomMissions(input: MissionEngineInput): FreedomMission[] {
-  const engine = calculateFreedomEngine(input);
+export function getFreedomMissions(
+  input: MissionEngineInput,
+  language: AppLanguage = "pl"
+): FreedomMission[] {
+  const ui = (pl: string, en: string) => (language === "pl" ? pl : en);
+  const engine = calculateFreedomEngine(input, language);
 
   const activeGoals = input.goals
     .filter((goal) => goal.targetAmount > goal.currentAmount)
     .sort(compareGoals);
 
-  const goalMissions = activeGoals.map(toGoalMission);
+  const goalMissions = activeGoals.map((goal) => toGoalMission(goal, language));
 
   const totalDebt = input.liabilities.reduce(
     (sum, liability) => sum + Math.max(liability.remainingAmount, 0),
@@ -61,16 +66,22 @@ export function getFreedomMissions(input: MissionEngineInput): FreedomMission[] 
 
   const debtMission: FreedomMission = {
     id: "system-debt-attack",
-    title: "Debt Attack",
-    description: "Zredukuj kosztowne zobowiązania i odzyskaj większą część miesięcznego cashflow.",
+    title: ui("Atak na dług", "Debt Attack"),
+    description: ui(
+      "Zredukuj kosztowne zobowiązania i odzyskaj większą część miesięcznego przepływu pieniężnego.",
+      "Reduce expensive liabilities and reclaim more of your monthly cashflow."
+    ),
     current: totalDebt,
     target: debtTarget,
     progress: debtNeedsAttention
       ? clamp(((totalDebt - debtTarget) <= 0 ? 1 : 1 - (totalDebt - debtTarget) / Math.max(totalDebt, 1)) * 100)
       : 100,
     footer: debtNeedsAttention
-      ? `Do poziomu 10% aktywów brutto brakuje redukcji o ${formatMoney(totalDebt - debtTarget)}.`
-      : "Poziom długu mieści się w limicie Engine.",
+      ? ui(
+          `Do poziomu 10% aktywów brutto brakuje redukcji o ${formatMoney(totalDebt - debtTarget, language)}.`,
+          `A reduction of ${formatMoney(totalDebt - debtTarget, language)} is needed to reach 10% of gross assets.`
+        )
+      : ui("Poziom długu mieści się w limicie silnika.", "Debt is within the Engine limit."),
     unit: "money",
     priority: debtNeedsAttention ? "HIGH" : "MEDIUM",
     status: debtNeedsAttention ? "ACTIVE" : "COMPLETE",
@@ -83,12 +94,18 @@ export function getFreedomMissions(input: MissionEngineInput): FreedomMission[] 
   const cashflowComplete = engine.savingsRate >= cashflowTarget && engine.averageSurplus > 0;
   const cashflowMission: FreedomMission = {
     id: "system-cashflow",
-    title: "Keep The Machine Running",
-    description: "Utrzymuj dodatni rolling cashflow i wysoką stopę oszczędności.",
+    title: ui("Utrzymaj maszynę w ruchu", "Keep The Machine Running"),
+    description: ui(
+      "Utrzymuj dodatni średni przepływ pieniężny i wysoką stopę oszczędności.",
+      "Maintain positive rolling cashflow and a high savings rate."
+    ),
     current: Math.max(engine.savingsRate, 0),
     target: cashflowTarget,
     progress: clamp((Math.max(engine.savingsRate, 0) / cashflowTarget) * 100),
-    footer: `${engine.savingsRate.toFixed(1)}% rolling savings rate · ${formatSignedMoney(engine.averageSurplus)} / mies.`,
+    footer: ui(
+      `${engine.savingsRate.toFixed(1)}% średnia stopa oszczędności · ${formatSignedMoney(engine.averageSurplus, language)} / mies.`,
+      `${engine.savingsRate.toFixed(1)}% rolling savings rate · ${formatSignedMoney(engine.averageSurplus, language)} / month`
+    ),
     unit: "percent",
     priority: cashflowComplete ? "GROWTH" : engine.averageSurplus <= 0 ? "CRITICAL" : "GROWTH",
     status: cashflowComplete ? "COMPLETE" : "ACTIVE",
@@ -97,8 +114,6 @@ export function getFreedomMissions(input: MissionEngineInput): FreedomMission[] 
     source: "CASHFLOW",
   };
 
-  // Missions are an action queue, not a second goals page.
-  // Prefer the user's real goals, then fill remaining slots with system health missions.
   const activeQueue: FreedomMission[] = [];
   if (goalMissions[0]) activeQueue.push(goalMissions[0]);
   if (debtNeedsAttention) activeQueue.push(debtMission);
@@ -110,7 +125,8 @@ export function getFreedomMissions(input: MissionEngineInput): FreedomMission[] 
   return activeQueue.slice(0, 3);
 }
 
-function toGoalMission(goal: Goal): FreedomMission {
+function toGoalMission(goal: Goal, language: AppLanguage): FreedomMission {
+  const ui = (pl: string, en: string) => (language === "pl" ? pl : en);
   const target = Math.max(goal.targetAmount, 0);
   const current = Math.max(goal.currentAmount, 0);
   const complete = target > 0 && current >= target;
@@ -119,13 +135,16 @@ function toGoalMission(goal: Goal): FreedomMission {
   return {
     id: `goal-${goal.id}`,
     title: goal.name,
-    description: buildGoalDescription(goal),
+    description: buildGoalDescription(goal, language),
     current,
     target,
     progress: target > 0 ? clamp((current / target) * 100) : 0,
     footer: complete
-      ? "Cel osiągnięty."
-      : `${formatMoney(remaining)} do celu${goal.targetDate ? ` · termin ${formatDate(goal.targetDate)}` : ""}`,
+      ? ui("Cel osiągnięty.", "Goal reached.")
+      : ui(
+          `${formatMoney(remaining, language)} do celu${goal.targetDate ? ` · termin ${formatDate(goal.targetDate, language)}` : ""}`,
+          `${formatMoney(remaining, language)} to goal${goal.targetDate ? ` · deadline ${formatDate(goal.targetDate, language)}` : ""}`
+        ),
     unit: "money",
     priority: mapGoalPriority(goal.priority),
     status: complete ? "COMPLETE" : "ACTIVE",
@@ -138,13 +157,31 @@ function toGoalMission(goal: Goal): FreedomMission {
   };
 }
 
-function buildGoalDescription(goal: Goal) {
+function buildGoalDescription(goal: Goal, language: AppLanguage) {
+  const ui = (pl: string, en: string) => (language === "pl" ? pl : en);
   switch (goal.type) {
-    case "EMERGENCY_FUND": return "Twój prawdziwy cel bezpieczeństwa — bez osobnego, sztucznego Safety Shield.";
-    case "HOME": return "Buduj kapitał na własną nieruchomość.";
-    case "CAR": return "Zbieraj kapitał na samochód bez rozwalania planu finansowego.";
-    case "TRAVEL": return "Finansuj podróż z góry zamiast z przyszłego cashflow.";
-    default: return "Realny cel z Twojej listy Goals — jego postęp napędza tę misję.";
+    case "EMERGENCY_FUND":
+      return ui(
+        "Twój prawdziwy cel bezpieczeństwa — bez osobnej, sztucznej poduszki systemowej.",
+        "Your real safety goal — without a separate artificial system shield."
+      );
+    case "HOME":
+      return ui("Buduj kapitał na własną nieruchomość.", "Build capital for your own home.");
+    case "CAR":
+      return ui(
+        "Zbieraj kapitał na samochód bez rozwalania planu finansowego.",
+        "Build your car fund without breaking the financial plan."
+      );
+    case "TRAVEL":
+      return ui(
+        "Finansuj podróż z góry zamiast z przyszłego przepływu pieniężnego.",
+        "Fund the trip upfront instead of using future cashflow."
+      );
+    default:
+      return ui(
+        "Realny cel z Twojej listy celów — jego postęp napędza tę misję.",
+        "A real goal from your Goals list — its progress drives this mission."
+      );
   }
 }
 
@@ -164,9 +201,26 @@ function mapGoalPriority(priority?: GoalPriority): MissionPriority {
   return "MEDIUM";
 }
 
-function clamp(value: number) { return Math.min(Math.max(value, 0), 100); }
-function formatMoney(value: number) { return `${Math.round(value).toLocaleString("pl-PL")} zł`; }
-function formatSignedMoney(value: number) { return `${value >= 0 ? "+" : "-"}${formatMoney(Math.abs(value))}`; }
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("pl-PL", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${value}T12:00:00`));
+function clamp(value: number) {
+  return Math.min(Math.max(value, 0), 100);
+}
+
+function formatMoney(value: number, language: AppLanguage) {
+  return new Intl.NumberFormat(language === "pl" ? "pl-PL" : "en-US", {
+    style: "currency",
+    currency: "PLN",
+    maximumFractionDigits: 0,
+  }).format(Math.round(value));
+}
+
+function formatSignedMoney(value: number, language: AppLanguage) {
+  return `${value >= 0 ? "+" : "-"}${formatMoney(Math.abs(value), language)}`;
+}
+
+function formatDate(value: string, language: AppLanguage) {
+  return new Intl.DateTimeFormat(language === "pl" ? "pl-PL" : "en-US", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(`${value}T12:00:00`));
 }

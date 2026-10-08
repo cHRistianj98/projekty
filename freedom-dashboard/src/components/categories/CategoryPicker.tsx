@@ -1,17 +1,7 @@
 import type { Category, CategoryType } from "../../types/Category";
 import { CategoryMiniImage } from "./CategoryMiniImage";
-
-const groupLabels: Record<string, string> = {
-  FIXED: "Stałe",
-  LIVING: "Życie",
-  HEALTH: "Zdrowie",
-  GROWTH: "Rozwój",
-  LIFESTYLE: "Lifestyle",
-  WEALTH: "Majątek",
-  GOALS: "Cele",
-  INCOME: "Dochody",
-  OTHER: "Inne",
-};
+import { useLanguage } from "../../i18n/LanguageContext";
+import { localizedCategoryGroup, localizedCategoryName } from "../../i18n/categoryNames";
 
 export function CategoryPicker({
   categories,
@@ -24,6 +14,7 @@ export function CategoryPicker({
   value?: number;
   onChange: (categoryId: number) => void;
 }) {
+  const { language } = useLanguage();
   const visible = categories
     .filter((category) => category.type === type && category.active)
     .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
@@ -35,7 +26,7 @@ export function CategoryPicker({
       {groups.map((group) => (
         <section key={group}>
           <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-            {groupLabels[group] ?? group}
+            {localizedCategoryGroup(group, language)}
           </div>
 
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -43,6 +34,7 @@ export function CategoryPicker({
               .filter((category) => category.group === group)
               .map((category) => {
                 const selected = category.id === value;
+                const displayName = localizedCategoryName(category.name, language, category.slug);
 
                 return (
                   <button
@@ -56,7 +48,7 @@ export function CategoryPicker({
                     }`}
                   >
                     <CategoryMiniImage
-                      name={category.name}
+                      name={displayName}
                       iconKey={category.iconKey}
                       color={category.color}
                       size="lg"
@@ -65,9 +57,9 @@ export function CategoryPicker({
 
                     <div
                       className="mt-2 truncate text-xs font-bold text-slate-200"
-                      title={category.name}
+                      title={displayName}
                     >
-                      {category.name}
+                      {displayName}
                     </div>
                   </button>
                 );

@@ -4,7 +4,7 @@ export type BudgetLimit = {
   // Legacy bucket kept for old plans / compatibility.
   category?: ExpenseCategory;
 
-  // Categories 2.0
+  // Detailed categories
   categoryId?: number;
   categoryName?: string;
   categoryIconKey?: string;

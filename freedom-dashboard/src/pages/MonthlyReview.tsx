@@ -355,7 +355,7 @@ export function MonthlyReview({
           <div>
             <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-cyan-400">
               <CalendarDays size={16} />
-              Monthly Review 2.1
+              Przegląd miesiąca
             </div>
 
             <div className="mt-3 flex items-center gap-3">
@@ -425,7 +425,7 @@ export function MonthlyReview({
               <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-5 py-4 text-emerald-300">
                 <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
                   <LockKeyhole size={14} />
-                  Month Closed
+                  Miesiąc zamknięty
                 </div>
                 <p className="mt-1 text-sm font-black">
                   Snapshot zamrożony
@@ -448,7 +448,7 @@ export function MonthlyReview({
               >
                 <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
                   <Save size={14} />
-                  {isClosingMonth ? "Closing..." : "Close Month"}
+                  {isClosingMonth ? "Zamykanie..." : "Zamknij miesiąc"}
                 </div>
                 <p className="mt-1 text-sm font-black">
                   {isClosingMonth ? "Zamykam miesiąc..." : `Zamknij ${monthLabel}`}
@@ -460,7 +460,7 @@ export function MonthlyReview({
 
         {!frozenSnapshot && !isLatestMonth && (
           <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-5 py-4 text-sm text-amber-200">
-            Ten miesiąc pochodzi ze starej historii 1.x. Cashflow i Net Worth są historyczne,
+            Ten miesiąc pochodzi ze starszej historii. Przepływy pieniężne i majątek netto są historyczne,
             ale Goals, Debt i Progression nie były wtedy snapshotowane — dlatego pokazujemy ich aktualny stan.
           </div>
         )}
@@ -606,7 +606,7 @@ export function MonthlyReview({
           >
             <div className="flex items-end justify-between gap-4">
               <BigValue
-                label={`Player Level ${displayedPlayer.level}`}
+                label={`Poziom gracza ${displayedPlayer.level}`}
                 value={displayedPlayer.levelName}
               />
               <div className="text-right">
@@ -634,14 +634,14 @@ export function MonthlyReview({
                 ? `${displayedPlayerLevel.remainingXp.toLocaleString(
                     "pl-PL"
                   )} XP do następnego poziomu`
-                : "Maksymalny Player Level"}
+                : "Maksymalny poziom gracza"}
             </p>
           </Panel>
         </section>
 
         <section className="mt-6">
           <Panel
-            title="Month-over-Month Intelligence"
+            title="Analiza miesiąc do miesiąca"
             icon={<Scale size={19} />}
             badge={hasFullComparison ? "FULL SNAPSHOT" : "WAITING FOR DATA"}
           >
@@ -654,7 +654,7 @@ export function MonthlyReview({
                     </p>
                     <p className="mt-2 text-2xl font-black">
                       {wealthDelta !== null
-                        ? `${formatSignedMoney(wealthDelta)} Net Worth`
+                        ? `${formatSignedMoney(wealthDelta)} majątku netto`
                         : "Brak porównania"}
                     </p>
                   </div>
@@ -666,7 +666,7 @@ export function MonthlyReview({
 
                 <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
                   <ComparisonMetric
-                    label="Net Worth"
+                    label="Majątek netto"
                     previous={previousClosedSnapshot.wealth.netWorth}
                     current={frozenSnapshot.wealth.netWorth}
                     delta={wealthDelta ?? 0}
@@ -744,7 +744,7 @@ export function MonthlyReview({
                         goodWhen="DOWN"
                       />
                       <MovementRow
-                        label="Net Worth"
+                        label="Majątek netto"
                         value={wealthDelta ?? 0}
                         goodWhen="UP"
                         strong
@@ -753,12 +753,12 @@ export function MonthlyReview({
 
                     <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/50 p-3">
                       <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-600">
-                        Net Worth vs cashflow
+                        Majątek netto a przepływy
                       </p>
                       <p className="mt-1 text-sm text-slate-300">
                         {balanceResidual === null
                           ? "Brak danych."
-                          : `${formatSignedMoney(balanceResidual)} różnicy między zmianą Net Worth a nadwyżką miesiąca.`}
+                          : `${formatSignedMoney(balanceResidual)} różnicy między zmianą majątku netto a nadwyżką miesiąca.`}
                       </p>
                       <p className="mt-1 text-[11px] leading-5 text-slate-600">
                         To nie jest automatycznie zysk/strata z rynku — różnica może też wynikać z transferów, aktualizacji wycen albo sposobu księgowania rat.
@@ -824,7 +824,7 @@ export function MonthlyReview({
                   Potrzebujemy dwóch zamkniętych miesięcy.
                 </p>
                 <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                  Review 2.1 porównuje wyłącznie pełne snapshoty. Po zamknięciu kolejnego miesiąca zobaczysz tutaj zmianę Net Worth, cashflow, długu, celów i XP miesiąc do miesiąca.
+                  Przegląd porównuje wyłącznie pełne zapisy miesięcy. Po zamknięciu kolejnego miesiąca zobaczysz tutaj zmianę majątku netto, przepływów pieniężnych, długu, celów i XP miesiąc do miesiąca.
                 </p>
               </div>
             )}
@@ -890,7 +890,7 @@ export function MonthlyReview({
           </Panel>
 
           <div className="space-y-5">
-            <Panel title="Month Intelligence" icon={<Sparkles size={19} />}>
+            <Panel title="Analiza miesiąca" icon={<Sparkles size={19} />}>
               <Insight
                 label="Największa siła"
                 text={strongestPoint}

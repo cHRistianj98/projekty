@@ -12,6 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { portfolioApi } from "../../api/portfolioApi";
 import type { Asset } from "../../types/Asset";
 import type { PortfolioWallet } from "../../types/Portfolio";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 type PortfolioChartProps = {
   portfolio: Asset[];
@@ -23,11 +24,17 @@ type WalletSlice = {
   value: number;
 };
 
-const money = (value: number) =>
-  `${value.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} zł`;
-
 export function PortfolioChart({ portfolio }: PortfolioChartProps) {
   const navigate = useNavigate();
+  const { language, locale } = useLanguage();
+  const ui = (pl: string, en: string) => (language === "pl" ? pl : en);
+  const money = (value: number) =>
+    new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: "PLN",
+      maximumFractionDigits: 2,
+    }).format(value);
+
   const [wallets, setWallets] = useState<PortfolioWallet[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -70,29 +77,32 @@ export function PortfolioChart({ portfolio }: PortfolioChartProps) {
           <div className="flex items-center gap-2 text-cyan-400">
             <WalletCards size={17} />
             <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300">
-              Struktura portfeli
+              {ui("Struktura portfeli", "Portfolio structure")}
             </h2>
           </div>
           <p className="mt-1 text-xs text-slate-500">
-            Każdy portfel osobno — bez mieszania wszystkich aktywów w jednym wykresie.
+            {ui(
+              "Każdy portfel osobno — bez mieszania wszystkich aktywów w jednym wykresie.",
+              "Each portfolio is shown separately — assets are not mixed into one chart."
+            )}
           </p>
         </div>
         <button
           type="button"
           onClick={() => navigate("/investments")}
-          className="inline-flex items-center gap-1.5 text-xs font-bold text-cyan-400 transition hover:text-cyan-300"
+          className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-bold text-cyan-400 transition hover:text-cyan-300"
         >
-          Inwestycje <ArrowRight size={13} />
+          {ui("Inwestycje", "Investments")} <ArrowRight size={13} />
         </button>
       </div>
 
       {loading ? (
         <div className="flex min-h-44 items-center justify-center gap-2 text-sm text-slate-500">
-          <LoaderCircle size={18} className="animate-spin" /> Pobieranie portfeli…
+          <LoaderCircle size={18} className="animate-spin" /> {ui("Pobieranie portfeli…", "Loading portfolios…")}
         </div>
       ) : walletSlices.length === 0 ? (
         <div className="flex min-h-44 items-center justify-center text-sm text-slate-500">
-          Brak portfeli do wyświetlenia.
+          {ui("Brak portfeli do wyświetlenia.", "No portfolios to display.")}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
@@ -104,7 +114,7 @@ export function PortfolioChart({ portfolio }: PortfolioChartProps) {
                 key={wallet.id}
                 type="button"
                 onClick={() => navigate("/investments")}
-                className="group rounded-2xl border border-slate-800 bg-[#081421] p-4 text-left transition hover:-translate-y-0.5 hover:border-cyan-500/25 hover:bg-[#0a1828]"
+                className="group cursor-pointer rounded-2xl border border-slate-800 bg-[#081421] p-4 text-left transition hover:-translate-y-0.5 hover:border-cyan-500/25 hover:bg-[#0a1828]"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -121,7 +131,9 @@ export function PortfolioChart({ portfolio }: PortfolioChartProps) {
                       )}
                     </div>
                     <p className="mt-1 text-[10px] text-slate-500">
-                      {assets.length} {assets.length === 1 ? "aktywo" : "aktywów"}
+                      {assets.length} {language === "pl"
+                        ? assets.length === 1 ? "aktywo" : "aktywów"
+                        : assets.length === 1 ? "asset" : "assets"}
                     </p>
                   </div>
                   <strong className="shrink-0 text-base font-black text-white">{money(value)}</strong>
@@ -172,7 +184,7 @@ export function PortfolioChart({ portfolio }: PortfolioChartProps) {
                         <div key={asset.id} className="flex min-w-0 items-center gap-2 text-[11px]">
                           <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: asset.color }} />
                           <span className="min-w-0 flex-1 truncate text-slate-300" title={asset.name}>
-                            {asset.systemCash ? "Środki nierozdzielone" : asset.name}
+                            {asset.systemCash ? ui("Środki nierozdzielone", "Unallocated funds") : asset.name}
                           </span>
                           {unallocatedDeficit ? (
                             <span className="shrink-0 font-black text-amber-300">{money(asset.value)}</span>
@@ -189,11 +201,11 @@ export function PortfolioChart({ portfolio }: PortfolioChartProps) {
                     })}
                     {assets.length > 4 && (
                       <p className="pt-0.5 text-[10px] font-semibold text-slate-600">
-                        + {assets.length - 4} pozostałych aktywów
+                        + {assets.length - 4} {ui("pozostałych aktywów", "more assets")}
                       </p>
                     )}
                     {!assets.length && (
-                      <p className="text-[11px] text-slate-600">Portfel jest pusty.</p>
+                      <p className="text-[11px] text-slate-600">{ui("Portfel jest pusty.", "The portfolio is empty.")}</p>
                     )}
                   </div>
                 </div>

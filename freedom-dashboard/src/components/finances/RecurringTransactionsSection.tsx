@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 
 import { CategoryIcon } from "../categories/CategoryIcon";
+import { useLanguage } from "../../i18n/LanguageContext";
+import { localizedCategoryName } from "../../i18n/categoryNames";
 
 import type {
   Expense,
@@ -43,6 +45,8 @@ export function RecurringTransactionsSection({
   onToggleRule,
   onDeleteRule,
 }: RecurringTransactionsSectionProps) {
+  const { language, locale } = useLanguage();
+  const ui = (pl: string, en: string) => (language === "pl" ? pl : en);
   const activeCount =
     rules.filter((rule) => rule.active).length;
 
@@ -56,11 +60,11 @@ export function RecurringTransactionsSection({
 
           <div>
             <h2 className="text-lg font-bold text-slate-100">
-              Transakcje cykliczne
+              {ui("Transakcje cykliczne", "Recurring transactions")}
             </h2>
 
             <span className="text-xs text-slate-500">
-              {activeCount} aktywnych reguł
+              {activeCount} {language === "pl" ? polishRuleCount(activeCount) : activeCount === 1 ? "active rule" : "active rules"}
             </span>
           </div>
         </div>
@@ -71,13 +75,13 @@ export function RecurringTransactionsSection({
           className="flex cursor-pointer items-center gap-2 rounded-xl bg-violet-500/10 px-4 py-2.5 text-sm font-bold text-violet-300 transition hover:bg-violet-500/20"
         >
           <Plus size={16} />
-          Dodaj regułę
+          {ui("Dodaj regułę", "Add rule")}
         </button>
       </div>
 
       {rules.length === 0 ? (
         <div className="px-5 py-10 text-center text-sm text-slate-500">
-          Brak transakcji cyklicznych.
+          {ui("Brak transakcji cyklicznych.", "No recurring transactions.")}
         </div>
       ) : (
         <div>
@@ -111,7 +115,7 @@ export function RecurringTransactionsSection({
                     color: visual.color,
                     boxShadow: `0 8px 24px ${visual.color}18`,
                   }}
-                  title={visual.categoryName}
+                  title={localizedCategoryName(visual.categoryName, language)}
                 >
                   <CategoryIcon
                     iconKey={visual.iconKey}
@@ -133,12 +137,12 @@ export function RecurringTransactionsSection({
                         color: visual.color,
                       }}
                     >
-                      {visual.categoryName}
+                      {localizedCategoryName(visual.categoryName, language)}
                     </span>
 
                     {!rule.active && (
                       <span className="rounded-full border border-slate-700 bg-slate-800/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                        Wstrzymana
+                        {ui("Wstrzymana", "Paused")}
                       </span>
                     )}
                   </div>
@@ -147,15 +151,15 @@ export function RecurringTransactionsSection({
                     <span className="flex items-center gap-1">
                       <Repeat2 size={12} />
                       {rule.type === "income"
-                        ? "Przychód"
-                        : "Wydatek"}
+                        ? ui("Przychód", "Income")
+                        : ui("Wydatek", "Expense")}
                     </span>
 
                     <span>•</span>
 
                     <span className="flex items-center gap-1">
                       <CalendarDays size={12} />
-                      {rule.dayOfMonth}. dzień miesiąca
+                      {ui(`${rule.dayOfMonth}. dzień miesiąca`, `Day ${rule.dayOfMonth} of the month`)}
                     </span>
                   </div>
                 </div>
@@ -169,13 +173,13 @@ export function RecurringTransactionsSection({
                     }`}
                   >
                     {rule.type === "income" ? "+" : "-"}
-                    {rule.amount.toLocaleString("pl-PL")} zł
+                    {rule.amount.toLocaleString(locale)} {language === "pl" ? "zł" : "PLN"}
                   </div>
 
                   {booked ? (
                     <span className="flex items-center gap-1.5 rounded-xl border border-emerald-500/15 bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-300">
                       <Check size={14} />
-                      Zaksięgowano
+                      {ui("Zaksięgowano", "Posted")}
                     </span>
                   ) : (
                     <button
@@ -185,14 +189,14 @@ export function RecurringTransactionsSection({
                       className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-xs font-bold text-cyan-300 transition hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <Check size={14} />
-                      Zaksięguj
+                      {ui("Zaksięguj", "Post")}
                     </button>
                   )}
 
                   <button
                     type="button"
                     onClick={() => onEditRule(rule)}
-                    title="Edytuj regułę"
+                    title={ui("Edytuj regułę", "Edit rule")}
                     className="cursor-pointer rounded-xl p-2 text-slate-500 transition hover:bg-blue-500/10 hover:text-blue-300"
                   >
                     <Pencil size={17} />
@@ -201,7 +205,7 @@ export function RecurringTransactionsSection({
                   <button
                     type="button"
                     onClick={() => onToggleRule(rule.id)}
-                    title={rule.active ? "Wstrzymaj" : "Wznów"}
+                    title={rule.active ? ui("Wstrzymaj", "Pause") : ui("Wznów", "Resume")}
                     className="cursor-pointer rounded-xl p-2 text-slate-500 transition hover:bg-violet-500/10 hover:text-violet-300"
                   >
                     {rule.active ? (
@@ -214,7 +218,7 @@ export function RecurringTransactionsSection({
                   <button
                     type="button"
                     onClick={() => onDeleteRule(rule.id)}
-                    title="Usuń regułę"
+                    title={ui("Usuń regułę", "Delete rule")}
                     className="cursor-pointer rounded-xl p-2 text-slate-500 transition hover:bg-red-500/10 hover:text-red-300"
                   >
                     <Trash2 size={17} />
@@ -332,4 +336,12 @@ function getRecurringVisual(
         categoryName: "Życie",
       };
   }
+}
+
+function polishRuleCount(value: number) {
+  if (value === 1) return "aktywna reguła";
+  const lastTwo = value % 100;
+  const last = value % 10;
+  if (last >= 2 && last <= 4 && !(lastTwo >= 12 && lastTwo <= 14)) return "aktywne reguły";
+  return "aktywnych reguł";
 }

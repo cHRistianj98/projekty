@@ -13,6 +13,7 @@ import {
   Mountain,
   LogOut,
   History,
+  Settings as SettingsIcon,
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
@@ -26,70 +27,27 @@ import type { MonthlyBudget } from "../../types/Cashflow";
 import type { Asset } from "../../types/Asset";
 import type { Goal } from "../../types/Goal";
 import type { Liability } from "../../types/Liability";
+import { useLanguage, type TranslationKey } from "../../i18n/LanguageContext";
 
-const menuItems = [
-  {
-    name: "Dashboard",
-    icon: House,
-    path: "/",
-  },
-  {
-    name: "Freedom Engine",
-    icon: BrainCircuit,
-    path: "/freedom",
-  },
-  {
-    name: "Finanse",
-    icon: Wallet,
-    path: "/finances",
-  },
-  {
-    name: "Inwestycje",
-    icon: ChartNoAxesCombined,
-    path: "/investments",
-  },
-  {
-    name: "Cele",
-    icon: Target,
-    path: "/goals",
-  },
-  {
-    name: "Budżet",
-    icon: PiggyBank,
-    path: "/budget",
-  },
-  {
-    name: "Zobowiązania",
-    icon: Landmark,
-    path: "/liabilities",
-  },
-  {
-    name: "Analizy",
-    icon: ChartPie,
-    path: "/analytics",
-  },
-  {
-    name: "Timeline",
-    icon: History,
-    path: "/timeline",
-  },
-  {
-    name: "Review",
-    icon: ClipboardCheck,
-    path: "/review",
-  },
-  {
-    name: "Symulator",
-    icon: Calculator,
-    path: "/simulator",
-  },
-  {
-    name: "Osiągnięcia",
-    icon: Trophy,
-    path: "/achievements",
-  },
+const menuItems: Array<{
+  key: TranslationKey;
+  icon: typeof House;
+  path: string;
+}> = [
+  { key: "dashboard", icon: House, path: "/" },
+  { key: "freedomEngine", icon: BrainCircuit, path: "/freedom" },
+  { key: "finances", icon: Wallet, path: "/finances" },
+  { key: "investments", icon: ChartNoAxesCombined, path: "/investments" },
+  { key: "goals", icon: Target, path: "/goals" },
+  { key: "budget", icon: PiggyBank, path: "/budget" },
+  { key: "liabilities", icon: Landmark, path: "/liabilities" },
+  { key: "analytics", icon: ChartPie, path: "/analytics" },
+  { key: "timeline", icon: History, path: "/timeline" },
+  { key: "review", icon: ClipboardCheck, path: "/review" },
+  { key: "simulator", icon: Calculator, path: "/simulator" },
+  { key: "achievements", icon: Trophy, path: "/achievements" },
+  { key: "settings", icon: SettingsIcon, path: "/settings" },
 ];
-
 type SidebarProps = {
   netWorth: number;
   portfolio: Asset[];
@@ -109,6 +67,8 @@ export function Sidebar({
   userEmail,
   onLogout,
 }: SidebarProps) {
+  const { t, levelName, locale } = useLanguage();
+
   const achievements = getAchievements({
     netWorth,
     portfolio,
@@ -151,7 +111,7 @@ export function Sidebar({
           </h1>
 
           <p className="text-xs text-slate-500">
-            Twoja gra finansowa
+            {t("yourFinancialGame")}
           </p>
         </div>
       </div>
@@ -164,10 +124,10 @@ export function Sidebar({
 
           return (
             <NavLink
-              key={item.name}
+              key={item.key}
               to={item.path}
               end={item.path === "/"}
-              title={item.name}
+              title={t(item.key)}
               className={({ isActive }) => `
                 flex w-full items-center gap-3
                 rounded-xl
@@ -184,7 +144,7 @@ export function Sidebar({
             >
               <Icon size={19} />
 
-              <span>{item.name}</span>
+              <span>{t(item.key)}</span>
             </NavLink>
           );
         })}
@@ -204,11 +164,11 @@ export function Sidebar({
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-xs text-slate-500">
-              PLAYER LEVEL {playerLevel.level}
+              {t("playerLevel").toUpperCase()} {playerLevel.level}
             </div>
 
             <div className="mt-1 font-semibold">
-              {playerLevel.name}
+              {levelName(playerLevel.name)}
             </div>
           </div>
 
@@ -218,7 +178,7 @@ export function Sidebar({
             </div>
 
             <div className="mt-1 text-[10px] text-slate-600">
-              {totalXp.toLocaleString("pl-PL")} XP total
+              {totalXp.toLocaleString(locale)} {t("totalXp")}
             </div>
           </div>
         </div>
@@ -250,11 +210,11 @@ export function Sidebar({
 
         <div className="mt-2 flex justify-between text-xs text-slate-500">
           <span>
-            {playerLevel.currentXp.toLocaleString("pl-PL")} XP
+            {playerLevel.currentXp.toLocaleString(locale)} XP
           </span>
 
           <span>
-            {playerLevel.requiredXp.toLocaleString("pl-PL")} XP
+            {playerLevel.requiredXp.toLocaleString(locale)} XP
           </span>
         </div>
 
@@ -269,9 +229,9 @@ export function Sidebar({
               text-slate-500
             "
           >
-            Do następnego poziomu:{" "}
+            {t("toNextLevel")}:{" "}
             <span className="font-semibold text-blue-400">
-              {playerLevel.remainingXp.toLocaleString("pl-PL")} XP
+              {playerLevel.remainingXp.toLocaleString(locale)} XP
             </span>
           </div>
         ) : (
@@ -286,7 +246,7 @@ export function Sidebar({
               text-amber-400
             "
           >
-            🏆 Maksymalny Player Level
+            🏆 {t("maxPlayerLevel")}
           </div>
         )}
 
@@ -301,8 +261,7 @@ export function Sidebar({
             text-slate-600
           "
         >
-          Level rośnie z XP za osiągnięcia. Majątek ma osobną ścieżkę
-          milestone&apos;ów.
+          {t("levelExplanation")}
         </div>
       </div>
 
@@ -339,7 +298,7 @@ export function Sidebar({
                 tracking-[0.12em] text-slate-600
               "
             >
-              Signed in
+              {t("signedIn")}
             </div>
 
             <div
@@ -369,8 +328,8 @@ export function Sidebar({
               hover:bg-red-500/10
               hover:text-red-300
             "
-            title="Wyloguj"
-            aria-label="Wyloguj"
+            title={t("signOut")}
+            aria-label={t("signOut")}
           >
             <LogOut size={16} />
           </button>

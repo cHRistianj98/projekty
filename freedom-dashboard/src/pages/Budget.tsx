@@ -225,7 +225,7 @@ export function Budget({
 
           <p className="relative mt-2 text-sm text-slate-500">
             Rozdziel pieniądze pomiędzy prawdziwe
-            kategorie Categories 2.0.
+            szczegółowe kategorie.
           </p>
 
           <button
@@ -467,7 +467,7 @@ function BudgetPlanModal({
                   : "Utwórz plan"}
               </h2>
               <p className="text-sm text-slate-500">
-                {monthLabel(month)} • Categories 2.0
+                {monthLabel(month)} • Kategorie
               </p>
             </div>
           </div>
@@ -485,7 +485,7 @@ function BudgetPlanModal({
           {categories.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-700 px-5 py-10 text-center text-sm text-slate-500">
               Brak kategorii wydatków. Categories
-              2.0 nie zwróciło żadnych aktywnych
+              nie zwróciło żadnych aktywnych
               kategorii.
             </div>
           ) : (

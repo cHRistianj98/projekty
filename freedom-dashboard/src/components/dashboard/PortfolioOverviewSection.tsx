@@ -1,18 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, LoaderCircle, PieChart, WalletCards } from "lucide-react";
+import { LoaderCircle, PieChart, WalletCards } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { portfolioApi } from "../../api/portfolioApi";
 import type { Asset } from "../../types/Asset";
 import type { PortfolioWallet } from "../../types/Portfolio";
+import { DashboardSectionLink } from "./DashboardSectionLink";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 type Props = {
   assets: Asset[];
 };
 
-const money = (value: number) => `${value.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} zł`;
 
 export function PortfolioOverviewSection({ assets }: Props) {
   const navigate = useNavigate();
+  const { t, locale } = useLanguage();
+  const money = (value: number) => `${value.toLocaleString(locale, { maximumFractionDigits: 2 })} zł`;
   const [wallets, setWallets] = useState<PortfolioWallet[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -41,19 +44,19 @@ export function PortfolioOverviewSection({ assets }: Props) {
         <div>
           <div className="flex items-center gap-2 text-cyan-400">
             <WalletCards size={19} />
-            <p className="text-[10px] font-black uppercase tracking-[0.2em]">Kapitał według strategii</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em]">{t("portfolioStructure")}</p>
           </div>
-          <h2 className="mt-2 text-xl font-black text-white">Portfele</h2>
-          <p className="mt-1 text-xs text-slate-500">Wszystkie strategie inwestycyjne i ich aktualna wartość.</p>
+          <h2 className="mt-2 text-xl font-black text-white">{t("managePortfolios") === "Manage portfolios" ? "Portfolios" : "Portfele"}</h2>
+          <p className="mt-1 text-xs text-slate-500">{t("managePortfolios") === "Manage portfolios" ? "All investment strategies and their current value." : "Wszystkie strategie inwestycyjne i ich aktualna wartość."}</p>
         </div>
-        <button type="button" onClick={() => navigate("/investments")} className="inline-flex items-center gap-2 text-xs font-black text-cyan-400 transition hover:text-cyan-300">
-          Zarządzaj portfelami <ArrowRight size={15}/>
-        </button>
+        <DashboardSectionLink onClick={() => navigate("/investments")}>
+          {t("managePortfolios")}
+        </DashboardSectionLink>
       </div>
 
       {loading ? (
         <div className="mt-5 flex min-h-40 items-center justify-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/30 text-sm text-slate-500">
-          <LoaderCircle size={18} className="animate-spin"/> Pobieranie portfeli…
+          <LoaderCircle size={18} className="animate-spin"/> {t("managePortfolios") === "Manage portfolios" ? "Loading portfolios…" : "Pobieranie portfeli…"}
         </div>
       ) : visible.length ? (
         <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4">
@@ -85,7 +88,7 @@ export function PortfolioOverviewSection({ assets }: Props) {
                   <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-4">
                     <div className="min-w-0">
                       <p className="truncate text-base font-black text-white drop-shadow-lg">{wallet.name}</p>
-                      <p className="mt-0.5 text-[10px] font-bold text-slate-300/80">{walletAssets.length} aktywów</p>
+                      <p className="mt-0.5 text-[10px] font-bold text-slate-300/80">{walletAssets.length} {t("managePortfolios") === "Manage portfolios" ? "assets" : "aktywów"}</p>
                     </div>
                     <span className="rounded-lg border border-white/10 bg-black/35 px-2 py-1 text-[10px] font-black text-cyan-200 backdrop-blur">{share.toFixed(1)}%</span>
                   </div>
@@ -94,12 +97,12 @@ export function PortfolioOverviewSection({ assets }: Props) {
                 <div className="p-4">
                   <div className="flex items-end justify-between gap-3">
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-600">Wartość</p>
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-600">{t("managePortfolios") === "Manage portfolios" ? "Value" : "Wartość"}</p>
                       <p className="mt-1 text-xl font-black text-white">{money(wallet.grossValue)}</p>
                     </div>
                     {wallet.allocatedOut > 0 && (
                       <div className="text-right">
-                        <p className="text-[9px] font-black uppercase tracking-wider text-violet-400">Rezerwa</p>
+                        <p className="text-[9px] font-black uppercase tracking-wider text-violet-400">{t("managePortfolios") === "Manage portfolios" ? "Reserve" : "Rezerwa"}</p>
                         <p className="mt-1 text-xs font-black text-violet-300">{money(wallet.allocatedOut)}</p>
                       </div>
                     )}

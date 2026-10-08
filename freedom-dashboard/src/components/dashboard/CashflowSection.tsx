@@ -1,6 +1,8 @@
 import { ArrowDownRight, ArrowRight, ArrowUpRight, CircleDollarSign, Home, PiggyBank, Plus, ShoppingBasket, Target, TrendingUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { ExpenseCategory, MonthlyBudget } from "../../types/Cashflow";
+import { DashboardSectionLink } from "./DashboardSectionLink";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 type Props = { budget: MonthlyBudget; onAddExpenseClick: () => void };
 
@@ -10,10 +12,11 @@ const categoryMeta: Record<ExpenseCategory, { label: string; icon: typeof Home; 
   investment: { label: "Inwestycje", icon: TrendingUp, bar: "bg-blue-500", iconClass: "bg-blue-500/10 text-blue-400" },
   goal: { label: "Cele", icon: Target, bar: "bg-violet-500", iconClass: "bg-violet-500/10 text-violet-400" },
 };
-const money = (value: number) => `${value.toLocaleString("pl-PL", { maximumFractionDigits: 0 })} zł`;
 
 export function CashflowSection({ budget, onAddExpenseClick }: Props) {
   const navigate = useNavigate();
+  const { t, locale, language } = useLanguage();
+  const money = (value: number) => `${value.toLocaleString(locale, { maximumFractionDigits: 0 })} zł`;
   const income = budget.incomes.reduce((sum, item) => sum + item.amount, 0);
   const expenses = budget.expenses.reduce((sum, item) => sum + item.amount, 0);
   const surplus = income - expenses;
@@ -44,7 +47,7 @@ export function CashflowSection({ budget, onAddExpenseClick }: Props) {
         </div>
 
         <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-5">
-          <div className="flex items-center justify-between"><div><p className="text-xs font-black uppercase tracking-wider text-slate-400">Ostatnie wydatki</p><p className="mt-1 text-[11px] text-slate-600">Najświeższe transakcje miesiąca</p></div><button onClick={() => navigate("/finances")} className="text-[11px] font-bold text-blue-400 hover:text-blue-300">Wszystkie →</button></div>
+          <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-wider text-slate-400">{language === "pl" ? "Ostatnie wydatki" : "Recent expenses"}</p><p className="mt-1 text-[11px] text-slate-600">{language === "pl" ? "Najświeższe transakcje miesiąca" : "Latest transactions this month"}</p></div><DashboardSectionLink onClick={() => navigate("/finances")}>{t("all")}</DashboardSectionLink></div>
           <div className="mt-4 divide-y divide-slate-800/80">{recent.length ? recent.map((item) => { const meta = categoryMeta[item.category]; const Icon = meta.icon; return <div key={item.id} className="flex items-center justify-between gap-3 py-3"><div className="flex min-w-0 items-center gap-3"><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${meta.iconClass}`}><Icon size={16} /></span><div className="min-w-0"><p className="truncate text-xs font-bold text-slate-200">{item.name}</p><p className="mt-0.5 text-[10px] text-slate-600">{meta.label} • {item.date}</p></div></div><p className="shrink-0 text-xs font-black text-white">-{money(item.amount)}</p></div>; }) : <div className="py-10 text-center text-xs text-slate-600">Brak wydatków w tym miesiącu.</div>}</div>
         </div>
       </div>

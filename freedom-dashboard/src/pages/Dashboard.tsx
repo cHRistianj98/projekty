@@ -34,6 +34,7 @@ import { PortfolioOverviewSection } from "../components/dashboard/PortfolioOverv
 import { LiabilitiesSection } from "../components/dashboard/LiabilitiesSection";
 import { CashflowSection } from "../components/dashboard/CashflowSection";
 import { AddExpenseModal } from "../components/dashboard/AddExpenseModal";
+import { useLanguage } from "../i18n/LanguageContext";
 
 import {
   calculatePlayerLevel,
@@ -154,6 +155,9 @@ export function Dashboard({
   monthlySnapshots,
   onAddExpense,
 }: DashboardProps) {
+  const { t, language, levelName: translateLevelName } = useLanguage();
+  const ui = (pl: string, en: string) => (language === "pl" ? pl : en);
+
   const [
     isAddExpenseOpen,
     setIsAddExpenseOpen,
@@ -181,7 +185,8 @@ export function Dashboard({
 
   const selectedMonthLabel =
     formatMonth(
-      selectedMonth
+      selectedMonth,
+      language
     );
 
   const previousMonth =
@@ -192,7 +197,8 @@ export function Dashboard({
 
   const previousMonthLabel =
     formatMonthShort(
-      previousMonth
+      previousMonth,
+      language
     );
 
   function changeMonth(
@@ -438,7 +444,7 @@ export function Dashboard({
       portfolio,
       liabilities,
       monthlyBudget,
-    });
+    }, language);
 
   const missions =
     getFreedomMissions({
@@ -447,7 +453,7 @@ export function Dashboard({
       goals,
       liabilities,
       monthlyBudget,
-    });
+    }, language);
 
   const storedFocusedMissionId =
     typeof window !== "undefined"
@@ -515,7 +521,7 @@ export function Dashboard({
     selectedIncomes.length > 0;
 
   /*
-   * FREEDOM 8.0 / backend-authoritative history:
+   * Backend-authoritative history:
    * NetWorthHistory is written only by Close Month, so it must NOT be
    * a prerequisite for closing the current month.
    */
@@ -536,19 +542,19 @@ export function Dashboard({
 
   const monthlyCycleSteps = [
     {
-      label: "PLAN",
+      label: ui("PLAN", "PLAN"),
       done: true,
       active: false,
     },
     {
-      label: "TRACK",
+      label: ui("ŚLEDŹ", "TRACK"),
       done: hasCurrentMonthTransactions,
       active:
         !monthClosed &&
         hasCurrentMonthTransactions,
     },
     {
-      label: "REVIEW",
+      label: ui("PRZEGLĄD", "REVIEW"),
       done:
         hasCurrentMonthIncome &&
         hasCurrentMonthTransactions,
@@ -558,7 +564,7 @@ export function Dashboard({
         hasCurrentMonthTransactions,
     },
     {
-      label: "CLOSE MONTH",
+      label: ui("ZAMKNIJ MIESIĄC", "CLOSE MONTH"),
       done: monthClosed,
       active:
         !monthClosed &&
@@ -566,7 +572,7 @@ export function Dashboard({
         hasCurrentMonthTransactions,
     },
     {
-      label: "ROUTE MONEY",
+      label: ui("ROZDZIEL ŚRODKI", "ROUTE MONEY"),
       done: monthClosed,
       active: monthClosed,
     },
@@ -574,29 +580,29 @@ export function Dashboard({
 
   const monthEndChecklist = [
     {
-      label: "Transakcje zaksięgowane",
-      detail: `${selectedIncomes.length + selectedExpenses.length} transakcji w miesiącu`,
+      label: ui("Transakcje zaksięgowane", "Transactions posted"),
+      detail: ui(`${selectedIncomes.length + selectedExpenses.length} transakcji w miesiącu`, `${selectedIncomes.length + selectedExpenses.length} transactions this month`),
       done: hasCurrentMonthTransactions,
     },
     {
-      label: "Dochód zaksięgowany",
+      label: ui("Dochód zaksięgowany", "Income posted"),
       detail: hasCurrentMonthIncome
         ? formatMoney(income)
-        : "Brak przychodu w bieżącym miesiącu",
+        : ui("Brak przychodu w bieżącym miesiącu", "No income in the current month"),
       done: hasCurrentMonthIncome,
     },
     {
-      label: "Stan majątku gotowy",
+      label: ui("Stan majątku gotowy", "Net worth ready"),
       detail: hasCurrentWealthState
-        ? `${formatMoney(netWorth)} live · snapshot powstanie przy Close Month`
-        : "Dodaj aktywa lub zobowiązania, aby zbudować stan majątku",
+        ? ui(`${formatMoney(netWorth)} na żywo · zapis stanu powstanie przy zamknięciu miesiąca`, `${formatMoney(netWorth)} live · snapshot will be created when the month is closed`)
+        : ui("Dodaj aktywa lub zobowiązania, aby zbudować stan majątku", "Add assets or liabilities to build your net worth state"),
       done: hasCurrentWealthState,
     },
     {
-      label: "Monthly Review zamknięty",
+      label: ui("Przegląd miesiąca zamknięty", "Monthly review closed"),
       detail: monthClosed
-        ? "Pełny snapshot miesiąca jest zamrożony"
-        : "Przejdź do Review i użyj CLOSE MONTH",
+        ? ui("Pełny zapis miesiąca jest zamrożony", "The full monthly snapshot is frozen")
+        : ui("Przejdź do przeglądu i zamknij miesiąc", "Go to review and close the month"),
       done: monthClosed,
     },
   ];
@@ -617,12 +623,12 @@ export function Dashboard({
 
   const monthScoreLabel =
     monthScore >= 85
-      ? "Excellent month"
+      ? ui("Świetny miesiąc", "Excellent month")
       : monthScore >= 70
-        ? "Strong month"
+        ? ui("Mocny miesiąc", "Strong month")
         : monthScore >= 50
-          ? "Building"
-          : "Needs attention";
+          ? ui("Budowanie", "Building")
+          : ui("Potrzebuje uwagi", "Needs attention");
 
   const currentLevel =
     findFreedomLevel(
@@ -678,7 +684,7 @@ export function Dashboard({
         <div className="flex flex-col justify-between gap-5 xl:flex-row xl:items-end">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-blue-400">
-              Financial Command Center
+              {t("financialCommandCenter")}
             </p>
 
             <h1 className="mt-2 text-3xl font-bold tracking-tight text-white">
@@ -687,8 +693,8 @@ export function Dashboard({
 
             <p className="mt-2 text-sm text-slate-500">
               {isCurrentMonth
-                ? "Twój aktualny obraz finansów i droga do wolności."
-                : "Historyczny obraz Twoich finansów."}
+                ? t("currentFinancialPicture")
+                : t("historicalFinancialPicture")}
             </p>
           </div>
 
@@ -701,7 +707,7 @@ export function Dashboard({
                 }
                 className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm font-semibold text-blue-400 transition hover:bg-blue-500/20"
               >
-                Dzisiaj
+                {t("today")}
               </button>
             )}
 
@@ -712,7 +718,7 @@ export function Dashboard({
                   changeMonth(-1)
                 }
                 className="rounded-lg p-2.5 text-slate-400 transition hover:bg-slate-800 hover:text-white"
-                title="Poprzedni miesiąc"
+                title={t("previousMonth")}
               >
                 <ChevronLeft
                   size={19}
@@ -726,8 +732,8 @@ export function Dashboard({
 
                 <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
                   {isCurrentMonth
-                    ? "Bieżący miesiąc"
-                    : "Historia"}
+                    ? t("currentMonth")
+                    : t("history")}
                 </p>
               </div>
 
@@ -746,8 +752,8 @@ export function Dashboard({
                 }`}
                 title={
                   isCurrentMonth
-                    ? "To jest bieżący miesiąc"
-                    : "Następny miesiąc"
+                    ? t("thisIsCurrentMonth")
+                    : t("nextMonth")
                 }
               >
                 <ChevronRight
@@ -773,8 +779,8 @@ export function Dashboard({
               />
 
               {isCurrentMonth
-                ? "Majątek netto"
-                : "Majątek netto na koniec miesiąca"}
+                ? ui("Majątek netto", "Net worth")
+                : ui("Majątek netto na koniec miesiąca", "Net worth at month end")}
             </div>
 
             <div className="mt-3 text-4xl font-black tracking-tight text-white md:text-5xl">
@@ -783,7 +789,7 @@ export function Dashboard({
                 ? formatMoney(
                     effectiveNetWorth
                   )
-                : "Brak danych"}
+                : ui("Brak danych", "No data")}
             </div>
 
             <div className="mt-3">
@@ -829,7 +835,7 @@ export function Dashboard({
           {isCurrentMonth ? (
             <div className="grid min-w-0 grid-cols-2 gap-3 md:min-w-[420px]">
               <SmallStat
-                label="Aktywa"
+                label={ui("Aktywa", "Assets")}
                 value={formatMoney(
                   totalAssets
                 )}
@@ -837,7 +843,7 @@ export function Dashboard({
               />
 
               <SmallStat
-                label="Zobowiązania"
+                label={ui("Zobowiązania", "Liabilities")}
                 value={formatMoney(
                   totalLiabilities
                 )}
@@ -845,9 +851,7 @@ export function Dashboard({
             </div>
           ) : (
             <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-5 py-4 text-sm text-slate-500">
-              Aktywa i zobowiązania
-              pokazujemy tylko dla
-              aktualnego stanu.
+              {ui("Aktywa i zobowiązania pokazujemy tylko dla aktualnego stanu.", "Assets and liabilities are shown only for the current state.")}
             </div>
           )}
         </div>
@@ -875,7 +879,7 @@ export function Dashboard({
       )}
 
       {/* =====================================
-          DASHBOARD 4.0 — COMMAND CENTER
+          DASHBOARD — COMMAND CENTER
       ====================================== */}
 
       {isCurrentMonth && (
@@ -884,31 +888,31 @@ export function Dashboard({
             <div>
               <div className="flex items-center gap-2">
                 <Gauge size={18} className="text-cyan-400" />
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-400">Monthly Operating System 8.0</p>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-400">{t("monthlyOperatingSystem")}</p>
               </div>
-              <h2 className="mt-2 text-2xl font-black text-white">Zarabiaj → kontroluj → alokuj → zamknij → rozwijaj majątek</h2>
-              <p className="mt-1 text-sm text-slate-500">Jedna miesięczna pętla sterująca całym FREEDOM.</p>
+              <h2 className="mt-2 text-2xl font-black text-white">{ui("Zarabiaj → kontroluj → alokuj → zamknij → rozwijaj majątek", "Earn → control → allocate → close → grow wealth")}</h2>
+              <p className="mt-1 text-sm text-slate-500">{ui("Jedna miesięczna pętla sterująca całym FREEDOM.", "One monthly loop controlling all of FREEDOM.")}</p>
             </div>
             <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-400">Do FREE</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-400">{ui("DO WOLNOŚCI", "TO FREEDOM")}</p>
               <p className="mt-1 text-lg font-black text-white">{formatMoney(Math.max(3_000_000 - netWorth, 0))}</p>
             </div>
           </div>
 
           <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <CommandCard icon={<Gem size={19} />} label="Net Worth" value={formatMoney(netWorth)}
-              detail={netWorthChange !== null ? `${formatSignedMoney(netWorthChange)} w tym miesiącu` : `${formatMoney(totalAssets)} aktywów · ${formatMoney(totalLiabilities)} długu`}
+            <CommandCard icon={<Gem size={19} />} label={t("netWorth")} value={formatMoney(netWorth)}
+              detail={netWorthChange !== null ? ui(`${formatSignedMoney(netWorthChange)} w tym miesiącu`, `${formatSignedMoney(netWorthChange)} this month`) : ui(`${formatMoney(totalAssets)} aktywów · ${formatMoney(totalLiabilities)} długu`, `${formatMoney(totalAssets)} assets · ${formatMoney(totalLiabilities)} debt`)}
               accent="cyan" progress={Math.min((netWorth / 3_000_000) * 100, 100)} />
-            <CommandCard icon={<Target size={19} />} label="Player Level" value={`LVL ${playerLevel.level} · ${playerLevel.name}`}
-              detail={`${totalXp.toLocaleString("pl-PL")} XP · ${playerLevel.remainingXp.toLocaleString("pl-PL")} XP do następnego`}
+            <CommandCard icon={<Target size={19} />} label={t("playerLevel")} value={`${ui("POZIOM", "LEVEL")} ${playerLevel.level} · ${translateLevelName(playerLevel.name)}`}
+              detail={ui(`${totalXp.toLocaleString("pl-PL")} XP · ${playerLevel.remainingXp.toLocaleString("pl-PL")} XP do następnego`, `${totalXp.toLocaleString("en-US")} XP · ${playerLevel.remainingXp.toLocaleString("en-US")} XP to next level`)}
               accent="violet" progress={playerLevel.progress} />
-            <CommandCard icon={<ShieldCheck size={19} />} label="Primary Mission"
-              value={primaryMission ? primaryMission.title : "Brak aktywnej misji"}
-              detail={primaryMission ? `${primaryMission.progress.toFixed(0)}% · ${primaryMission.footer}` : "Freedom Engine nie wykrył aktywnego priorytetu."}
+            <CommandCard icon={<ShieldCheck size={19} />} label={t("primaryMission")}
+              value={primaryMission ? primaryMission.title : ui("Brak aktywnej misji", "No active mission")}
+              detail={primaryMission ? `${primaryMission.progress.toFixed(0)}% · ${primaryMission.footer}` : ui("Silnik Freedom nie wykrył aktywnego priorytetu.", "Freedom Engine did not detect an active priority.")}
               accent="amber" progress={primaryMission ? primaryMission.progress : 100} />
-            <CommandCard icon={<Rocket size={19} />} label="Current Trajectory"
-              value={freedomEngine.projectedFreedomDate ? freedomEngine.projectedFreedomDate : freedomEngine.yearsToFreedom !== null ? `${freedomEngine.yearsToFreedom.toFixed(1)} lat` : "Brak trajektorii"}
-              detail={`Rolling cashflow ${formatSignedMoney(freedomEngine.averageSurplus)} / mies. · Score ${freedomEngine.freedomScore}/100`}
+            <CommandCard icon={<Rocket size={19} />} label={t("currentTrajectory")}
+              value={freedomEngine.projectedFreedomDate ? freedomEngine.projectedFreedomDate : freedomEngine.yearsToFreedom !== null ? ui(`${freedomEngine.yearsToFreedom.toFixed(1)} lat`, `${freedomEngine.yearsToFreedom.toFixed(1)} years`) : ui("Brak trajektorii", "No trajectory")}
+              detail={ui(`Średni przepływ ${formatSignedMoney(freedomEngine.averageSurplus)} / mies. · Wynik ${freedomEngine.freedomScore}/100`, `Rolling cashflow ${formatSignedMoney(freedomEngine.averageSurplus)} / month · Score ${freedomEngine.freedomScore}/100`)}
               accent="emerald" progress={Math.min((netWorth / 3_000_000) * 100, 100)} />
           </div>
 
@@ -916,15 +920,15 @@ export function Dashboard({
             <div className="rounded-2xl border border-slate-800 bg-[#07101d] p-5">
               <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-400">Your Next Move</p>
-                  <h3 className="mt-1 text-lg font-black text-white">Deploy Surplus · {formatMoney(monthlyRouterAmount)}</h3>
-                  <p className="mt-1 text-xs text-slate-600">Bieżąca nadwyżka tego miesiąca — plan alokacji, jeszcze bez automatycznego wykonania.</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-400">{t("nextMove")}</p>
+                  <h3 className="mt-1 text-lg font-black text-white">{ui("Rozdziel nadwyżkę", "Deploy surplus")} · {formatMoney(monthlyRouterAmount)}</h3>
+                  <p className="mt-1 text-xs text-slate-600">{ui("Bieżąca nadwyżka tego miesiąca — plan alokacji, jeszcze bez automatycznego wykonania.", "Current monthly surplus — allocation plan, not executed automatically yet.")}</p>
                 </div>
                 {moneyPlan.deadlineSummary.requiredMonthly > 0 && (
                   <div className={`rounded-xl border px-3 py-2 text-right ${moneyPlan.deadlineSummary.onTrack ? "border-emerald-500/20 bg-emerald-500/10" : "border-rose-500/20 bg-rose-500/10"}`}>
-                    <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">Deadline gap</p>
+                    <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-500">{ui("Luka do terminu", "Deadline gap")}</p>
                     <p className={`mt-0.5 font-black ${moneyPlan.deadlineSummary.onTrack ? "text-emerald-400" : "text-rose-400"}`}>
-                      {moneyPlan.deadlineSummary.onTrack ? "ON TRACK" : `-${formatMoney(moneyPlan.deadlineSummary.shortfall)} / mies.`}
+                      {moneyPlan.deadlineSummary.onTrack ? ui("ZGODNIE Z PLANEM", "ON TRACK") : ui(`-${formatMoney(moneyPlan.deadlineSummary.shortfall)} / mies.`, `-${formatMoney(moneyPlan.deadlineSummary.shortfall)} / month`)}
                     </p>
                   </div>
                 )}
@@ -939,7 +943,7 @@ export function Dashboard({
                           <span className="text-[10px] font-black text-slate-600">#{index + 1}</span>
                           <p className="truncate text-sm font-black text-slate-300">{route.title}</p>
                         </div>
-                        {route.fundingStatus === "PARTIAL" && <p className="mt-1 text-[10px] font-black uppercase tracking-[0.1em] text-rose-400">Shortfall</p>}
+                        {route.fundingStatus === "PARTIAL" && <p className="mt-1 text-[10px] font-black uppercase tracking-[0.1em] text-rose-400">{ui("Niedobór", "Shortfall")}</p>}
                       </div>
                       <p className="shrink-0 font-black text-cyan-400">{formatMoney(route.amount)}</p>
                     </div>
@@ -947,35 +951,35 @@ export function Dashboard({
                   {moneyPlan.routes.length > 4 && <p className="pt-1 text-xs text-slate-600">+ {moneyPlan.routes.length - 4} kolejnych pozycji w Freedom Engine</p>}
                 </div>
               ) : (
-                <p className="mt-4 rounded-xl border border-dashed border-slate-800 p-4 text-sm text-slate-500">Brak dodatniej nadwyżki do rozdysponowania.</p>
+                <p className="mt-4 rounded-xl border border-dashed border-slate-800 p-4 text-sm text-slate-500">{ui("Brak dodatniej nadwyżki do rozdysponowania.", "No positive surplus available to allocate.")}</p>
               )}
             </div>
 
             <div className="rounded-2xl border border-slate-800 bg-[#07101d] p-5">
               <div className="flex items-center gap-2">
                 <ClipboardCheck size={17} className="text-violet-400" />
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-400">Last Review</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-400">{t("lastReview")}</p>
               </div>
               {latestClosedSnapshot ? (
                 <>
                   <div className="mt-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                     <div>
-                      <p className="text-lg font-black capitalize text-white">{formatMonth(latestClosedSnapshot.month)}</p>
-                      <p className="mt-1 text-xs text-slate-600">Zamknięty snapshot · {latestClosedSnapshot.player.totalXp.toLocaleString("pl-PL")} XP</p>
+                      <p className="text-lg font-black capitalize text-white">{formatMonth(latestClosedSnapshot.month, language)}</p>
+                      <p className="mt-1 text-xs text-slate-600">{ui("Zamknięty zapis stanu", "Closed snapshot")} · {latestClosedSnapshot.player.totalXp.toLocaleString(language === "pl" ? "pl-PL" : "en-US")} XP</p>
                     </div>
                     {latestReviewVerdict && <span className={`rounded-lg border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.1em] ${latestReviewVerdict.className}`}>{latestReviewVerdict.label}</span>}
                   </div>
                   <div className="mt-4 grid grid-cols-2 gap-3">
-                    <SmallCommandStat label="Net Worth" value={formatMoney(latestClosedSnapshot.wealth.netWorth)} />
-                    <SmallCommandStat label="Savings Rate" value={`${latestClosedSnapshot.cashflow.savingsRate.toFixed(1)}%`} />
-                    <SmallCommandStat label="Nadwyżka" value={formatSignedMoney(latestClosedSnapshot.cashflow.surplus)} />
-                    <SmallCommandStat label="Zmiana NW" value={latestReviewNetWorthChange !== null ? formatSignedMoney(latestReviewNetWorthChange) : "Pierwszy snapshot"} />
+                    <SmallCommandStat label={t("netWorth")} value={formatMoney(latestClosedSnapshot.wealth.netWorth)} />
+                    <SmallCommandStat label={ui("Stopa oszczędności", "Savings rate")} value={`${latestClosedSnapshot.cashflow.savingsRate.toFixed(1)}%`} />
+                    <SmallCommandStat label={ui("Nadwyżka", "Surplus")} value={formatSignedMoney(latestClosedSnapshot.cashflow.surplus)} />
+                    <SmallCommandStat label={ui("Zmiana majątku", "Net worth change")} value={latestReviewNetWorthChange !== null ? formatSignedMoney(latestReviewNetWorthChange) : ui("Pierwszy zapis stanu", "First snapshot")} />
                   </div>
                 </>
               ) : (
                 <div className="mt-4 rounded-xl border border-dashed border-slate-800 p-5">
-                  <p className="font-black text-slate-300">Brak zamkniętego miesiąca.</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-600">Zamknij miesiąc w Review, a Dashboard zacznie pokazywać ostatni zamrożony wynik.</p>
+                  <p className="font-black text-slate-300">{ui("Brak zamkniętego miesiąca.", "No closed month yet.")}</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">{ui("Zamknij miesiąc w przeglądzie, a dashboard zacznie pokazywać ostatni zamrożony wynik.", "Close the month in Review and the dashboard will show the latest frozen result.")}</p>
                 </div>
               )}
             </div>
@@ -985,13 +989,13 @@ export function Dashboard({
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
               <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400" style={{ width: `${Math.min((netWorth / 3_000_000) * 100, 100)}%` }} />
             </div>
-            <span className="shrink-0 text-xs font-black text-cyan-400">{Math.min((netWorth / 3_000_000) * 100, 100).toFixed(1)}% FREE</span>
+            <span className="shrink-0 text-xs font-black text-cyan-400">{Math.min((netWorth / 3_000_000) * 100, 100).toFixed(1)}% {ui("WOLNOŚCI", "FREE")}</span>
           </div>
         </section>
       )}
 
       {/* =====================================
-          MONTHLY CYCLE 1.0
+          MONTHLY CYCLE
       ====================================== */}
 
       {isCurrentMonth && (
@@ -1001,21 +1005,21 @@ export function Dashboard({
               <div className="flex items-center gap-2 text-blue-400">
                 <CalendarCheck size={18} />
                 <p className="text-xs font-black uppercase tracking-[0.18em]">
-                  Monthly OS 8.0
+                  {t("monthlyOperatingSystem")}
                 </p>
               </div>
               <h2 className="mt-2 text-2xl font-black capitalize text-white">
-                {formatMonth(currentMonth)}
+                {formatMonth(currentMonth, language)}
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Miesięczny system operacyjny: kontrola cashflow, decyzja o nadwyżce i finalny snapshot.
+                {ui("Miesięczny system operacyjny: kontrola przepływów pieniężnych, decyzja o nadwyżce i finalny zapis stanu.", "Monthly operating system: cashflow control, surplus decision and final snapshot.")}
               </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
               <div className="min-w-36 rounded-xl border border-violet-500/20 bg-violet-500/10 px-4 py-3">
                 <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
-                  Month Score
+                  {t("monthScore")}
                 </p>
                 <p className="mt-1 text-lg font-black text-violet-300">
                   {monthScore} / 100
@@ -1033,7 +1037,7 @@ export function Dashboard({
                     : "border-slate-700 bg-slate-900/60"
               }`}>
                 <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
-                  Status miesiąca
+                  {t("monthStatus")}
                 </p>
                 <p className={`mt-1 font-black ${
                   monthClosed
@@ -1043,9 +1047,9 @@ export function Dashboard({
                       : "text-slate-300"
                 }`}>
                   {monthClosed
-                    ? "CLOSED 🔒"
+                    ? ui("ZAMKNIĘTY 🔒", "CLOSED 🔒")
                     : readyToClose
-                      ? "READY TO CLOSE"
+                      ? ui("GOTOWY DO ZAMKNIĘCIA", "READY TO CLOSE")
                       : `${daysLeftInMonth} dni do końca`}
                 </p>
               </div>
@@ -1092,7 +1096,7 @@ export function Dashboard({
           <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_0.9fr]">
             <div className="rounded-2xl border border-slate-800 bg-[#07101d] p-5">
               <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
-                Month End Checklist
+                {ui("Lista końca miesiąca", "Month end checklist")}
               </p>
 
               <div className="mt-4 space-y-2">
@@ -1140,24 +1144,24 @@ export function Dashboard({
                   }
                 />
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
-                  Next Action
+                  {t("nextAction")}
                 </p>
               </div>
 
               <p className="mt-3 text-xl font-black text-white">
                 {monthClosed
-                  ? "Miesiąc zamknięty"
+                  ? ui("Miesiąc zamknięty", "Month closed")
                   : readyToClose
-                    ? "Czas na Monthly Review"
-                    : "Uzupełniaj miesiąc"}
+                    ? ui("Czas na przegląd miesiąca", "Time for monthly review")
+                    : ui("Uzupełniaj miesiąc", "Keep updating the month")}
               </p>
 
               <p className="mt-2 text-sm leading-6 text-slate-500">
                 {monthClosed
-                  ? `Snapshot jest zamrożony. Money Router ma ${formatMoney(monthlyRouterAmount)} miesięcznej nadwyżki do rozdysponowania.`
+                  ? ui(`Zapis miesiąca jest zamrożony. Router środków ma ${formatMoney(monthlyRouterAmount)} miesięcznej nadwyżki do rozdysponowania.`, `The snapshot is frozen. Money Router has ${formatMoney(monthlyRouterAmount)} of monthly surplus to allocate.`)
                   : readyToClose
-                    ? "Podstawowe dane są gotowe. Otwórz Review, sprawdź miesiąc i użyj CLOSE MONTH."
-                    : "Księguj transakcje i aktualizuj Net Worth. FREEDOM sam pokaże, kiedy miesiąc będzie gotowy do zamknięcia."}
+                    ? ui("Podstawowe dane są gotowe. Otwórz przegląd, sprawdź miesiąc i zamknij go.", "The core data is ready. Open Review, check the month and close it.")
+                    : ui("Księguj transakcje i aktualizuj majątek netto. FREEDOM sam pokaże, kiedy miesiąc będzie gotowy do zamknięcia.", "Post transactions and update net worth. FREEDOM will show when the month is ready to close.")}
               </p>
 
               {!monthClosed && readyToClose && (
@@ -1165,7 +1169,7 @@ export function Dashboard({
                   to="/review"
                   className="mt-5 inline-flex items-center justify-center rounded-xl border border-cyan-500/30 bg-cyan-500/15 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-cyan-300 transition hover:bg-cyan-500/25"
                 >
-                  Open Monthly Review →
+                  {ui("Otwórz przegląd miesiąca →", "Open monthly review →")}
                 </Link>
               )}
 
@@ -1174,18 +1178,18 @@ export function Dashboard({
                   to="/timeline"
                   className="mt-5 inline-flex items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-emerald-300 transition hover:bg-emerald-500/20"
                 >
-                  View Financial Timeline →
+                  {ui("Zobacz oś finansową →", "View financial timeline →")}
                 </Link>
               )}
 
               {monthClosed && currentMonthSnapshot && (
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <SmallCommandStat
-                    label="Closed Surplus"
+                    label={ui("Zamknięta nadwyżka", "Closed surplus")}
                     value={formatSignedMoney(currentMonthSnapshot.cashflow.surplus)}
                   />
                   <SmallCommandStat
-                    label="Closed Savings"
+                    label={ui("Zamknięte oszczędności", "Closed savings")}
                     value={`${currentMonthSnapshot.cashflow.savingsRate.toFixed(1)}%`}
                   />
                 </div>
@@ -1203,19 +1207,12 @@ export function Dashboard({
         !hasHistoricalNetWorth && (
           <div className="mt-5 rounded-xl border border-amber-500/20 bg-amber-500/10 px-5 py-4">
             <p className="text-sm font-semibold text-amber-300">
-              Brak snapshotu majątku
-              netto dla{" "}
+              {ui("Brak zapisu majątku netto dla", "No net worth snapshot for")}{" "}
               {selectedMonthLabel}.
             </p>
 
             <p className="mt-1 text-xs leading-5 text-slate-500">
-              Cashflow poniżej jest
-              historyczny, ale dla
-              progresu FREEDOM
-              używamy aktualnego
-              majątku, ponieważ nie
-              mamy danych o majątku
-              z tego miesiąca.
+              {ui("Przepływy pieniężne poniżej są historyczne, ale do postępu FREEDOM używamy aktualnego majątku, ponieważ nie mamy danych o majątku z tego miesiąca.", "The cashflow below is historical, but FREEDOM progress uses current net worth because there is no net worth data for this month.")}
             </p>
           </div>
         )}
@@ -1228,7 +1225,7 @@ export function Dashboard({
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-              Wealth Milestone
+              {t("wealthMilestone")}
             </p>
 
             <div className="mt-2 flex items-center gap-3">
@@ -1238,28 +1235,26 @@ export function Dashboard({
 
               <div>
                 <h2 className="text-xl font-bold">
-                  {currentLevel.name} →{" "}
+                  {translateLevelName(currentLevel.name)} →{" "}
                   {nextTarget !== null
                     ? formatCompactMoney(nextTarget)
-                    : "FREE"}
+                    : ui("WOLNOŚĆ", "FREE")}
                 </h2>
 
                 {nextTarget !==
                 null ? (
                   <p className="mt-1 text-sm text-slate-500">
-                    Jeszcze{" "}
+                    {ui("Jeszcze", "Remaining")}{" "}
                     <span className="font-semibold text-white">
                       {formatMoney(
                         amountToNextLevel
                       )}
                     </span>{" "}
-                    do następnego
-                    poziomu.
+                    {ui("do następnego poziomu.", "to the next level.")}
                   </p>
                 ) : (
                   <p className="mt-1 text-sm font-semibold text-emerald-400">
-                    Osiągnięty poziom
-                    FREE.
+                    {ui("Osiągnięty poziom WOLNOŚĆ.", "FREE level reached.")}
                   </p>
                 )}
               </div>
@@ -1275,7 +1270,7 @@ export function Dashboard({
             </div>
 
             <div className="text-xs text-slate-500">
-              progres poziomu
+              {ui("postęp poziomu", "level progress")}
             </div>
           </div>
         </div>
@@ -1304,7 +1299,7 @@ export function Dashboard({
               ? formatCompactMoney(
                   nextTarget
                 )
-              : "FREE"}
+              : ui("WOLNOŚĆ", "FREE")}
           </span>
         </div>
       </section>
@@ -1315,7 +1310,7 @@ export function Dashboard({
 
       <section className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <DashboardMetric
-          title="Przychody"
+          title={ui("Przychody", "Income")}
           value={formatMoney(
             income
           )}
@@ -1351,7 +1346,7 @@ export function Dashboard({
         />
 
         <DashboardMetric
-          title="Wydatki"
+          title={ui("Wydatki", "Expenses")}
           value={formatMoney(
             expenses
           )}
@@ -1391,14 +1386,14 @@ export function Dashboard({
         />
 
         <DashboardMetric
-          title="Nadwyżka"
+          title={ui("Nadwyżka", "Surplus")}
           value={formatSignedMoney(
             surplus
           )}
           subtitle={
             surplus >= 0
-              ? "Zostaje po wydatkach"
-              : "Wydatki przekroczyły wpływy"
+              ? ui("Zostaje po wydatkach", "Left after expenses")
+              : ui("Wydatki przekroczyły wpływy", "Expenses exceeded income")
           }
           icon={
             <PiggyBank
@@ -1433,16 +1428,16 @@ export function Dashboard({
         />
 
         <DashboardMetric
-          title="Stopa oszczędności"
+          title={ui("Stopa oszczędności", "Savings rate")}
           value={`${savingsRate.toFixed(
             1
           )}%`}
           subtitle={
             income === 0
-              ? "Brak przychodów"
+              ? ui("Brak przychodów", "No income")
               : savingsRate >= 50
-                ? "Powyżej celu 50%"
-                : "Cel: minimum 50%"
+                ? ui("Powyżej celu 50%", "Above the 50% target")
+                : ui("Cel: minimum 50%", "Target: minimum 50%")
           }
           icon={
             <TrendingUp
@@ -1489,21 +1484,21 @@ export function Dashboard({
         <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-              Month over Month
+              {t("monthOverMonth")}
             </p>
 
             <h2 className="mt-2 text-lg font-bold">
-              {selectedMonthLabel} vs{" "}
+              {selectedMonthLabel} {ui("a", "vs")}{" "}
               {formatMonth(
-                previousMonth
+                previousMonth,
+                language
               )}
             </h2>
           </div>
 
           {hasPreviousMonthData && (
             <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-xs text-slate-500">
-              Porównanie do
-              poprzedniego miesiąca
+              {ui("Porównanie do poprzedniego miesiąca", "Comparison with the previous month")}
             </div>
           )}
         </div>
@@ -1511,7 +1506,7 @@ export function Dashboard({
         {hasPreviousMonthData ? (
           <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             <ComparisonBox
-              label="Przychody"
+              label={ui("Przychody", "Income")}
               current={income}
               previous={
                 previousIncome
@@ -1523,7 +1518,7 @@ export function Dashboard({
             />
 
             <ComparisonBox
-              label="Wydatki"
+              label={ui("Wydatki", "Expenses")}
               current={expenses}
               previous={
                 previousExpensesTotal
@@ -1537,7 +1532,7 @@ export function Dashboard({
             />
 
             <ComparisonBox
-              label="Nadwyżka"
+              label={ui("Nadwyżka", "Surplus")}
               current={surplus}
               previous={
                 previousSurplus
@@ -1560,18 +1555,15 @@ export function Dashboard({
         ) : (
           <div className="mt-6 rounded-xl border border-dashed border-slate-700 p-7 text-center">
             <p className="font-medium text-slate-300">
-              Brak danych z{" "}
+              {ui("Brak danych z", "No data for")}{" "}
               {formatMonth(
-                previousMonth
+                previousMonth,
+                language
               )}.
             </p>
 
             <p className="mt-1 text-sm text-slate-500">
-              Gdy pojawią się
-              transakcje z
-              poprzedniego miesiąca,
-              zobaczysz tutaj pełne
-              porównanie.
+              {ui("Gdy pojawią się transakcje z poprzedniego miesiąca, zobaczysz tutaj pełne porównanie.", "When transactions from the previous month appear, you will see the full comparison here.")}
             </p>
           </div>
         )}
@@ -1584,11 +1576,11 @@ export function Dashboard({
       <section className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
         <div className="rounded-2xl border border-slate-800 bg-[#0b1322] p-6 xl:col-span-2">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-            Miesiąc w skrócie
+            {ui("Miesiąc w skrócie", "Month at a glance")}
           </p>
 
           <h2 className="mt-2 text-lg font-bold">
-            Gdzie poszły pieniądze?
+            {ui("Gdzie poszły pieniądze?", "Where did the money go?")}
           </h2>
 
           {expenses > 0 ? (
@@ -1633,14 +1625,12 @@ export function Dashboard({
           ) : (
             <div className="mt-6 rounded-xl border border-dashed border-slate-700 p-8 text-center">
               <p className="font-medium text-slate-300">
-                Brak wydatków w{" "}
+                {ui("Brak wydatków w", "No expenses in")}{" "}
                 {selectedMonthLabel}.
               </p>
 
               <p className="mt-1 text-sm text-slate-500">
-                W tym miesiącu nie
-                ma zaksięgowanych
-                wydatków.
+                {ui("W tym miesiącu nie ma zaksięgowanych wydatków.", "There are no posted expenses this month.")}
               </p>
             </div>
           )}
@@ -1648,30 +1638,30 @@ export function Dashboard({
 
         <div className="rounded-2xl border border-slate-800 bg-[#0b1322] p-6">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-            Quick insight
+            {t("quickInsight")}
           </p>
 
           <h2 className="mt-2 text-lg font-bold">
-            Kondycja miesiąca
+            {ui("Kondycja miesiąca", "Month condition")}
           </h2>
 
           <div className="mt-6 space-y-4">
             <InsightRow
-              label="Wpływy"
+              label={ui("Wpływy", "Income")}
               value={formatMoney(
                 income
               )}
             />
 
             <InsightRow
-              label="Wydatki"
+              label={ui("Wydatki", "Expenses")}
               value={formatMoney(
                 expenses
               )}
             />
 
             <InsightRow
-              label="Bilans"
+              label={ui("Bilans", "Balance")}
               value={formatSignedMoney(
                 surplus
               )}
@@ -1683,7 +1673,7 @@ export function Dashboard({
             />
 
             <InsightRow
-              label="Największa kategoria"
+              label={ui("Największa kategoria", "Largest category")}
               value={
                 biggestExpenseCategory
                   ? categoryLabels[
@@ -1722,11 +1712,11 @@ export function Dashboard({
       <section className="mt-5 rounded-2xl border border-slate-800 bg-[#0b1322] p-6">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-            Freedom Road
+            {t("freedomRoad")}
           </p>
 
           <h2 className="mt-2 text-lg font-bold">
-            Droga do 3 000 000 zł
+            {ui("Droga do 3 000 000 zł", "Road to PLN 3,000,000")}
           </h2>
         </div>
 
@@ -1764,12 +1754,12 @@ export function Dashboard({
                           : "text-slate-600"
                     }`}
                   >
-                    LEVEL{" "}
+                    {ui("POZIOM", "LEVEL")}{" "}
                     {level.level}
                   </div>
 
                   <div className="mt-2 font-semibold">
-                    {level.name}
+                    {translateLevelName(level.name)}
                   </div>
 
                   <div className="mt-1 text-xs text-slate-500">
@@ -1783,14 +1773,14 @@ export function Dashboard({
 
                   {active && (
                     <div className="mt-3 text-xs font-bold text-blue-400">
-                      ← YOU
+                      ← {ui("TY", "YOU")}
                     </div>
                   )}
 
                   {!active &&
                     completed && (
                       <div className="mt-3 text-xs font-bold text-emerald-400">
-                        ✓ DONE
+                        ✓ {ui("GOTOWE", "DONE")}
                       </div>
                     )}
                 </div>
@@ -2496,7 +2486,8 @@ function getExpenseComparisonTone(
 }
 
 function formatMonth(
-  month: string
+  month: string,
+  language: "pl" | "en"
 ) {
   const [
     year,
@@ -2515,7 +2506,7 @@ function formatMonth(
 
   const formatted =
     new Intl.DateTimeFormat(
-      "pl-PL",
+      language === "pl" ? "pl-PL" : "en-US",
       {
         month: "long",
         year: "numeric",
@@ -2531,7 +2522,8 @@ function formatMonth(
 }
 
 function formatMonthShort(
-  month: string
+  month: string,
+  language: "pl" | "en"
 ) {
   const [
     year,
@@ -2549,7 +2541,7 @@ function formatMonthShort(
     );
 
   return new Intl.DateTimeFormat(
-    "pl-PL",
+    language === "pl" ? "pl-PL" : "en-US",
     {
       month: "short",
     }

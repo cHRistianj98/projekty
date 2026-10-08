@@ -1,10 +1,11 @@
-import { ArrowRight, Car, CreditCard, Home, Landmark, Percent, ReceiptText, WalletCards } from "lucide-react";
+import { Car, CreditCard, Home, Landmark, Percent, ReceiptText, WalletCards } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { Liability, LiabilityType } from "../../types/Liability";
+import { DashboardSectionLink } from "./DashboardSectionLink";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 type Props = { liabilities: Liability[] };
 
-const money = (value: number) => `${value.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} zł`;
 
 const typeMeta: Record<LiabilityType, { label: string; icon: typeof Landmark; image: string }> = {
   MORTGAGE: { label: "Hipoteka", icon: Home, image: "linear-gradient(135deg, rgba(14,165,233,.28), rgba(2,6,23,.92)), radial-gradient(circle at 75% 20%, rgba(56,189,248,.30), transparent 35%)" },
@@ -18,6 +19,8 @@ const typeMeta: Record<LiabilityType, { label: string; icon: typeof Landmark; im
 
 export function LiabilitiesSection({ liabilities }: Props) {
   const navigate = useNavigate();
+  const { t, locale, language } = useLanguage();
+  const money = (value: number) => `${value.toLocaleString(locale, { maximumFractionDigits: 2 })} zł`;
   const total = liabilities.reduce((sum, item) => sum + item.remainingAmount, 0);
   const monthly = liabilities.reduce((sum, item) => sum + item.monthlyPayment, 0);
   const interest = liabilities.reduce((sum, item) => sum + (item.interestPayment ?? 0), 0);
@@ -27,11 +30,11 @@ export function LiabilitiesSection({ liabilities }: Props) {
     <section className="mt-6 overflow-hidden rounded-2xl border border-slate-800 bg-[#0b1322] p-6">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-red-400">Debt Control</p>
-          <h2 className="mt-2 text-lg font-black text-white">Zobowiązania</h2>
-          <p className="mt-1 text-xs text-slate-500">Najważniejsze długi, koszt rat i postęp spłaty.</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-red-400">{t("debtControl")}</p>
+          <h2 className="mt-2 text-lg font-black text-white">{t("liabilities")}</h2>
+          <p className="mt-1 text-xs text-slate-500">{language === "pl" ? "Najważniejsze długi, koszt rat i postęp spłaty." : "Key debts, payment costs and repayment progress."}</p>
         </div>
-        <button onClick={() => navigate("/liabilities")} className="flex items-center gap-2 text-xs font-bold text-blue-400 hover:text-blue-300">Zobacz wszystkie <ArrowRight size={15} /></button>
+        <DashboardSectionLink onClick={() => navigate("/liabilities")}>{t("seeAll")}</DashboardSectionLink>
       </div>
 
       <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">

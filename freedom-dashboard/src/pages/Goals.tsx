@@ -155,7 +155,7 @@ export function Goals({
           </div>
           <div>
             <p className="text-xs font-black uppercase tracking-[0.16em] text-violet-400">
-              Goals 4.0 · Spend & Complete
+              Cele · Wydawanie i zamykanie
             </p>
             <p className="mt-1 text-sm leading-6 text-slate-400">
               Cel jest rezerwacją realnego kapitału. Wydatki mogą zużywać tę rezerwę bez sztucznych transferów, a zakończone cele zostają w historii jako osiągnięcia.
@@ -1266,7 +1266,7 @@ function GoalFundingModal({
                 </p>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
                   Np. 2k z już posiadanej gotówki staje się
-                  częścią Poduszki. Net Worth i portfolio bez zmian.
+                  częścią Poduszki. Majątek netto i portfel bez zmian.
                 </p>
               </button>
 
@@ -1286,7 +1286,7 @@ function GoalFundingModal({
                 </p>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
                   Np. Gotówka -2k → Obligacje +2k →
-                  Poduszka +2k. Net Worth bez zmian.
+                  Poduszka +2k. Majątek netto bez zmian.
                 </p>
               </button>
 

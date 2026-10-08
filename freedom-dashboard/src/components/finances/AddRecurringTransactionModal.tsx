@@ -1,402 +1,184 @@
-import {
-  useState,
-} from "react";
-
-import {
-  AlertCircle,
-  X,
-} from "lucide-react";
-
-import type {
-  ExpenseCategory,
-} from "../../types/Cashflow";
-
-import type {
-  RecurringTransaction,
-  RecurringTransactionType,
-} from "../../types/RecurringTransaction";
+import { useState } from "react";
+import { AlertCircle, ChevronDown, CalendarClock, WalletCards, CreditCard } from "lucide-react";
+import type { ExpenseCategory } from "../../types/Cashflow";
+import type { RecurringTransaction, RecurringTransactionType } from "../../types/RecurringTransaction";
+import { useLanguage } from "../../i18n/LanguageContext";
+import { DateInput, modalInputClass, ModalCloseButton, MoneyInput } from "./ModalFieldKit";
 
 type AddRecurringTransactionModalProps = {
   onClose: () => void;
-
-  onAdd: (
-    rule: RecurringTransaction
-  ) => void;
+  onAdd: (rule: RecurringTransaction) => void;
 };
 
-export function AddRecurringTransactionModal({
-  onClose,
-  onAdd,
-}: AddRecurringTransactionModalProps) {
-  const [type, setType] =
-    useState<RecurringTransactionType>(
-      "expense"
-    );
+export function AddRecurringTransactionModal({ onClose, onAdd }: AddRecurringTransactionModalProps) {
+  const { language } = useLanguage();
+  const ui = (pl: string, en: string) => (language === "pl" ? pl : en);
+  const [type, setType] = useState<RecurringTransactionType>("expense");
+  const [name, setName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [category, setCategory] = useState<ExpenseCategory>("fixed");
+  const [dayOfMonth, setDayOfMonth] = useState(String(new Date().getDate()));
+  const [startDate, setStartDate] = useState(getTodayDate());
+  const [error, setError] = useState("");
 
-  const [name, setName] =
-    useState("");
-
-  const [amount, setAmount] =
-    useState("");
-
-  const [
-    category,
-    setCategory,
-  ] =
-    useState<ExpenseCategory>(
-      "fixed"
-    );
-
-  const [
-    dayOfMonth,
-    setDayOfMonth,
-  ] = useState(
-    String(
-      new Date().getDate()
-    )
-  );
-
-  const [
-    startDate,
-    setStartDate,
-  ] = useState(
-    getTodayDate()
-  );
-
-  const [error, setError] =
-    useState("");
-
-  function handleSubmit(
-    event: React.FormEvent<HTMLFormElement>
-  ) {
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
     setError("");
 
-    const numericAmount =
-      Number(amount);
+    const numericAmount = Number(amount);
+    const numericDay = Number(dayOfMonth);
 
-    const numericDay =
-      Number(dayOfMonth);
-
-    if (!name.trim()) {
-      setError(
-        "Podaj nazwę reguły."
-      );
-
-      return;
+    if (!name.trim()) return setError(ui("Podaj nazwę reguły.", "Enter a rule name."));
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      return setError(ui("Kwota musi być większa od 0.", "Amount must be greater than 0."));
     }
-
-    if (
-      !Number.isFinite(
-        numericAmount
-      ) ||
-      numericAmount <= 0
-    ) {
-      setError(
-        "Kwota musi być większa od 0."
-      );
-
-      return;
+    if (!Number.isInteger(numericDay) || numericDay < 1 || numericDay > 31) {
+      return setError(ui("Dzień miesiąca musi być od 1 do 31.", "Day of month must be between 1 and 31."));
     }
-
-    if (
-      !Number.isInteger(
-        numericDay
-      ) ||
-      numericDay < 1 ||
-      numericDay > 31
-    ) {
-      setError(
-        "Dzień miesiąca musi być od 1 do 31."
-      );
-
-      return;
-    }
-
-    if (!startDate) {
-      setError(
-        "Podaj datę rozpoczęcia."
-      );
-
-      return;
-    }
+    if (!startDate) return setError(ui("Podaj datę rozpoczęcia.", "Choose a start date."));
 
     onAdd({
       id: Date.now(),
-
       type,
-
-      name:
-        name.trim(),
-
-      amount:
-        numericAmount,
-
-      category:
-        type === "expense"
-          ? category
-          : undefined,
-
-      dayOfMonth:
-        numericDay,
-
+      name: name.trim(),
+      amount: numericAmount,
+      category: type === "expense" ? category : undefined,
+      dayOfMonth: numericDay,
       startDate,
-
       active: true,
     });
-
     onClose();
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-
-        {/* HEADER */}
-
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold">
-              Nowa reguła cykliczna
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Zdefiniuj miesięczną
-              transakcję.
-            </p>
+      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-[24px] border border-slate-800 bg-[#0b1322] shadow-2xl shadow-black/40">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-800 bg-[#0b1322]/95 px-6 py-5 backdrop-blur">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-violet-500/20 bg-violet-500/10 text-violet-300">
+              <CalendarClock size={20} />
+            </div>
+            <div>
+              <h2 className="text-2xl font-black tracking-tight">{ui("Nowa reguła cykliczna", "New recurring rule")}</h2>
+              <p className="mt-1 text-sm text-slate-500">{ui("Zdefiniuj miesięczną transakcję.", "Define a monthly transaction.")}</p>
+            </div>
           </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white"
-          >
-            <X size={20} />
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </div>
 
-        <form
-          onSubmit={
-            handleSubmit
-          }
-          className="mt-6 space-y-5"
-        >
+        <form onSubmit={handleSubmit} className="space-y-5 p-6">
           {error && (
-            <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
-              <AlertCircle
-                size={18}
-                className="mt-0.5 shrink-0"
-              />
-
+            <div className="flex items-start gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
+              <AlertCircle size={18} className="mt-0.5 shrink-0" />
               {error}
             </div>
           )}
 
-          {/* TYPE */}
-
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">
-              Typ
-            </label>
-
+            <label className="mb-2 block text-sm font-medium text-slate-300">{ui("Typ", "Type")}</label>
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() =>
-                  setType(
-                    "expense"
-                  )
-                }
-                className={
-                  type ===
-                  "expense"
-                    ? "rounded-xl border border-blue-500 bg-blue-500/10 px-4 py-3 text-sm font-semibold text-blue-400"
-                    : "rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-400"
-                }
+                onClick={() => setType("expense")}
+                className={`flex cursor-pointer items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-semibold transition ${
+                  type === "expense"
+                    ? "border-rose-400/60 bg-rose-500/10 text-rose-200 shadow-[0_0_0_1px_rgba(251,113,133,.12)]"
+                    : "border-slate-700 bg-slate-950/70 text-slate-400 hover:border-slate-600 hover:bg-slate-900"
+                }`}
               >
-                Wydatek
+                <CreditCard size={17} />
+                {ui("Wydatek", "Expense")}
               </button>
-
               <button
                 type="button"
-                onClick={() =>
-                  setType(
-                    "income"
-                  )
-                }
-                className={
-                  type ===
-                  "income"
-                    ? "rounded-xl border border-emerald-500 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-400"
-                    : "rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-400"
-                }
+                onClick={() => setType("income")}
+                className={`flex cursor-pointer items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-semibold transition ${
+                  type === "income"
+                    ? "border-emerald-400/60 bg-emerald-500/10 text-emerald-200 shadow-[0_0_0_1px_rgba(52,211,153,.12)]"
+                    : "border-slate-700 bg-slate-950/70 text-slate-400 hover:border-slate-600 hover:bg-slate-900"
+                }`}
               >
-                Przychód
+                <WalletCards size={17} />
+                {ui("Przychód", "Income")}
               </button>
             </div>
           </div>
 
-          {/* NAME */}
-
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">
-              Nazwa
-            </label>
-
+            <label className="mb-2 block text-sm font-medium text-slate-300">{ui("Nazwa", "Name")}</label>
             <input
               value={name}
-              onChange={(event) =>
-                setName(
-                  event.target.value
-                )
-              }
-              placeholder="np. Czynsz"
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
+              onChange={(event) => setName(event.target.value)}
+              placeholder={ui("np. Czynsz", "e.g. Rent")}
+              autoFocus
+              className={`${modalInputClass} focus:border-violet-400 focus:ring-violet-500/15`}
             />
           </div>
 
-          {/* AMOUNT */}
-
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">
-              Kwota
-            </label>
-
-            <div className="relative">
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={amount}
-                onChange={(event) =>
-                  setAmount(
-                    event.target.value
-                  )
-                }
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 pr-12 outline-none focus:border-blue-500"
-              />
-
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-500">
-                zł
-              </span>
-            </div>
+            <label className="mb-2 block text-sm font-medium text-slate-300">{ui("Kwota", "Amount")}</label>
+            <MoneyInput value={amount} onChange={setAmount} accent="violet" currency="PLN" />
           </div>
 
-          {/* CATEGORY */}
-
-          {type ===
-            "expense" && (
+          {type === "expense" && (
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-300">
-                Kategoria
-              </label>
-
-              <select
-                value={
-                  category
-                }
-                onChange={(
-                  event
-                ) =>
-                  setCategory(
-                    event
-                      .target
-                      .value as ExpenseCategory
-                  )
-                }
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
-              >
-                <option value="fixed">
-                  Koszt stały
-                </option>
-
-                <option value="living">
-                  Życie
-                </option>
-
-                <option value="investment">
-                  Inwestycja
-                </option>
-
-                <option value="goal">
-                  Cel
-                </option>
-              </select>
+              <label className="mb-2 block text-sm font-medium text-slate-300">{ui("Kategoria", "Category")}</label>
+              <div className="relative">
+                <select
+                  value={category}
+                  onChange={(event) => setCategory(event.target.value as ExpenseCategory)}
+                  className={`${modalInputClass} cursor-pointer appearance-none pr-11 focus:border-violet-400 focus:ring-violet-500/15`}
+                >
+                  <option value="fixed">{ui("Koszt stały", "Fixed cost")}</option>
+                  <option value="living">{ui("Życie", "Living")}</option>
+                  <option value="investment">{ui("Inwestycje", "Investments")}</option>
+                  <option value="goal">{ui("Cele", "Goals")}</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-300" />
+              </div>
             </div>
           )}
 
-          {/* DAY */}
+          <div className="grid gap-4 sm:grid-cols-[1fr_1.35fr]">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-300">{ui("Dzień miesiąca", "Day of month")}</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="1"
+                  max="31"
+                  step="1"
+                  inputMode="numeric"
+                  value={dayOfMonth}
+                  onChange={(event) => setDayOfMonth(event.target.value)}
+                  className={`${modalInputClass} freedom-number-input pr-16 text-lg font-semibold focus:border-violet-400 focus:ring-violet-500/15`}
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl border border-violet-500/20 bg-violet-500/10 px-2.5 py-1 text-[10px] font-black tracking-[0.12em] text-violet-300">1–31</span>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-slate-600">
+                {ui("W krótszym miesiącu użyjemy ostatniego dnia.", "For shorter months, the last day will be used.")}
+              </p>
+            </div>
 
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">
-              Dzień miesiąca
-            </label>
-
-            <input
-              type="number"
-              min="1"
-              max="31"
-              step="1"
-              value={
-                dayOfMonth
-              }
-              onChange={(
-                event
-              ) =>
-                setDayOfMonth(
-                  event.target.value
-                )
-              }
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
-            />
-
-            <p className="mt-1 text-xs text-slate-600">
-              Dla krótszego
-              miesiąca użyjemy
-              ostatniego dnia.
-            </p>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-300">{ui("Obowiązuje od", "Starts on")}</label>
+              <DateInput value={startDate} onChange={setStartDate} accent="violet" />
+            </div>
           </div>
 
-          {/* START */}
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">
-              Obowiązuje od
-            </label>
-
-            <input
-              type="date"
-              value={
-                startDate
-              }
-              onChange={(
-                event
-              ) =>
-                setStartDate(
-                  event.target.value
-                )
-              }
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
-            />
-          </div>
-
-          {/* ACTIONS */}
-
-          <div className="flex justify-end gap-3 pt-2">
+          <div className="flex justify-end gap-3 border-t border-slate-800 pt-5">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl px-5 py-3 text-sm font-semibold text-slate-400 hover:bg-slate-800 hover:text-white"
+              className="cursor-pointer rounded-xl border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
             >
-              Anuluj
+              {ui("Anuluj", "Cancel")}
             </button>
-
             <button
               type="submit"
-              className="rounded-xl bg-violet-600 px-5 py-3 text-sm font-semibold hover:bg-violet-500"
+              className="cursor-pointer rounded-xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-violet-500"
             >
-              Dodaj regułę
+              {ui("Dodaj regułę", "Add rule")}
             </button>
           </div>
         </form>
@@ -406,7 +188,5 @@ export function AddRecurringTransactionModal({
 }
 
 function getTodayDate() {
-  return new Date().toLocaleDateString(
-    "sv-SE"
-  );
+  return new Date().toLocaleDateString("sv-SE");
 }

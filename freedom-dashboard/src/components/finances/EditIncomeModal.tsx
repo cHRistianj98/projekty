@@ -9,6 +9,7 @@ import { categoryApi } from "../../api/categoryApi";
 import { CategoryPicker } from "../categories/CategoryPicker";
 import { CashSourcePicker } from "./CashSourcePicker";
 import { CheckboxCard, DateInput, modalInputClass, ModalCloseButton, MoneyInput } from "./ModalFieldKit";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 type EditIncomeModalProps = {
   income: Income;
@@ -25,6 +26,8 @@ export function EditIncomeModal({
   onClose,
   onSave,
 }: EditIncomeModalProps) {
+  const { language } = useLanguage();
+  const ui = (pl: string, en: string) => (language === "pl" ? pl : en);
   const cashAssets = useMemo(
     () => assets.filter((asset) => asset.systemCash || getAssetCategory(asset) === "cash"),
     [assets]
@@ -53,7 +56,7 @@ export function EditIncomeModal({
       })
       .catch((reason) => {
         console.error("Nie udało się pobrać kategorii:", reason);
-        if (!cancelled) setError("Nie udało się pobrać kategorii.");
+        if (!cancelled) setError(ui("Nie udało się pobrać kategorii.", "Could not load categories."));
       })
       .finally(() => {
         if (!cancelled) setLoadingCategories(false);
@@ -69,13 +72,13 @@ export function EditIncomeModal({
     setError("");
 
     const numericAmount = Number(amount);
-    if (!name.trim()) return setError("Podaj nazwę przychodu.");
+    if (!name.trim()) return setError(ui("Podaj nazwę przychodu.", "Enter an income name."));
     if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
-      return setError("Kwota musi być większa od 0.");
+      return setError(ui("Kwota musi być większa od 0.", "Amount must be greater than 0."));
     }
-    if (!date) return setError("Wybierz datę przychodu.");
-    if (!categoryId) return setError("Wybierz kategorię.");
-    if (!assetId) return setError("Wybierz miejsce, do którego trafiają pieniądze.");
+    if (!date) return setError(ui("Wybierz datę przychodu.", "Choose an income date."));
+    if (!categoryId) return setError(ui("Wybierz kategorię.", "Choose a category."));
+    if (!assetId) return setError(ui("Wybierz miejsce, do którego trafiają pieniądze.", "Choose where the money goes."));
 
     const selectedCategory = categories.find((item) => item.id === categoryId);
 
@@ -99,8 +102,8 @@ export function EditIncomeModal({
       <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[24px] border border-slate-800 bg-[#0b1322] shadow-2xl shadow-black/40">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-800 bg-[#0b1322]/95 px-6 py-5 backdrop-blur">
           <div>
-            <h2 className="text-2xl font-black tracking-tight">Edytuj przychód</h2>
-            <p className="mt-1 text-sm text-slate-500">Zaktualizuj dane i zapisz zmiany.</p>
+            <h2 className="text-2xl font-black tracking-tight">{ui("Edytuj przychód", "Edit income")}</h2>
+            <p className="mt-1 text-sm text-slate-500">{ui("Zaktualizuj dane i zapisz zmiany.", "Update the details and save your changes.")}</p>
           </div>
           <ModalCloseButton onClick={onClose} />
         </div>
@@ -115,28 +118,28 @@ export function EditIncomeModal({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-300">Nazwa</label>
+              <label className="mb-2 block text-sm font-medium text-slate-300">{ui("Nazwa", "Name")}</label>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="np. Wynagrodzenie"
+                placeholder={ui("np. Wynagrodzenie", "e.g. Salary")}
                 autoFocus
                 className={`${modalInputClass} focus:border-emerald-400 focus:ring-emerald-500/15`}
               />
             </div>
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-300">Kwota</label>
+              <label className="mb-2 block text-sm font-medium text-slate-300">{ui("Kwota", "Amount")}</label>
               <MoneyInput value={amount} onChange={setAmount} accent="emerald" currency="PLN" />
             </div>
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">Data</label>
+            <label className="mb-2 block text-sm font-medium text-slate-300">{ui("Data", "Date")}</label>
             <DateInput value={date} onChange={setDate} accent="emerald" />
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">Gdzie trafiają pieniądze</label>
+            <label className="mb-2 block text-sm font-medium text-slate-300">{ui("Gdzie trafiają pieniądze", "Where the money goes")}</label>
             <CashSourcePicker
               assets={cashAssets}
               wallets={wallets}
@@ -146,19 +149,19 @@ export function EditIncomeModal({
               tone="emerald"
             />
             <p className="mt-2 text-xs leading-5 text-slate-500">
-              Przy zmianie Freedom cofnie stary przychód i zaksięguje go na nowym aktywie gotówkowym.
+              {ui("Przy zmianie Freedom cofnie stary przychód i zaksięguje go na nowym aktywie gotówkowym.", "When changed, Freedom will reverse the old income and post it to the new cash asset.")}
             </p>
           </div>
 
           <div>
             <div className="mb-3 flex items-center justify-between">
-              <label className="text-sm font-medium text-slate-300">Kategoria</label>
-              {categoryId && <span className="text-xs font-semibold text-cyan-400">Wybrano ✓</span>}
+              <label className="text-sm font-medium text-slate-300">{ui("Kategoria", "Category")}</label>
+              {categoryId && <span className="text-xs font-semibold text-cyan-400">{ui("Wybrano ✓", "Selected ✓")}</span>}
             </div>
 
             {loadingCategories ? (
               <div className="flex items-center justify-center rounded-2xl border border-slate-800 bg-slate-950/40 py-12 text-slate-500">
-                <LoaderCircle className="mr-2 h-5 w-5 animate-spin" /> Ładowanie kategorii…
+                <LoaderCircle className="mr-2 h-5 w-5 animate-spin" /> {ui("Ładowanie kategorii…", "Loading categories…")}
               </div>
             ) : (
               <CategoryPicker categories={categories} type="INCOME" value={categoryId} onChange={setCategoryId} />
@@ -168,8 +171,8 @@ export function EditIncomeModal({
           <CheckboxCard
             checked={recurring}
             onChange={setRecurring}
-            title="Powtarzaj co miesiąc"
-            description="Transakcja będzie oznaczona jako cykliczna."
+            title={ui("Powtarzaj co miesiąc", "Repeat monthly")}
+            description={ui("Transakcja będzie oznaczona jako cykliczna.", "The transaction will be marked as recurring.")}
           />
 
           <div className="flex justify-end gap-3 pt-2">
@@ -178,13 +181,13 @@ export function EditIncomeModal({
               onClick={onClose}
               className="cursor-pointer rounded-xl border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
             >
-              Anuluj
+              {ui("Anuluj", "Cancel")}
             </button>
             <button
               type="submit"
               className="cursor-pointer rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold transition hover:bg-emerald-500"
             >
-              Zapisz zmiany
+              {ui("Zapisz zmiany", "Save changes")}
             </button>
           </div>
         </form>
