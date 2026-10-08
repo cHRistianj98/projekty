@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, LoaderCircle, Target, X } from "lucide-react";
+import { AlertCircle, LoaderCircle } from "lucide-react";
 import type { Expense, ExpenseCategory } from "../../types/Cashflow";
 import type { Category } from "../../types/Category";
 import type { Asset } from "../../types/Asset";
@@ -10,6 +10,8 @@ import { categoryApi } from "../../api/categoryApi";
 import { goalSpendingApi } from "../../api/goalSpendingApi";
 import { CategoryPicker } from "../categories/CategoryPicker";
 import { CashSourcePicker } from "./CashSourcePicker";
+import { CheckboxCard, DateInput, modalInputClass, ModalCloseButton, MoneyInput } from "./ModalFieldKit";
+import { GoalLinkPicker } from "./GoalLinkPicker";
 
 type EditExpenseModalProps = {
   expense: Expense;
@@ -45,7 +47,6 @@ export function EditExpenseModal({
   const [categoryId, setCategoryId] = useState<number | undefined>(expense.categoryId);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [error, setError] = useState("");
-
   const [assetId, setAssetId] = useState<number | undefined>(
     expense.assetId ?? cashAssets.find((asset) => asset.systemCash)?.id ?? cashAssets[0]?.id
   );
@@ -56,7 +57,8 @@ export function EditExpenseModal({
   useEffect(() => {
     let cancelled = false;
 
-    categoryApi.getAll("EXPENSE")
+    categoryApi
+      .getAll("EXPENSE")
       .then((loaded) => {
         if (cancelled) return;
         setCategories(loaded);
@@ -70,7 +72,9 @@ export function EditExpenseModal({
         if (!cancelled) setLoadingCategories(false);
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -83,14 +87,13 @@ export function EditExpenseModal({
     let cancelled = false;
     setLoadingGoals(true);
 
-    goalSpendingApi.getSpendable(assetId, expense.id)
+    goalSpendingApi
+      .getSpendable(assetId, expense.id)
       .then((items) => {
         if (cancelled) return;
         setSpendableGoals(items);
         setGoalId((current) =>
-          current && items.some((item) => item.goalId === current)
-            ? current
-            : undefined
+          current && items.some((item) => item.goalId === current) ? current : undefined
         );
       })
       .catch((reason) => {
@@ -104,13 +107,10 @@ export function EditExpenseModal({
         if (!cancelled) setLoadingGoals(false);
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [assetId, expense.id]);
-
-  const selectedGoal = useMemo(
-    () => spendableGoals.find((goal) => goal.goalId === goalId),
-    [goalId, spendableGoals]
-  );
 
   function selectGoal(nextGoalId?: number) {
     setGoalId(nextGoalId);
@@ -130,16 +130,12 @@ export function EditExpenseModal({
 
     const numericAmount = Number(amount);
     if (!name.trim()) return setError("Podaj nazwę wydatku.");
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0) return setError("Kwota musi być większa od 0.");
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      return setError("Kwota musi być większa od 0.");
+    }
     if (!date) return setError("Wybierz datę wydatku.");
     if (!categoryId) return setError("Wybierz kategorię.");
     if (!assetId) return setError("Wybierz źródło środków.");
-
-    if (selectedGoal && numericAmount > selectedGoal.reservedOnAsset + 0.0001) {
-      return setError(
-        `Cel „${selectedGoal.name}” ma na tym aktywie dostępne ${selectedGoal.reservedOnAsset.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} zł rezerwy.`
-      );
-    }
 
     const selectedCategory = categories.find((item) => item.id === categoryId);
 
@@ -162,22 +158,20 @@ export function EditExpenseModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-800 bg-[#0b1322] shadow-2xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-800 bg-[#0b1322] px-6 py-5">
+      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[24px] border border-slate-800 bg-[#0b1322] shadow-2xl shadow-black/40">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-800 bg-[#0b1322]/95 px-6 py-5 backdrop-blur">
           <div>
-            <h2 className="text-xl font-bold">Edytuj wydatek</h2>
+            <h2 className="text-2xl font-black tracking-tight">Edytuj wydatek</h2>
             <p className="mt-1 text-sm text-slate-500">
               Możesz także przypisać istniejący lub importowany wydatek do konkretnego celu.
             </p>
           </div>
-          <button type="button" onClick={onClose} className="cursor-pointer rounded-lg p-2 text-slate-500 transition hover:bg-slate-800 hover:text-white">
-            <X size={20} />
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5 p-6">
           {error && (
-            <div className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
+            <div className="flex items-start gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
               <AlertCircle size={18} className="mt-0.5 shrink-0" />
               {error}
             </div>
@@ -186,20 +180,23 @@ export function EditExpenseModal({
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-300">Nazwa</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="np. Zakupy spożywcze" autoFocus className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 outline-none placeholder:text-slate-600 focus:border-blue-500" />
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="np. Zakupy spożywcze"
+                autoFocus
+                className={`${modalInputClass} focus:border-cyan-400 focus:ring-cyan-500/15`}
+              />
             </div>
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-300">Kwota</label>
-              <div className="relative">
-                <input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 pr-12 outline-none focus:border-blue-500" />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-500">zł</span>
-              </div>
+              <MoneyInput value={amount} onChange={setAmount} accent="blue" currency="PLN" />
             </div>
           </div>
 
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-300">Data</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full cursor-pointer rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 outline-none focus:border-blue-500" />
+            <DateInput value={date} onChange={setDate} accent="blue" />
           </div>
 
           <div>
@@ -217,47 +214,14 @@ export function EditExpenseModal({
             </p>
           </div>
 
-          <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300">
-                <Target size={18} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-black text-slate-100">Powiązanie z celem</p>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">
-                      Przy zapisie wydatek zużyje rezerwę celu z wybranego wyżej aktywa. Działa również dla wydatków zaimportowanych wcześniej.
-                    </p>
-                  </div>
-                  {loadingGoals && <LoaderCircle size={18} className="animate-spin text-violet-300" />}
-                </div>
-
-                <select
-                  value={goalId ?? ""}
-                  onChange={(event) => selectGoal(event.target.value ? Number(event.target.value) : undefined)}
-                  disabled={!assetId || loadingGoals}
-                  className="mt-4 w-full cursor-pointer rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <option value="">Bez powiązanego celu</option>
-                  {spendableGoals.map((goal) => (
-                    <option key={goal.goalId} value={goal.goalId}>
-                      {goal.name} — rezerwa na tym aktywie {goal.reservedOnAsset.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} zł
-                    </option>
-                  ))}
-                </select>
-
-                {selectedGoal && (
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-violet-500/15 bg-slate-950/40 px-3 py-2 text-xs">
-                    <span className="text-slate-500">Dostępna rezerwa dla tej edycji</span>
-                    <strong className="text-violet-200">
-                      {selectedGoal.reservedOnAsset.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} zł
-                    </strong>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <GoalLinkPicker
+            goals={spendableGoals}
+            selectedGoalId={goalId}
+            onSelect={selectGoal}
+            loading={loadingGoals}
+            amount={Number(amount)}
+            mode="edit"
+          />
 
           <div>
             <div className="mb-3 flex items-center justify-between">
@@ -274,25 +238,32 @@ export function EditExpenseModal({
             )}
           </div>
 
-          <label className={`flex items-center gap-3 rounded-xl border p-4 transition ${goalId ? "cursor-not-allowed border-slate-800 bg-slate-950/30 opacity-50" : "cursor-pointer border-slate-800 bg-slate-900/50 hover:border-slate-700"}`}>
-            <input
-              type="checkbox"
-              checked={recurring}
-              disabled={Boolean(goalId)}
-              onChange={(e) => setRecurring(e.target.checked)}
-              className="h-4 w-4 cursor-pointer disabled:cursor-not-allowed"
-            />
-            <div>
-              <p className="text-sm font-medium">Powtarzaj co miesiąc</p>
-              <p className="mt-1 text-xs text-slate-500">
-                {goalId ? "Wydatek powiązany z celem nie może być cykliczny." : "Transakcja będzie oznaczona jako cykliczna."}
-              </p>
-            </div>
-          </label>
+          <CheckboxCard
+            checked={recurring}
+            disabled={Boolean(goalId)}
+            onChange={setRecurring}
+            title="Powtarzaj co miesiąc"
+            description={
+              goalId
+                ? "Wydatek powiązany z celem nie może być cykliczny."
+                : "Transakcja będzie oznaczona jako cykliczna."
+            }
+          />
 
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="cursor-pointer rounded-xl border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-slate-800">Anuluj</button>
-            <button type="submit" className="cursor-pointer rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold transition hover:bg-blue-500">Zapisz zmiany</button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="cursor-pointer rounded-xl border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
+            >
+              Anuluj
+            </button>
+            <button
+              type="submit"
+              className="cursor-pointer rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold transition hover:bg-blue-500"
+            >
+              Zapisz zmiany
+            </button>
           </div>
         </form>
       </div>

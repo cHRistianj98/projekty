@@ -78,3 +78,33 @@ body,
   .freedom-sidebar .sidebar-account > div { justify-content: center; }
   .freedom-sidebar .sidebar-account > div > div { display: none; }
 }
+
+/* Freedom modal fields */
+.freedom-number-input::-webkit-outer-spin-button,
+.freedom-number-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.freedom-number-input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.freedom-date-input {
+  position: relative;
+}
+
+.freedom-date-input::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.freedom-date-input::-webkit-inner-spin-button,
+.freedom-date-input::-webkit-clear-button {
+  display: none;
+}

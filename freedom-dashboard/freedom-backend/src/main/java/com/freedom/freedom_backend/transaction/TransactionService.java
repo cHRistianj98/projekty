@@ -58,7 +58,7 @@ public class TransactionService {
         );
         Transaction saved = repository.saveAndFlush(transaction);
 
-        applyFinancialEvent(saved, user, false, null);
+        applyFinancialEvent(saved, user, false, null, false);
         return TransactionResponse.from(saved);
     }
 
@@ -86,7 +86,7 @@ public class TransactionService {
         );
         Transaction saved = repository.saveAndFlush(transaction);
 
-        applyFinancialEvent(saved, user, true, importSource);
+        applyFinancialEvent(saved, user, true, importSource, false);
         return TransactionResponse.from(saved);
     }
 
@@ -114,7 +114,7 @@ public class TransactionService {
         );
         repository.flush();
 
-        applyFinancialEvent(transaction, user, false, null);
+        applyFinancialEvent(transaction, user, false, null, true);
         return TransactionResponse.from(transaction);
     }
 
@@ -128,7 +128,8 @@ public class TransactionService {
             Transaction transaction,
             User user,
             boolean imported,
-            String importSource
+            String importSource,
+            boolean editingExistingExpense
     ) {
         if (transaction.getType() == TransactionType.INCOME) {
             ledger.recordIncome(
@@ -141,15 +142,28 @@ public class TransactionService {
         }
 
         if (transaction.getGoalId() != null) {
-            // First turn the exact goal reservation into spendable capital.
-            // Then the normal expense ledger consumes the physical money.
-            goalSpending.consumeReservation(
-                    transaction.getGoalId(),
-                    transaction.getId(),
-                    transaction.getAssetId(),
-                    transaction.getAmount(),
-                    user
-            );
+            // New expenses keep the strict "spend from a reservation on this asset"
+            // rule. Editing an already existing/imported expense is a reconciliation
+            // flow: it may be attached to any live goal and consume that goal's
+            // reservations from other assets (or count as historical spending when
+            // no reservation existed).
+            if (editingExistingExpense) {
+                goalSpending.consumeReservationForEditedExpense(
+                        transaction.getGoalId(),
+                        transaction.getId(),
+                        transaction.getAssetId(),
+                        transaction.getAmount(),
+                        user
+                );
+            } else {
+                goalSpending.consumeReservation(
+                        transaction.getGoalId(),
+                        transaction.getId(),
+                        transaction.getAssetId(),
+                        transaction.getAmount(),
+                        user
+                );
+            }
             ledger.recordExpense(
                     transaction.getId(),
                     transaction.getAssetId(),

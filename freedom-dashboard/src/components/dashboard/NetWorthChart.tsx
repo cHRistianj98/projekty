@@ -44,6 +44,7 @@ export function NetWorthChart({
       ).toLocaleDateString(
         "pl-PL",
         {
+          day: "2-digit",
           month: "short",
         }
       ),
@@ -84,7 +85,7 @@ export function NetWorthChart({
           </h2>
 
           <p className="mt-1 text-xs text-slate-500">
-            Wartość portfela w czasie
+            Codzienny snapshot: aktywa minus zobowiązania
           </p>
         </div>
 
@@ -179,6 +180,7 @@ export function NetWorthChart({
               tickLine={false}
               axisLine={false}
               fontSize={12}
+              minTickGap={28}
             />
 
             <YAxis

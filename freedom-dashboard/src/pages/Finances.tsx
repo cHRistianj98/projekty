@@ -51,11 +51,13 @@ import type {
 import type { Asset } from "../types/Asset";
 import { getAssetCategory } from "../types/Asset";
 import type { PortfolioWallet } from "../types/Portfolio";
+import type { Goal } from "../types/Goal";
 import { portfolioApi } from "../api/portfolioApi";
 
 type FinancesProps = {
   budget: MonthlyBudget;
   assets: Asset[];
+  goals: Goal[];
 
   recurringTransactions:
     RecurringTransaction[];
@@ -189,6 +191,7 @@ const categories = [
 export function Finances({
   budget,
   assets,
+  goals,
   recurringTransactions,
   onAddIncome,
   onDeleteIncome,
@@ -825,6 +828,7 @@ export function Finances({
                             categoryIconKey={expense.categoryIconKey ?? fallbackIconKey(config.category)}
                             categoryColor={expense.categoryColor ?? fallbackCategoryColor(config.category)}
                             tone="expense"
+                            goal={expense.goalId ? goals.find((goal) => goal.id === expense.goalId) : undefined}
                             currentAssetId={expense.assetId}
                             cashAssets={cashAssets}
                             wallets={wallets}
@@ -1004,6 +1008,7 @@ type TransactionVisualRowProps = {
   categoryIconKey: string;
   categoryColor: string;
   tone: "income" | "expense";
+  goal?: Goal;
   currentAssetId?: number;
   cashAssets: Asset[];
   wallets: PortfolioWallet[];
@@ -1021,6 +1026,7 @@ function TransactionVisualRow({
   categoryIconKey,
   categoryColor,
   tone,
+  goal,
   currentAssetId,
   cashAssets,
   wallets,
@@ -1081,6 +1087,46 @@ function TransactionVisualRow({
             onChange={onSourceChange}
             variant="compact"
           />
+
+          {goal && (
+            <>
+              <span>•</span>
+              <div
+                className="inline-flex min-w-0 items-center gap-2 rounded-xl border bg-slate-950/65 px-2 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+                style={{ borderColor: `${goal.color || "#8b5cf6"}45` }}
+                title={`Powiązany cel: ${goal.name}`}
+              >
+                {goal.imageUrl ? (
+                  <img
+                    src={goal.imageUrl}
+                    alt=""
+                    className="h-7 w-7 shrink-0 rounded-lg border border-white/10 object-cover"
+                    style={{ objectPosition: goalImagePosition(goal.imagePosition) }}
+                  />
+                ) : (
+                  <span
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border"
+                    style={{
+                      borderColor: `${goal.color || "#8b5cf6"}35`,
+                      backgroundColor: `${goal.color || "#8b5cf6"}16`,
+                      color: goal.color || "#c4b5fd",
+                    }}
+                  >
+                    <Target size={13} />
+                  </span>
+                )}
+
+                <span className="min-w-0">
+                  <span className="block text-[9px] font-bold uppercase tracking-[0.14em] text-slate-600">
+                    Cel
+                  </span>
+                  <span className="block max-w-[190px] truncate text-[11px] font-bold text-violet-200">
+                    {goal.name}
+                  </span>
+                </span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -1119,6 +1165,12 @@ function formatTransactionDate(date?: string) {
   if (!year || !month || !day) return date;
 
   return `${day}.${month}.${year}`;
+}
+
+function goalImagePosition(position?: Goal["imagePosition"]) {
+  if (position === "top") return "center top";
+  if (position === "bottom") return "center bottom";
+  return "center center";
 }
 
 function fallbackIconKey(category: ExpenseCategory) {

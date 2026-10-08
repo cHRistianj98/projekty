@@ -40,10 +40,6 @@ public class GoalSpendingService {
         Long uid = user.getId();
         requireAsset(assetId, uid);
 
-        // While editing an existing expense, its already-consumed reservation must
-        // temporarily count as available again. TransactionService reverses the old
-        // spending before applying the edited transaction, so this mirrors the
-        // amount that will actually be available at save time.
         List<EditedSpendingRow> editedRows = transactionId == null
                 ? List.of()
                 : jdbc.query(
@@ -60,28 +56,17 @@ public class GoalSpendingService {
                         uid, transactionId
                 );
 
-        Set<Long> goalIds = new LinkedHashSet<>(jdbc.query(
-                """
-                SELECT DISTINCT goal_id
-                FROM goal_allocations
-                WHERE user_id=? AND asset_id=? AND amount>0
-                """,
-                (rs, rowNum) -> rs.getLong("goal_id"),
-                uid, assetId
-        ));
-        portfolioReservations.reservationsForAsset(assetId, uid)
-                .forEach(row -> goalIds.add(row.goalId()));
-        editedRows.stream()
-                .filter(row -> row.assetId() != null && row.assetId().equals(assetId))
-                .forEach(row -> goalIds.add(row.goalId()));
-
-        List<SpendableGoalResponse> result = new ArrayList<>();
-        for (Long goalId : goalIds) {
-            List<GoalSpendableRow> goals = jdbc.query(
+        List<GoalSpendableRow> goals;
+        if (transactionId != null) {
+            // Editing is also a reconciliation workflow. A historical expense may be
+            // attached to ANY active/funded goal, even when that goal was funded from
+            // another asset or did not have a reservation at the time of the expense.
+            goals = jdbc.query(
                     """
                     SELECT id,name,status,color,image_url,target_amount
                     FROM goals
-                    WHERE id=? AND user_id=? AND status IN ('ACTIVE','FUNDED')
+                    WHERE user_id=? AND status IN ('ACTIVE','FUNDED')
+                    ORDER BY name
                     """,
                     (rs, rowNum) -> new GoalSpendableRow(
                             rs.getLong("id"),
@@ -91,11 +76,46 @@ public class GoalSpendingService {
                             rs.getString("image_url"),
                             rs.getBigDecimal("target_amount")
                     ),
-                    goalId, uid
+                    uid
             );
-            if (goals.isEmpty()) continue;
-            GoalSpendableRow goal = goals.getFirst();
+        } else {
+            Set<Long> goalIds = new LinkedHashSet<>(jdbc.query(
+                    """
+                    SELECT DISTINCT goal_id
+                    FROM goal_allocations
+                    WHERE user_id=? AND asset_id=? AND amount>0
+                    """,
+                    (rs, rowNum) -> rs.getLong("goal_id"),
+                    uid, assetId
+            ));
+            portfolioReservations.reservationsForAsset(assetId, uid)
+                    .forEach(row -> goalIds.add(row.goalId()));
 
+            goals = new ArrayList<>();
+            for (Long goalId : goalIds) {
+                List<GoalSpendableRow> rows = jdbc.query(
+                        """
+                        SELECT id,name,status,color,image_url,target_amount
+                        FROM goals
+                        WHERE id=? AND user_id=? AND status IN ('ACTIVE','FUNDED')
+                        """,
+                        (rs, rowNum) -> new GoalSpendableRow(
+                                rs.getLong("id"),
+                                rs.getString("name"),
+                                GoalStatus.valueOf(rs.getString("status")),
+                                rs.getString("color"),
+                                rs.getString("image_url"),
+                                rs.getBigDecimal("target_amount")
+                        ),
+                        goalId, uid
+                );
+                if (!rows.isEmpty()) goals.add(rows.getFirst());
+            }
+        }
+
+        List<SpendableGoalResponse> result = new ArrayList<>();
+        for (GoalSpendableRow goal : goals) {
+            Long goalId = goal.id();
             BigDecimal explicitTotal = value(
                     "SELECT COALESCE(SUM(amount),0) FROM goal_allocations WHERE user_id=? AND goal_id=?",
                     uid, goalId);
@@ -104,22 +124,28 @@ public class GoalSpendingService {
                     BigDecimal.class, uid, goalId, assetId);
             explicitOnAsset = explicitOnAsset == null ? ZERO : explicitOnAsset;
 
-            BigDecimal dynamicTotal = portfolioReservations.reservedForGoal(goalId, uid);
-            BigDecimal dynamicOnAsset = portfolioReservations.reservationsForAsset(assetId, uid).stream()
-                    .filter(row -> row.goalId().equals(goalId))
+            List<GoalPortfolioReservationService.DynamicAssetReservation> dynamicRows =
+                    portfolioReservations.reservationsForGoal(goalId, uid);
+            BigDecimal dynamicTotal = dynamicRows.stream()
+                    .map(GoalPortfolioReservationService.DynamicAssetReservation::amount)
+                    .reduce(ZERO, BigDecimal::add);
+            BigDecimal dynamicOnAsset = dynamicRows.stream()
+                    .filter(row -> row.assetId().equals(assetId))
                     .map(GoalPortfolioReservationService.DynamicAssetReservation::amount)
                     .reduce(ZERO, BigDecimal::add);
 
-            BigDecimal editedOnAsset = editedRows.stream()
-                    .filter(row -> row.goalId().equals(goalId))
-                    .filter(row -> row.assetId() != null && row.assetId().equals(assetId))
-                    .map(EditedSpendingRow::amount)
-                    .reduce(ZERO, BigDecimal::add);
+            ReservationRestore restore = transactionId == null
+                    ? new ReservationRestore(ZERO, ZERO)
+                    : reservationRestoreForEdit(transactionId, goalId, assetId, uid, editedRows);
 
             BigDecimal actualReserved = explicitTotal.add(dynamicTotal);
-            BigDecimal totalReservedForEdit = actualReserved.add(editedOnAsset);
-            BigDecimal reservedOnAsset = explicitOnAsset.add(dynamicOnAsset).add(editedOnAsset);
-            if (reservedOnAsset.signum() <= 0) continue;
+            BigDecimal totalReservedForEdit = actualReserved.add(restore.total());
+            BigDecimal reservedOnAsset = explicitOnAsset.add(dynamicOnAsset).add(restore.onAsset());
+
+            // Creating a new expense remains strict: the selected source asset must
+            // actually contain a reservation for the goal. Editing deliberately lists
+            // every live goal so old/imported expenses can be reconciled afterwards.
+            if (transactionId == null && reservedOnAsset.signum() <= 0) continue;
 
             BigDecimal spent = spentAmount(goalId, uid);
             BigDecimal covered = actualReserved.add(spent);
@@ -153,11 +179,8 @@ public class GoalSpendingService {
     }
 
     /**
-     * Converts a fragment of an existing goal reservation into real spending.
-     * This does NOT touch the asset value. TransactionService subsequently calls
-     * MoneyLedgerService.recordExpense(), which performs the physical debit.
-     * Because the reservation is reduced first, exactly that amount becomes
-     * available to the expense without allowing unrelated reserved money to leak.
+     * Normal "spend from goal" flow used when a new expense is created. The
+     * reservation must live on the same asset that physically pays the expense.
      */
     public void consumeReservation(
             Long goalId,
@@ -203,6 +226,8 @@ public class GoalSpendingService {
             );
         }
 
+        jdbc.update("DELETE FROM goal_spending_sources WHERE user_id=? AND transaction_id=?", uid, transactionId);
+
         BigDecimal explicitUsed = amount.min(explicitAvailable);
         if (allocation != null && explicitUsed.signum() > 0) {
             jdbc.update(
@@ -214,32 +239,140 @@ public class GoalSpendingService {
         }
 
         String snapshotName = allocation != null ? allocation.assetName() : assetName(assetId, uid, "Aktywo");
-        jdbc.update(
+        insertGoalSpending(uid, goalId, transactionId, assetId, snapshotName, amount);
+
+        if (explicitUsed.signum() > 0) {
+            insertSpendingSource(uid, goalId, transactionId, assetId, snapshotName, "EXPLICIT", explicitUsed);
+        }
+        BigDecimal dynamicUsed = amount.subtract(explicitUsed);
+        if (dynamicUsed.signum() > 0) {
+            insertSpendingSource(uid, goalId, transactionId, assetId,
+                    assetName(assetId, uid, snapshotName), "PORTFOLIO_DYNAMIC", dynamicUsed);
+        }
+
+        recomputeGoal(goalId, uid);
+    }
+
+    /**
+     * Reconciles an already existing/imported expense with a goal. Unlike a new
+     * "spend from goal" transaction, this may consume reservations from other
+     * assets. If the goal had no (or not enough) reservation, the uncovered part
+     * is still counted as historical spending towards the goal.
+     */
+    public void consumeReservationForEditedExpense(
+            Long goalId,
+            Long transactionId,
+            Long expenseAssetId,
+            BigDecimal amount,
+            User user
+    ) {
+        ensurePositive(amount);
+        Long uid = user.getId();
+        requireAsset(expenseAssetId, uid);
+
+        GoalRow goal = requireGoal(goalId, uid);
+        if (goal.status() == GoalStatus.COMPLETED) {
+            throw new IllegalArgumentException("Nie można przypisać wydatku do zakończonego celu.");
+        }
+
+        // Snapshot dynamic reservations BEFORE explicit allocations are reduced.
+        // Otherwise freeing an explicit allocation could artificially increase the
+        // dynamic portfolio reservation during this same reconciliation.
+        List<GoalPortfolioReservationService.DynamicAssetReservation> dynamicRows =
+                new ArrayList<>(portfolioReservations.reservationsForGoal(goalId, uid));
+        dynamicRows.sort(Comparator
+                .comparing((GoalPortfolioReservationService.DynamicAssetReservation row) ->
+                        row.assetId().equals(expenseAssetId) ? 0 : 1)
+                .thenComparing(GoalPortfolioReservationService.DynamicAssetReservation::assetId));
+
+        List<AllocationRow> explicitRows = jdbc.query(
                 """
-                INSERT INTO goal_spendings(
-                    user_id,
-                    goal_id,
-                    transaction_id,
-                    asset_id,
-                    asset_name_snapshot,
-                    amount
-                ) VALUES(?,?,?,?,?,?)
+                SELECT id,asset_id,asset_name_snapshot,amount
+                FROM goal_allocations
+                WHERE user_id=? AND goal_id=? AND amount>0
+                ORDER BY CASE WHEN asset_id=? THEN 0 ELSE 1 END, id
                 """,
+                (rs, n) -> new AllocationRow(
+                        rs.getLong("id"),
+                        (Long) rs.getObject("asset_id"),
+                        rs.getString("asset_name_snapshot"),
+                        rs.getBigDecimal("amount")
+                ),
+                uid, goalId, expenseAssetId
+        );
+
+        jdbc.update("DELETE FROM goal_spending_sources WHERE user_id=? AND transaction_id=?", uid, transactionId);
+
+        BigDecimal remaining = amount;
+        List<SpendingSourceDraft> sources = new ArrayList<>();
+
+        for (AllocationRow row : explicitRows) {
+            if (remaining.signum() <= 0) break;
+            BigDecimal used = remaining.min(row.amount());
+            if (used.signum() <= 0) continue;
+
+            jdbc.update(
+                    "UPDATE goal_allocations SET amount=amount-?,updated_at=NOW() WHERE id=?",
+                    used,
+                    row.id()
+            );
+            jdbc.update("DELETE FROM goal_allocations WHERE id=? AND amount=0", row.id());
+            sources.add(new SpendingSourceDraft(
+                    row.assetId(), row.assetName(), "EXPLICIT", used
+            ));
+            remaining = remaining.subtract(used);
+        }
+
+        for (GoalPortfolioReservationService.DynamicAssetReservation row : dynamicRows) {
+            if (remaining.signum() <= 0) break;
+            BigDecimal used = remaining.min(row.amount());
+            if (used.signum() <= 0) continue;
+            sources.add(new SpendingSourceDraft(
+                    row.assetId(), row.assetName(), "PORTFOLIO_DYNAMIC", used
+            ));
+            remaining = remaining.subtract(used);
+        }
+
+        // The spending row describes the real expense; source breakdown rows only
+        // describe which goal reservations were released to reconcile it.
+        insertGoalSpending(
                 uid,
                 goalId,
                 transactionId,
-                assetId,
-                snapshotName,
+                expenseAssetId,
+                assetName(expenseAssetId, uid, "Aktywo"),
                 amount
         );
+        for (SpendingSourceDraft source : sources) {
+            insertSpendingSource(
+                    uid,
+                    goalId,
+                    transactionId,
+                    source.assetId(),
+                    source.assetName(),
+                    source.sourceType(),
+                    source.amount()
+            );
+        }
+        if (remaining.signum() > 0) {
+            insertSpendingSource(
+                    uid,
+                    goalId,
+                    transactionId,
+                    expenseAssetId,
+                    assetName(expenseAssetId, uid, "Aktywo"),
+                    "HISTORICAL_UNFUNDED",
+                    remaining
+            );
+        }
 
         recomputeGoal(goalId, uid);
     }
 
     /**
      * Restores the goal reservation when an expense is deleted or edited.
-     * TransactionService first reverses the expense in the ledger, so the asset
-     * physically contains the money again before it becomes reserved again.
+     * For newer reconciled expenses the exact source split is restored. Legacy
+     * rows fall back to the old single-asset behavior.
      */
     public void reverseSpending(Long transactionId, User user) {
         Long uid = user.getId();
@@ -260,36 +393,169 @@ public class GoalSpendingService {
                 transactionId
         );
 
-        if (rows.isEmpty()) {
-            return;
-        }
+        if (rows.isEmpty()) return;
 
         SpendingRow spending = rows.getFirst();
         GoalRow goal = requireGoal(spending.goalId(), uid);
-
         if (goal.status() == GoalStatus.COMPLETED) {
             throw new IllegalArgumentException(
                     "Nie można cofnąć wydatku przypisanego do zakończonego celu."
             );
         }
 
-        Long assetId = spending.assetId();
-        if (assetId == null || !assetExists(assetId, uid)) {
-            assetId = systemCashId(uid);
+        List<SpendingSourceRow> sources = jdbc.query(
+                """
+                SELECT asset_id,asset_name_snapshot,source_type,amount
+                FROM goal_spending_sources
+                WHERE user_id=? AND transaction_id=? AND goal_id=?
+                ORDER BY id
+                """,
+                (rs, n) -> new SpendingSourceRow(
+                        (Long) rs.getObject("asset_id"),
+                        rs.getString("asset_name_snapshot"),
+                        rs.getString("source_type"),
+                        rs.getBigDecimal("amount")
+                ),
+                uid, transactionId, spending.goalId()
+        );
+
+        if (sources.isEmpty()) {
+            // Legacy spending created before V57: reservation source and expense
+            // source were the same asset.
+            Long assetId = spending.assetId();
+            if (assetId == null || !assetExists(assetId, uid)) {
+                assetId = systemCashId(uid);
+            }
+            if (!portfolioReservations.isAssetInsideGoalPortfolio(spending.goalId(), assetId, uid)) {
+                upsertAllocation(
+                        spending.goalId(),
+                        assetId,
+                        assetName(assetId, uid, spending.assetName()),
+                        spending.amount(),
+                        uid
+                );
+            }
+        } else {
+            for (SpendingSourceRow source : sources) {
+                if ("HISTORICAL_UNFUNDED".equals(source.sourceType())) {
+                    // This part never consumed a reservation, so there is nothing
+                    // to restore when the historical link is removed.
+                    continue;
+                }
+
+                Long sourceAssetId = source.assetId();
+                if (sourceAssetId == null || !assetExists(sourceAssetId, uid)) {
+                    sourceAssetId = systemCashId(uid);
+                }
+
+                if ("PORTFOLIO_DYNAMIC".equals(source.sourceType())
+                        && portfolioReservations.isAssetInsideGoalPortfolio(
+                                spending.goalId(), sourceAssetId, uid)) {
+                    // Deleting the spending row below automatically grows the
+                    // dynamic reservation again, so no explicit allocation is needed.
+                    continue;
+                }
+
+                upsertAllocation(
+                        spending.goalId(),
+                        sourceAssetId,
+                        assetName(sourceAssetId, uid, source.assetName()),
+                        source.amount(),
+                        uid
+                );
+            }
         }
 
-        if (!portfolioReservations.isAssetInsideGoalPortfolio(spending.goalId(), assetId, uid)) {
-            upsertAllocation(
-                    spending.goalId(),
-                    assetId,
-                    assetName(assetId, uid, spending.assetName()),
-                    spending.amount(),
-                    uid
-            );
-        }
-
-        jdbc.update("DELETE FROM goal_spendings WHERE id=?", spending.id());
+        jdbc.update("DELETE FROM goal_spending_sources WHERE user_id=? AND transaction_id=?", uid, transactionId);
+        jdbc.update("DELETE FROM goal_spendings WHERE user_id=? AND transaction_id=?", uid, transactionId);
         recomputeGoal(spending.goalId(), uid);
+    }
+
+    private ReservationRestore reservationRestoreForEdit(
+            Long transactionId,
+            Long goalId,
+            Long assetId,
+            Long uid,
+            List<EditedSpendingRow> editedRows
+    ) {
+        List<SpendingSourceRow> sources = jdbc.query(
+                """
+                SELECT asset_id,asset_name_snapshot,source_type,amount
+                FROM goal_spending_sources
+                WHERE user_id=? AND transaction_id=? AND goal_id=?
+                ORDER BY id
+                """,
+                (rs, n) -> new SpendingSourceRow(
+                        (Long) rs.getObject("asset_id"),
+                        rs.getString("asset_name_snapshot"),
+                        rs.getString("source_type"),
+                        rs.getBigDecimal("amount")
+                ),
+                uid, transactionId, goalId
+        );
+        if (!sources.isEmpty()) {
+            BigDecimal total = sources.stream()
+                    .filter(row -> !"HISTORICAL_UNFUNDED".equals(row.sourceType()))
+                    .map(SpendingSourceRow::amount)
+                    .reduce(ZERO, BigDecimal::add);
+            BigDecimal onAsset = sources.stream()
+                    .filter(row -> !"HISTORICAL_UNFUNDED".equals(row.sourceType()))
+                    .filter(row -> row.assetId() != null && row.assetId().equals(assetId))
+                    .map(SpendingSourceRow::amount)
+                    .reduce(ZERO, BigDecimal::add);
+            return new ReservationRestore(total, onAsset);
+        }
+
+        // Legacy goal spending had no source breakdown. In that model the whole
+        // spending amount came from the transaction asset reservation.
+        BigDecimal total = editedRows.stream()
+                .filter(row -> row.goalId().equals(goalId))
+                .map(EditedSpendingRow::amount)
+                .reduce(ZERO, BigDecimal::add);
+        BigDecimal onAsset = editedRows.stream()
+                .filter(row -> row.goalId().equals(goalId))
+                .filter(row -> row.assetId() != null && row.assetId().equals(assetId))
+                .map(EditedSpendingRow::amount)
+                .reduce(ZERO, BigDecimal::add);
+        return new ReservationRestore(total, onAsset);
+    }
+
+    private void insertGoalSpending(
+            Long uid,
+            Long goalId,
+            Long transactionId,
+            Long assetId,
+            String assetName,
+            BigDecimal amount
+    ) {
+        jdbc.update(
+                """
+                INSERT INTO goal_spendings(
+                    user_id,goal_id,transaction_id,asset_id,asset_name_snapshot,amount
+                ) VALUES(?,?,?,?,?,?)
+                """,
+                uid, goalId, transactionId, assetId, assetName, amount
+        );
+    }
+
+    private void insertSpendingSource(
+            Long uid,
+            Long goalId,
+            Long transactionId,
+            Long assetId,
+            String assetName,
+            String sourceType,
+            BigDecimal amount
+    ) {
+        if (amount == null || amount.signum() <= 0) return;
+        jdbc.update(
+                """
+                INSERT INTO goal_spending_sources(
+                    user_id,transaction_id,goal_id,asset_id,asset_name_snapshot,source_type,amount
+                ) VALUES(?,?,?,?,?,?,?)
+                """,
+                uid, transactionId, goalId, assetId, assetName, sourceType, amount
+        );
     }
 
     public GoalCompletionResponse completeGoal(
@@ -834,6 +1100,25 @@ public class GoalSpendingService {
     private record EditedSpendingRow(
             Long goalId,
             Long assetId,
+            BigDecimal amount
+    ) {}
+
+    private record ReservationRestore(
+            BigDecimal total,
+            BigDecimal onAsset
+    ) {}
+
+    private record SpendingSourceDraft(
+            Long assetId,
+            String assetName,
+            String sourceType,
+            BigDecimal amount
+    ) {}
+
+    private record SpendingSourceRow(
+            Long assetId,
+            String assetName,
+            String sourceType,
             BigDecimal amount
     ) {}
 

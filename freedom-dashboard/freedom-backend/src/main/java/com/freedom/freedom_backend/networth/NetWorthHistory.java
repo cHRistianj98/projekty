@@ -17,7 +17,7 @@ public class NetWorthHistory {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(nullable = false, length = 7)
+    @Column(nullable = false, length = 10)
     private String month;
 
     @Column(nullable = false, precision = 19, scale = 2)
